@@ -1,0 +1,377 @@
+# Complete .clang-format configuration file with all available options
+# Based on ClangFormat version 15+ (most options work with older versions too)
+
+# Base style to start from (Google, LLVM, Chromium, Mozilla, WebKit, Microsoft, GNU)
+# You can override any setting below
+BasedOnStyle: Google
+
+# Language specification (Cpp, Java, JavaScript, ObjC, Proto, TableGen, TextProto)
+Language: Cpp
+
+# Standard version (c++03, c++11, c++14, c++17, c++20, Latest, Auto)
+Standard: c++20
+
+#===============================================================================
+# INDENTATION AND SPACING
+#===============================================================================
+
+# Number of spaces for each indentation level
+IndentWidth: 4
+
+# Width of tab character (should match IndentWidth usually)
+TabWidth: 4
+
+# Use tabs or spaces for indentation (Never, ForIndentation, ForContinuationAndIndentation, Always)
+UseTab: Never
+
+# Indentation for line continuations (function parameters, long expressions)
+ContinuationIndentWidth: 4
+
+# Indent case labels in switch statements
+IndentCaseLabels: true
+
+# Indent case block bodies (the code after case:)
+IndentCaseBlocks: true
+
+# Indent goto labels (true = indent, false = flush left)
+IndentGotoLabels: true
+
+# Indent preprocessor directives (#if, #define, etc.)
+IndentPPDirectives: None  # None, AfterHash, BeforeHash
+
+# Indent width for access modifiers (public:, private:, protected:)
+AccessModifierOffset: -4
+
+# Indent extern "C" blocks
+IndentExternBlock: AfterExternBlock  # AfterExternBlock, NoIndent, Indent
+
+# Indent requires clause in concepts/functions
+IndentRequires: false
+
+# Indent wrapped function names in function declarations
+IndentWrappedFunctionNames: false
+
+#===============================================================================
+# BRACE PLACEMENT AND WRAPPING
+#===============================================================================
+
+# Overall brace breaking style
+# Attach, Linux, Mozilla, Stroustrup, Allman, Whitesmiths, GNU, WebKit, Custom
+BreakBeforeBraces: Custom
+
+# Detailed brace wrapping (only used if BreakBeforeBraces: Custom)
+BraceWrapping:
+  AfterCaseLabel: false        # case 1: { vs case 1:\n{
+  AfterClass: true             # class Foo { vs class Foo\n{
+  AfterControlStatement: false # if (x) { vs if (x)\n{
+  AfterEnum: false             # enum E { vs enum E\n{
+  AfterFunction: true          # void f() { vs void f()\n{
+  AfterNamespace: true         # namespace N { vs namespace N\n{
+  AfterObjCDeclaration: false  # Objective-C specific
+  AfterStruct: false           # struct S { vs struct S\n{
+  AfterUnion: false            # union U { vs union U\n{
+  AfterExternBlock: false      # extern "C" { vs extern "C"\n{
+  BeforeCatch: false           # } catch vs }\ncatch
+  BeforeElse: false            # } else vs }\nelse
+  BeforeWhile: false           # } while vs }\nwhile
+  IndentBraces: false          # Indent the braces themselves
+  SplitEmptyFunction: true     # Empty functions: {} vs {\n}
+  SplitEmptyRecord: true       # Empty classes/structs: {} vs {\n}
+  SplitEmptyNamespace: true    # Empty namespaces: {} vs {\n}
+
+# Insert braces around single-statement control blocks
+InsertBraces: true
+
+# Remove braces around single-statement control blocks  
+RemoveBracesLLVM: false
+
+#===============================================================================
+# LINE LENGTH AND BREAKING
+#===============================================================================
+
+# Maximum line length (0 = no limit)
+ColumnLimit: 120
+
+# How to handle lines that exceed ColumnLimit
+# None: don't break, PenaltyBased: break with penalties, Always: always break
+BreakStringLiterals: true
+
+# Penalty for breaking before the first call in a chain
+PenaltyBreakFirstLessLess: 120
+
+# Penalty for each character over the column limit
+PenaltyExcessCharacter: 1000000
+
+# Penalty for breaking a line
+PenaltyBreakComment: 300
+PenaltyBreakString: 1000
+PenaltyBreakAssignment: 2
+
+# Break before binary operators (None, NonAssignment, All)
+BreakBeforeBinaryOperators: None
+
+# Break before ternary operators
+BreakBeforeTernaryOperators: true
+
+# Break constructor initializer lists before colon and commas
+BreakConstructorInitializers: BeforeColon  # BeforeColon, BeforeComma, AfterColon
+
+# Break inheritance lists (similar to constructor initializers)
+BreakInheritanceList: BeforeColon  # BeforeColon, BeforeComma, AfterColon, AfterComma
+
+# Always break after template declaration
+AlwaysBreakTemplateDeclarations: true  # No, MultiLine, Yes
+
+# Break after multiline raw string literals opening quote
+AlwaysBreakBeforeMultilineStrings: true
+
+# Pack constructor initializers on one line if they fit
+PackConstructorInitializers: BinPack  # Never, BinPack, CurrentLine, NextLine
+
+#===============================================================================
+# FUNCTION AND PARAMETER FORMATTING
+#===============================================================================
+
+# Allow short functions on a single line
+# None: never, InlineOnly: only inline, Empty: only empty, Inline: inline and empty, All: all short functions
+AllowShortFunctionsOnASingleLine: Empty
+
+# Allow short if statements on single line
+# Never, WithoutElse (if no else), Always
+AllowShortIfStatementsOnASingleLine: Never
+
+# Allow short case labels on single line
+AllowShortCaseLabelsOnASingleLine: false
+
+# Allow short loops on single line
+AllowShortLoopsOnASingleLine: false
+
+# Allow short lambda expressions on single line
+# None, Empty, Inline, All
+AllowShortLambdasOnASingleLine: All
+
+# Allow short enums on single line
+AllowShortEnumsOnASingleLine: false
+
+# Bin pack function parameters (fit as many as possible on each line)
+BinPackParameters: true
+
+# Bin pack function arguments
+BinPackArguments: true
+
+# Allow all arguments on next line if they don't fit
+AllowAllArgumentsOnNextLine: true
+
+# Allow all parameters on next line if they don't fit
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# Experimental flag for all constructor initializers on next line
+AllowAllConstructorInitializersOnNextLine: true
+
+#===============================================================================
+# POINTER AND REFERENCE ALIGNMENT
+#===============================================================================
+
+# Pointer alignment: Left (int* ptr), Right (int *ptr), Middle (int * ptr)
+PointerAlignment: Middle
+
+# Reference alignment: inherits from PointerAlignment if not set
+# Left (int& ref), Right (int &ref), Middle (int & ref), Pointer (same as pointer)
+ReferenceAlignment: Middle
+
+# Qualify decltype with const/volatile
+QualifierAlignment: Leave  # Leave, Left, Right, Custom
+
+#===============================================================================
+# SPACING RULES
+#===============================================================================
+
+# Space after C-style casts: (int)x vs (int) x
+SpaceAfterCStyleCast: false
+
+# Space after logical NOT: !x vs ! x
+SpaceAfterLogicalNot: false
+
+# Space after template keyword: template<> vs template <>
+SpaceAfterTemplateKeyword: true
+
+# Space before parentheses
+# Never, ControlStatements, ControlStatementsExceptForEachMacros, Always, NonEmptyParentheses
+SpaceBeforeParens: ControlStatements
+
+# Custom space before parentheses (only if SpaceBeforeParens: Custom)
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterForeachMacros: true
+  AfterFunctionDefinitionName: false
+  AfterFunctionDeclarationName: false
+  AfterIfMacros: true
+  AfterOverloadedOperator: false
+  BeforeNonEmptyParentheses: false
+
+# Space before assignment operators: x=1 vs x = 1
+SpaceBeforeAssignmentOperators: true
+
+# Space before colon in range-based for loops: for(auto x: v) vs for(auto x : v)
+SpaceBeforeRangeBasedForLoopColon: true
+
+# Space before square brackets: x[0] vs x [0]
+SpaceBeforeSquareBrackets: false
+
+# Space in empty parentheses: f() vs f( )
+SpaceInEmptyParentheses: false
+
+# Spaces in parentheses: f(x) vs f( x )
+SpacesInParentheses: false
+
+# Spaces in square brackets: x[0] vs x[ 0 ]
+SpacesInSquareBrackets: false
+
+# Spaces in angle brackets (template parameters): vector<int> vs vector< int >
+SpacesInAngles: Never  # Never, Always, Leave
+
+# Spaces before trailing comments: code; // comment vs code;  // comment
+SpacesBeforeTrailingComments: 2
+
+# Space around pointer qualifiers: int* const vs int *const
+SpaceAroundPointerQualifiers: Default  # Default, Before, After, Both
+
+# Space before cpp alternative operators (and, or, not, etc.)
+SpaceBeforeCpp11BracedList: false
+
+# Space before case colon: case 1: vs case 1 :
+SpaceBeforeCaseColon: false
+
+#===============================================================================
+# ALIGNMENT OPTIONS
+#===============================================================================
+
+# Align consecutive assignments
+# None, Consecutive, AcrossEmptyLines, AcrossComments, AcrossEmptyLinesAndComments
+AlignConsecutiveAssignments: None
+
+# Align consecutive bit field declarations
+AlignConsecutiveBitFields: Consecutive
+
+# Align consecutive declarations
+AlignConsecutiveDeclarations: None
+
+# Align consecutive macro definitions
+AlignConsecutiveMacros: Consecutive
+
+# Align operands of binary and ternary expressions
+# DontAlign, Align, AlignAfterOperator
+AlignOperands: Align
+
+# Align trailing comments
+AlignTrailingComments: true
+
+# Align array of structures initialization
+# Left, Right, None
+AlignArrayOfStructures: Left
+
+# Align escaped newlines (backslashes in macros)
+# DontAlign, Left, Right
+AlignEscapedNewlines: Right
+
+#===============================================================================
+# INCLUDE DIRECTIVES
+#===============================================================================
+
+# Sort include statements
+SortIncludes: true  # Never, CaseSensitive, CaseInsensitive
+
+# Include blocks handling
+# Preserve, Merge, Regroup
+IncludeBlocks: Regroup
+
+# Regex for main include (usually the .h file for a .cpp file)
+IncludeIsMainRegex: '([-_](test|unittest))?$'
+
+# Source file extensions to consider as main include
+IncludeIsMainSourceRegex: ''
+
+# Categories for grouping includes (lower numbers come first)
+IncludeCategories:
+  - Regex:           '^<ext/.*\.h>'  # Extensions
+    Priority:        2
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<.*\.h>'     # C system headers
+    Priority:        1
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<.*'         # C++ system headers
+    Priority:        2
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '.*'           # Everything else (project headers)
+    Priority:        3
+    SortPriority:    0
+    CaseSensitive:   false
+
+#===============================================================================
+# COMMENT FORMATTING
+#===============================================================================
+
+# Reflow comments to fit within ColumnLimit
+ReflowComments: true
+
+# Remove empty lines at start of blocks
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# Maximum number of consecutive empty lines to keep
+MaxEmptyLinesToKeep: 1
+
+# Fix namespace end comments: }  // namespace becomes } // namespace Name
+FixNamespaceComments: true
+
+#===============================================================================
+# MISCELLANEOUS OPTIONS
+#===============================================================================
+
+# Sort using declarations
+SortUsingDeclarations: true
+
+# Compress namespace declarations: namespace A { namespace B { vs namespace A::B {
+CompactNamespaces: false
+
+# Disable formatting in specific regions
+# Use // clang-format off and // clang-format on
+DisableFormat: false
+
+# Format raw string literals
+FormatOnAccessModifier: false
+
+# Separate definition blocks (separate functions/classes with empty line)
+SeparateDefinitionBlocks: Leave  # Leave, Always, Never
+
+# Empty line before access modifier
+EmptyLineBeforeAccessModifier: LogicalBlock  # Never, Leave, LogicalBlock, Always
+
+# Macro block handling
+MacroBlockBegin: ''
+MacroBlockEnd: ''
+
+# Penalties for various formatting choices (higher = more penalty)
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakTemplateDeclaration: 10
+PenaltyReturnTypeOnItsOwnLine: 200
+PenaltyIndentedWhitespace: 0
+
+# Experimental features (may not be available in all versions)
+InsertTrailingCommas: None  # None, Wrapped
+RemoveSemicolon: false
+RequiresClausePosition: OwnLine  # OwnLine, WithPreceding, WithFollowing, SingleLine
+
+#===============================================================================
+# LANGUAGE-SPECIFIC OPTIONS
+#===============================================================================
+
+# C++ specific options
+Cpp11BracedListStyle: false  # vector<int>{1, 2, 3} vs vector<int>{ 1, 2, 3 }
+DeriveLineEnding: true
+DerivePointerAlignment: false
+UseCRLF: false
+
+#===============================================================================

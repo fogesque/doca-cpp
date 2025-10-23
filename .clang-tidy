@@ -1,0 +1,177 @@
+
+# This is a basic .clang-tidy configuration file.
+# It enables a variety of checks to enforce modern C++ practices,
+# find common bugs, and improve code readability.
+#
+# For a full list of available checks, you can run:
+# clang-tidy -list-checks -checks='*'
+Checks: >
+  '-*,
+  bugprone-*,
+  -bugprone-exception-escape,
+  cert-*,
+  clang-analyzer-*,
+  clang-diagnostic-*,
+  cppcoreguidelines-*,
+  google-*,
+  hicpp-*,
+  llvm-*,
+  misc-*,
+  modernize-*,
+  -modernize-concat-nested-namespaces,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  portability-*,
+  -portability-template-virtual-member-function,
+  readability-*,
+
+
+WarningsAsErrors: '*' # Treat specified warnings as errors.
+
+HeaderFilterRegex: '.*' # Analyze headers as well as source files.
+FormatStyle: file  # Use .clang-format file
+InheritParentConfig: true # Inherit configurations from parent directories.
+
+
+CheckOptions:
+  # This section provides fine-grained control over the behavior of specific checks.
+  # You can uncomment and customize these options to match your team's style guide.
+
+  #---------------------------------------------------------------------------
+  # Options for 'readability-*' checks
+  #---------------------------------------------------------------------------
+
+  # readability-braces-around-statements: Enforce braces for control statements.
+  # Recommended to prevent common bugs like the "dangling else" problem.
+  - key:             readability-braces-around-statements.ShortStatementLines
+    value:           '1' # Treat statements spanning more than 1 line as multi-line (requiring braces).
+
+  # readability-function-cognitive-complexity: Checks for functions that are too complex.
+  # Helps maintain simple, understandable functions.
+  - key:             readability-function-cognitive-complexity.Threshold
+    value:           '20' # Set the maximum allowed cognitive complexity for a function.
+  - key:             readability-function-cognitive-complexity.IgnoreMacros
+    value:           'true'
+
+  # readability-function-size: Checks for functions that are too long.
+  # Shorter functions are generally easier to read, test, and maintain.
+  - key:             readability-function-size.LineThreshold
+    value:           '100' # Maximum number of lines.
+  - key:             readability-function-size.StatementThreshold
+    value:           '50' # Maximum number of statements.
+  - key:             readability-function-size.BranchThreshold
+    value:           '15' # Maximum number of branch points.
+
+  # readability-identifier-naming: Enforces a consistent naming convention.
+  # Crucial for code readability and maintainability.
+  # For each 'Kind', you can specify a 'Case' and an optional 'Prefix' or 'Suffix'.
+  # Common Case Styles: CamelCase, lower_case, UPPER_CASE
+  - key:             readability-identifier-naming.ClassCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.StructCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumConstantCase
+    value:           UPPER_CASE
+  - key:             readability-identifier-naming.FunctionCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.GlobalConstantCase
+    value:           UPPER_CASE
+  - key:             readability-identifier-naming.GlobalFunctionCase
+    value:           lower_case
+  - key:             readability-identifier-naming.GlobalVariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.LocalConstantCase
+    value:           UPPER_CASE
+  - key:             readability-identifier-naming.LocalVariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.MemberConstantCase
+    value:           UPPER_CASE
+  - key:             readability-identifier-naming.MemberFunctionCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.MemberVariableCase
+    value:           lower_case # A common convention is a prefix like 'm_' or a suffix '_'
+  - key:             readability-identifier-naming.ParameterCase
+    value:           lower_case
+  - key:             readability-identifier-naming.TypedefCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.TypeAliasCase # For 'using' aliases
+    value:           CamelCase
+  - key:             readability-identifier-naming.IgnoreMainLikeFunctions
+    value:           'true' # Avoids flagging 'main' and similar entry points.
+
+  # readability-magic-numbers: Finds magic numbers (unnamed numeric constants).
+  # Using named constants improves readability and makes code easier to modify.
+  - key:             readability-magic-numbers.IgnoreAllNumbers
+    value:           'false'
+  - key:             readability-magic-numbers.IgnoreBitFields
+    value:           'true'
+  - key:             readability-magic-numbers.IgnorePowersOf2
+    value:           'true' # Useful in bit manipulation code.
+  - key:             readability-magic-numbers.IgnoredNumbers
+    value:           '0, 1, -1' # A comma-separated list of numbers to ignore.
+
+  # readability-named-parameter: Suggests using C++20 designated initializers for clarity.
+  - key:             readability-named-parameter.MinimumArguments
+    value:           '2' # Require named parameters for calls with 2 or more arguments.
+
+  #---------------------------------------------------------------------------
+  # Options for 'modernize-*' checks
+  #---------------------------------------------------------------------------
+
+  # modernize-loop-convert: Recommends using range-based for loops.
+  - key:             modernize-loop-convert.MaxCopySize
+    value:           '16' # Max size of an object to be copied in a loop, in bytes.
+  - key:             modernize-loop-convert.MinConfidence
+    value:           'safe' # Other values: 'reasonable', 'risky'. 'safe' has the fewest false positives.
+
+  # modernize-use-auto: Recommends using 'auto' for variable declarations.
+  - key:             modernize-use-auto.MinTypeNameLength
+    value:           '5' # Only suggest 'auto' for type names longer than this. '0' suggests for all.
+  - key:             modernize-use-auto.RemoveRedundantQualifiers
+    value:           'true'
+
+  # modernize-use-equals-default: Recommends '= default' for special member functions.
+  - key:             modernize-use-equals-default.IgnoreMacros
+    value:           'true'
+
+  # modernize-use-nullptr: Recommends 'nullptr' instead of NULL or 0.
+  - key:             modernize-use-nullptr.NullMacros
+    value:           'NULL' # A comma-separated list of macros that expand to a null pointer constant.
+
+  # modernize-use-trailing-return-type: Suggests using trailing return types for functions.
+  # This is often a stylistic choice.
+  - key:             modernize-use-trailing-return-type.MinimumQualification
+    value:           '::' # Only apply to functions with qualified return types.
+
+  #---------------------------------------------------------------------------
+  # Options for 'cppcoreguidelines-*' checks
+  #---------------------------------------------------------------------------
+
+  # cppcoreguidelines-pro-type-member-init: Enforces in-class initialization of member variables.
+  - key:             cppcoreguidelines-pro-type-member-init.IgnoreArrays
+    value:           'false'
+
+  # cppcoreguidelines-avoid-magic-numbers: Similar to readability-magic-numbers but part of the core guidelines.
+  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoreAllNumbers
+    value:           'false'
+  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoreBitFields
+    value:           'true'
+  - key:             cppcoreguidelines-avoid-magic-numbers.IgnorePowersOf2
+    value:           'true'
+  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoredNumbers
+    value:           '0, 1, -1'
+
+  #---------------------------------------------------------------------------
+  # Options for 'bugprone-*' checks
+  #---------------------------------------------------------------------------
+
+  # bugprone-easily-swappable-parameters: Detects function parameters of the same type that could be swapped accidentally.
+  - key:             bugprone-easily-swappable-parameters.MinimumLength
+    value:           '2' # Minimum number of parameters to check.
+  - key:             bugprone-easily-swappable-parameters.IgnoredParameterNames
+    value:           '' # Semicolon-separated list of parameter names to ignore.
+  - key:             bugprone-easily-swappable-parameters.IgnoredParameterTypeSuffixes
+    value:           '' # Semicolon-separated list of type name suffixes to ignore (e.g., 'Id';'Key').
+
