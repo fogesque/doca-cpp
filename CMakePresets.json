@@ -1,25 +1,51 @@
 {
-    "version": 2,
+    "version": 8,
     "configurePresets": [
         {
-            "name": "amd64",
-            "generator": "Ninja",
+            "name": "base",
+            "hidden": true,
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                "CMAKE_C_COMPILER": "gcc-14",
-                "CMAKE_CXX_COMPILER": "g++-14",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}"
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}"
             }
-        }
-    ],
-    "buildPresets": [
+        },
         {
-            "name": "amd64-debug",
-            "displayName": "Debug",
-            "configurePreset": "amd64",
-            "configuration": "Debug"
+            "name": "linux-base",
+            "hidden": true,
+            "inherits": [
+                "base"
+            ],
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc-14",
+                "CMAKE_CXX_COMPILER": "g++-14"
+            }
+        },
+        {
+            "name": "amd64-linux-release",
+            "displayName": "AMD64 Linux Release",
+            "inherits": [
+                "linux-base"
+            ],
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "amd64-linux-debug",
+            "displayName": "AMD64 Linux Debug",
+            "inherits": [
+                "linux-base"
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ERRORS_BUILD_TESTS": "ON",
+                "ERRORS_BUILD_SAMPLES": "ON",
+                "VCPKG_MANIFEST_FEATURES": "testing;samples"
+            }
         }
     ]
 }
