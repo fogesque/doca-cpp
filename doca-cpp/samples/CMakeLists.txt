@@ -1,16 +1,21 @@
 cmake_minimum_required(VERSION 3.22)
-project(device_discovery_sample)
+project(doca-cpp-samples)
 
-set(TARGET_NAME ${PROJECT_NAME})
+set(TARGET_PREFIX ${PROJECT_NAME}-)
 
 # Find errors
 find_package(errors CONFIG REQUIRED)
 
-add_executable(${TARGET_NAME} device_discovery.cpp)
+# ======================================================================
+# Sample: device_discovery
+# ======================================================================
+set(TARGET_NAME ${TARGET_PREFIX}device-discovery)
+
+add_executable(${TARGET_NAME} ${CMAKE_CURRENT_LIST_DIR}/device_discovery.cpp)
 
 target_link_libraries(${TARGET_NAME}
     PRIVATE
-        doca-cpp
+        doca-cpp::doca-cpp
         errors::errors
 )
 
@@ -20,4 +25,4 @@ target_include_directories(${TARGET_NAME}
         ${DOCA_INCLUDE_DIRS} 
 )
 
-install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/examples)
+install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/samples)
