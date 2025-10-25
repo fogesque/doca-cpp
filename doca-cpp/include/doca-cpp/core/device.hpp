@@ -156,4 +156,6 @@ private:
     std::unique_ptr<doca_dev, internal::DeviceDeleter> device;
 };
 
+using DevicePtr = std::shared_ptr<Device>;
+
 }  // namespace doca
