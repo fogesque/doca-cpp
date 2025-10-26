@@ -1,0 +1,166 @@
+Config 
+============
+Peers: 
+    WriteRequester -> WriteResponder
+
+Connections:
+    CM
+====================================
+
+
+DEV_LIST = doca_devinfo_create_list()
+for dev_ib_name != input_ib_name {
+    dev_ib_name = doca_devinfo_get_ibdev_name(DEV_LIST[i])
+    DEVICE = doca_dev_open(DEV_LIST[i])
+}
+doca_devinfo_destroy_list(DEV_LIST)
+
+LOCAL_MEMRANGE = calloc()    // 4096 bytes
+
+[create_local_mmap]
+LOCAL_MMAP = doca_mmap_create()
+doca_mmap_set_permissions(LOCAL_MMAP, localReadWrite)
+doca_mmap_set_LOCAL_memrange(LOCAL_MMAP, LOCAL_MEMRANGE)
+doca_mmap_add_dev(LOCAL_MMAP, DEVICE)
+doca_mmap_start(LOCAL_MMAP)
+
+PE = doca_pe_create()
+
+RDMA = doca_rdma_create()
+RDMA_CTX = doca_rdma_as_ctx(RDMA)
+doca_rdma_set_permissions(RDMA, localReadWrite)
+doca_rdma_set_gid_index(RDMA)
+doca_rdma_set_max_num_connections(RDMA, NUM_CONNECTIONS)
+doca_rdma_set_transport_type(RDMA, CM)
+
+doca_pe_connect_ctx(PE, RDMA_CTX)
+
+doca_rdma_task_WRITE_set_conf(RDMA, func{rdma_WRITE_completed_callback} func{rdma_WRITE_error_callback})
+    
+    rdma_WRITE_completed_callback:
+        RDMA_TASK = doca_rdma_task_send_as_task(RDMA_TASK)
+        doca_task_free(RDMA_TASK)
+        doca_buf_dec_refcount(SOURCE_BUF)
+        doca_buf_dec_refcount(DEST_BUF)
+        if REMAINING_TASKS == 0 {
+            doca_rdma_connection_disconnect(RDMA_CONNECTION)
+            doca_ctx_stop(RDMA_CTX)
+        }
+
+    rdma_WRITE_error_callback:
+        RDMA_TASK = doca_rdma_task_send_as_task(RDMA_TASK)
+        doca_task_get_status(RDMA_TASK)
+        doca_buf_dec_refcount(SOURCE_BUF)
+        doca_buf_dec_refcount(DEST_BUF)
+        doca_task_free(RDMA_TASK)        
+        doca_rdma_connection_disconnect(RDMA_CONNECTION)
+        doca_ctx_stop(RDMA_CTX)
+
+
+doca_ctx_set_state_changed_cb(RDMA_CTX, func{rdma_WRITE_state_change_callback})
+
+    rdma_WRITE_state_change_callback:
+        if CTX == RUNNING {
+            if SERVER {
+                doca_rdma_start_listen_to_port(RDMA)
+            }
+            if CLIENT {
+                ADDR = doca_rdma_addr_create()
+                doca_rdma_connect_to_addr(ADDR)
+            }
+        }
+        if CTX == IDLE {
+            RUN_PE = false
+        }
+
+
+BUFF_INVENTORY = doca_buf_inventory_create()
+doca_buf_inventory_start(BUFF_INVENTORY)
+
+REQUIRE_REMOTE_MMAP = true
+IS_REQUESTER = true
+
+doca_rdma_task_receive_set_conf(RDMA, func{RECEIVE_task_completion_callback}, func{RECEIVE_task_error_callback})
+    
+    RECEIVE_task_completion_callback:
+        DST_BUF = doca_rdma_task_receive_get_dst_buf(RECEIVE_TASK)
+        BUF_LEN = doca_buf_get_data_len(DST_BUF)
+        RECEIVE_TASK = doca_rdma_task_receive_as_task(RECEIVE_TASK)
+        doca_task_free(RECEIVE_TASK)
+        doca_buf_dec_refcount(DST_BUF)
+        REMOTE_MMAP = doca_mmap_create_from_export(REMOTE_MMAP_DESCRIPTOR, DEVICE)
+        REMOTE_MEMRANGE = doca_mmap_get_memrange(REMOTE_MMAP)
+        SOURCE_BUF = doca_buf_inventory_buf_get_by_data(LOCAL_MMAP, LOCAL_MEMRANGE)
+        SOURCE_BUF_DATA = doca_buf_get_data(SOURCE_BUF)
+        strcpy(WRITE_MESSAGE, SOURCE_BUF_DATA)  
+        DEST_BUF = doca_buf_inventory_buf_get_by_addr(REMOTE_MMAP, REMOTE_MEMRANGE)
+        RDMA_WRITE_TASK = doca_rdma_task_write_allocate_init(RDMA_CONNECTION, SOURCE_BUF, DST_BUF)
+        doca_task_submit(RDMA_WRITE_TASK)
+
+    RECEIVE_task_error_callback:
+        RECEIVE_TASK = doca_rdma_task_receive_as_task(RECEIVE_TASK)
+        doca_task_free(RECEIVE_TASK)
+        DST_BUF = doca_rdma_task_receive_get_dst_buf(RECEIVE_TASK)
+        doca_buf_dec_refcount(DST_BUF)
+        doca_ctx_stop(RDMA_CTX)
+
+
+
+doca_rdma_set_connection_state_callbacks(
+    RDMA,
+    func{rdma_cm_connect_request_cb},
+    func{rdma_cm_connect_established_cb},
+    func{rdma_cm_connect_failure_cb},
+    func{rdma_cm_disconnect_cb},
+)
+    rdma_cm_connect_request_cb:
+        doca_rdma_connection_accept(RDMA_CONNECTION)
+
+    rdma_cm_connect_established_cb:
+        RECEIVE_DESCRIPTOR = malloc()
+        RECEIVE_DESCRIPTOR_MMAP = create_local_mmap(localReadWrite, RECEIVE_DESCRIPTOR, DEVICE)
+        DESC_BUF = doca_buf_inventory_buf_get_by_addr(BUFF_INVENTORY, RECEIVE_DESCRIPTOR_MMAP, RECEIVE_DESCRIPTOR)
+        RECEIVE_TASK = doca_rdma_task_receive_allocate_init(RDMA, DESC_BUF)
+        doca_task_submit(RECEIVE_TASK)
+
+    rdma_cm_connect_failure_cb: 
+        RUN_PE = false
+
+    rdma_cm_disconnect_cb
+        doca_rdma_connection_disconnect(RDMA_CONNECTION)
+
+
+doca_ctx_start(RDMA_CTX)
+while RUN_PE {
+    doca_pe_progress(PE)
+}
+
+
+
+----------------
+
+doca_buf_inventory_stop
+doca_buf_inventory_destroy
+
+doca_ctx_get_state
+doca_ctx_stop
+
+doca_mmap_stop
+doca_mmap_destroy
+
+doca_rdma_addr_destroy
+doca_mmap_destroy
+doca_mmap_destroy
+doca_mmap_destroy
+
+doca_rdma_destroy
+doca_pe_destroy
+doca_mmap_stop
+doca_mmap_destroy
+
+doca_dev_close
+
+
+
+
+
