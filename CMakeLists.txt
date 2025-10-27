@@ -26,7 +26,7 @@ add_library(${TARGET_NAME}
 )
 
 # Require C++23 minimum
-target_compile_features(errors INTERFACE cxx_std_23)
+target_compile_features(doca-cpp INTERFACE cxx_std_23)
 
 target_include_directories(${TARGET_NAME}
     PUBLIC
@@ -42,45 +42,6 @@ target_link_libraries(${TARGET_NAME}
         DOCA::common
         # Add other DOCA libs as needed
 )
-
-# Install rules
-include(GNUInstallDirs)
-install(TARGETS ${TARGET_NAME} 
-    EXPORT ${TARGET_NAME}-targets
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-# Install headers and FindDOCA.cmake
-install(DIRECTORY doca-cpp/include/ DESTINATION include)
-install(FILES cmake/FindDOCA.cmake DESTINATION share/doca-cpp/cmake)
-
-# Install CMake config files
-install(EXPORT errorsTargets
-    FILE ${TARGET_NAME}-targets.cmake
-    NAMESPACE doca-cpp::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/doca-cpp
-)
-
-# Create and install Config files
-include(CMakePackageConfigHelpers)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/doca-cppConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/doca-cppConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/doca-cppConfig.cmake"
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/doca-cpp
-)
-
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/doca-cppConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/doca-cppConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/doca-cpp
-)
-
 
 # Build samples and tests (optional, controlled by option)
 option(BUILD_TESTS "Build tests" OFF)
