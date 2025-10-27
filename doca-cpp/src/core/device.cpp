@@ -211,6 +211,23 @@ DeviceList::DeviceList(std::unique_ptr<doca_devinfo *, internal::DeviceListDelet
 {
 }
 
+std::tuple<DeviceInfo, error> DeviceList::GetIbDeviceInfo(const std::string_view & ibDevname) const
+{
+    for (auto iter = this->Begin(); iter != this->End(); ++iter) {
+        const auto & devInfo = *iter;
+        auto [name, err] = devInfo.GetIbdevName();
+        if (err) {
+            return { DeviceInfo(nullptr), errors::Wrap(err, "failed to get IB device name") };
+        }
+        for (const auto & supportedDevice : internal::supportedDevices) {
+            if (name == supportedDevice) {
+                return { devInfo, nullptr };
+            }
+        }
+    }
+    return { DeviceInfo(nullptr), errors::New("no matching IB device found") };
+}
+
 size_t DeviceList::Size() const
 {
     return this->numDevices;
@@ -276,11 +293,6 @@ DeviceInfo Device::GetDeviceInfo() const
 doca_dev * Device::GetNative() const
 {
     return this->device.get();
-}
-
-bool Device::IsValid() const
-{
-    return this->device != nullptr;
 }
 
 }  // namespace doca

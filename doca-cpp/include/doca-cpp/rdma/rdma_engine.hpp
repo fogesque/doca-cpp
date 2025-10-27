@@ -131,7 +131,7 @@ public:
     RdmaEngine & operator=(RdmaEngine && other) noexcept;
 
 private:
-    explicit RdmaEngine(std::unique_ptr<doca_rdma, RdmaDeleter> rdma);
+    explicit RdmaEngine(std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma);
 
     std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma;
 };

@@ -42,8 +42,8 @@
             ],
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "ERRORS_BUILD_TESTS": "ON",
-                "ERRORS_BUILD_SAMPLES": "ON",
+                "BUILD_TESTS": "OFF",
+                "BUILD_SAMPLES": "ON",
                 "VCPKG_MANIFEST_FEATURES": "testing;samples"
             }
         }

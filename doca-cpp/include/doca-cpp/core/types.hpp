@@ -183,6 +183,7 @@ private:
  */
 namespace sizes
 {
+// DOCA defined sizes
 constexpr size_t gidByteLength = DOCA_GID_BYTE_LENGTH;
 constexpr size_t ipv4AddrSize = DOCA_DEVINFO_IPV4_ADDR_SIZE;
 constexpr size_t ipv6AddrSize = DOCA_DEVINFO_IPV6_ADDR_SIZE;
@@ -192,6 +193,8 @@ constexpr size_t pciBdfSize = DOCA_DEVINFO_PCI_BDF_SIZE;
 constexpr size_t ifaceNameSize = DOCA_DEVINFO_IFACE_NAME_SIZE;
 constexpr size_t ibdevNameSize = DOCA_DEVINFO_IBDEV_NAME_SIZE;
 constexpr size_t vuidSize = DOCA_DEVINFO_VUID_SIZE;
+// doca-cpp defined sizes
+constexpr size_t supportedDeviceSize = 2;
 }  // namespace sizes
 
 /**

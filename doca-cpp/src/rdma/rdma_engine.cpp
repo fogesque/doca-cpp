@@ -19,7 +19,7 @@ void RdmaAddressDeleter::operator()(doca_rdma_addr * addr) const
     }
 }
 
-void RdmaDeleter::operator()(doca_rdma * rdma) const
+void RdmaEngineDeleter::operator()(doca_rdma * rdma) const
 {
     if (rdma) {
         doca_rdma_destroy(rdma);
@@ -66,19 +66,13 @@ std::tuple<RdmaEngine, error> RdmaEngine::Create(Device & dev)
         return { RdmaEngine(nullptr), errors::Wrap(err, "failed to create RDMA instance") };
     }
 
-    auto managedRdma = std::unique_ptr<doca_rdma, RdmaDeleter>(rdma);
+    auto managedRdma = std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter>(rdma);
     return { RdmaEngine(std::move(managedRdma)), nullptr };
 }
 
-RdmaEngine::RdmaEngine(std::unique_ptr<doca_rdma, RdmaDeleter> r)
-    : Context(r ? doca_rdma_as_ctx(r.get()) : nullptr), rdma(std::move(r))
-{
-}
+RdmaEngine::RdmaEngine(std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> r) : rdma(std::move(r)) {}
 
-RdmaEngine::RdmaEngine(RdmaEngine && other) noexcept : Context(other.ctx), rdma(std::move(other.rdma))
-{
-    other.ctx = nullptr;
-}
+RdmaEngine::RdmaEngine(RdmaEngine && other) noexcept : rdma(std::move(other.rdma)) {}
 
 RdmaEngine & RdmaEngine::operator=(RdmaEngine && other) noexcept
 {
@@ -89,10 +83,10 @@ RdmaEngine & RdmaEngine::operator=(RdmaEngine && other) noexcept
     return *this;
 }
 
-std::tuple<std::span<const std::byte>, RdmaConnection, error> RdmaEngine::Export()
+std::tuple<std::span<const std::byte>, internal::RdmaConnection, error> RdmaEngine::Export()
 {
     if (!rdma) {
-        return { {}, RdmaConnection(nullptr), errors::New("rdma is null") };
+        return { {}, internal::RdmaConnection(nullptr), errors::New("rdma is null") };
     }
 
     const void * connDetails = nullptr;
@@ -101,14 +95,14 @@ std::tuple<std::span<const std::byte>, RdmaConnection, error> RdmaEngine::Export
 
     auto err = FromDocaError(doca_rdma_export(rdma.get(), &connDetails, &connDetailsSize, &connection));
     if (err) {
-        return { {}, RdmaConnection(nullptr), errors::Wrap(err, "failed to export RDMA connection") };
+        return { {}, internal::RdmaConnection(nullptr), errors::Wrap(err, "failed to export RDMA connection") };
     }
 
     std::span<const std::byte> detailsSpan(static_cast<const std::byte *>(connDetails), connDetailsSize);
-    return { detailsSpan, RdmaConnection(connection), nullptr };
+    return { detailsSpan, internal::RdmaConnection(connection), nullptr };
 }
 
-error RdmaEngine::Connect(std::span<const std::byte> remoteConnDetails, RdmaConnection & connection)
+error RdmaEngine::Connect(std::span<const std::byte> remoteConnDetails, internal::RdmaConnection & connection)
 {
     if (!rdma) {
         return errors::New("rdma is null");
