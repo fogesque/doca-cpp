@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(doca-cpp-samples)
 
-set(TARGET_PREFIX ${PROJECT_NAME}-)
+set(TARGET_PREFIX sample_)
 
 # Find errors
 find_package(errors CONFIG REQUIRED)
@@ -9,7 +9,7 @@ find_package(errors CONFIG REQUIRED)
 # ======================================================================
 # Sample: device_discovery
 # ======================================================================
-set(TARGET_NAME ${TARGET_PREFIX}device-discovery)
+set(TARGET_NAME ${TARGET_PREFIX}device_discovery)
 
 add_executable(${TARGET_NAME} ${CMAKE_CURRENT_LIST_DIR}/device_discovery.cpp)
 
