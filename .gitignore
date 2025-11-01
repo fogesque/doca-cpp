@@ -1,3 +1,9 @@
+# IDE
+.vscode/
+.idea/
+install
+build
+
 # Prerequisites
 *.d
 
