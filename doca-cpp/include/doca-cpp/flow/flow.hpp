@@ -1,3 +1,4 @@
 #pragma once
 
-#include <doca_flow.h>
+#include "doca-cpp/flow/flow_config.hpp"
+#include "doca-cpp/flow/flow_port.hpp"
