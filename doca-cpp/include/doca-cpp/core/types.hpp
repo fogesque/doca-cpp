@@ -203,12 +203,4 @@ constexpr size_t supportedDeviceSize = 2;
 template <typename T>
 concept BufferData = std::is_trivial_v<T> || std::is_same_v<T, std::byte>;
 
-/**
- * @brief Concept for types that have a ToNative() method
- */
-template <typename T>
-concept HasToNative = requires(T t) {
-    { t.ToNative() };
-};
-
 }  // namespace doca
