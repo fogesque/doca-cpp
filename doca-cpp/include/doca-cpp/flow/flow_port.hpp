@@ -74,7 +74,7 @@ public:
     DOCA_CPP_UNSAFE doca_flow_port * GetNative() const;
 
 private:
-    explicit FlowPort(std::unique_ptr<doca_flow_port, FlowPortDeleter> flowPort);
+    explicit FlowPort(std::unique_ptr<doca_flow_port, FlowPortDeleter> initialFlowPort);
 
     std::unique_ptr<doca_flow_port, FlowPortDeleter> flowPort;
 };
@@ -137,7 +137,7 @@ public:
     DOCA_CPP_UNSAFE doca_flow_port_cfg * GetNative() const;
 
 private:
-    explicit FlowPortConfig(std::unique_ptr<doca_flow_port_cfg, FlowPortConfigDeleter> flowPortConfig);
+    explicit FlowPortConfig(std::unique_ptr<doca_flow_port_cfg, FlowPortConfigDeleter> initialFlowPortConfig);
 
     std::unique_ptr<doca_flow_port_cfg, FlowPortConfigDeleter> flowPortConfig;
 };

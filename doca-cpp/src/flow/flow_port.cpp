@@ -1,10 +1,13 @@
 #include "doca-cpp/flow/flow_port.hpp"
 
-#include "flow_port.hpp"
-
 // ========================================
 // FlowPort
 // ========================================
+
+doca::flow::FlowPort::FlowPort(std::unique_ptr<doca_flow_port, FlowPortDeleter> initialFlowPort)
+    : flowPort(std::move(initialFlowPort))
+{
+}
 
 void doca::flow::FlowPortDeleter::operator()(doca_flow_port * port) const
 {
@@ -112,6 +115,12 @@ void doca::flow::FlowPortConfigDeleter::operator()(doca_flow_port_cfg * cfg) con
     if (cfg) {
         std::ignore = doca_flow_port_cfg_destroy(cfg);
     }
+}
+
+doca::flow::FlowPortConfig::FlowPortConfig(
+    std::unique_ptr<doca_flow_port_cfg, FlowPortConfigDeleter> initialFlowPortConfig)
+    : flowPortConfig(std::move(initialFlowPortConfig))
+{
 }
 
 doca::flow::FlowPortConfig::Builder::Builder(doca_flow_port_cfg * cfg)
