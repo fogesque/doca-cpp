@@ -87,7 +87,7 @@ public:
     DOCA_CPP_UNSAFE doca_flow_cfg * GetNative() const;
 
 private:
-    explicit FlowConfig(std::unique_ptr<doca_flow_cfg, FlowConfigDeleter> flowConfig);
+    explicit FlowConfig(std::unique_ptr<doca_flow_cfg, FlowConfigDeleter> initialFlowConfig);
 
     std::unique_ptr<doca_flow_cfg, FlowConfigDeleter> flowConfig;
 };

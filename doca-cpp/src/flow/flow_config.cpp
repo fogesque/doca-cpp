@@ -1,5 +1,10 @@
 #include "doca-cpp/flow/flow_config.hpp"
 
+doca::flow::FlowConfig::FlowConfig(std::unique_ptr<doca_flow_cfg, FlowConfigDeleter> initialFlowConfig)
+    : flowConfig(std::move(initialFlowConfig))
+{
+}
+
 void doca::flow::FlowConfigDeleter::operator()(doca_flow_cfg * cfg) const
 {
     if (cfg) {
@@ -19,12 +24,6 @@ std::string doca::flow::FlowModeToString(FlowMode mode)
     }
 }
 
-doca::flow::FlowConfig::Builder::Builder(doca_flow_cfg * cfg)
-{
-    this->nativeFlowConfig = cfg;
-    this->buildErr = nullptr;
-}
-
 doca::flow::FlowConfig::Builder doca::flow::FlowConfig::Create()
 {
     doca_flow_cfg * cfg = nullptr;
@@ -33,6 +32,12 @@ doca::flow::FlowConfig::Builder doca::flow::FlowConfig::Create()
         return Builder(nullptr);
     }
     return Builder(cfg);
+}
+
+doca::flow::FlowConfig::Builder::Builder(doca_flow_cfg * cfg)
+{
+    this->nativeFlowConfig = cfg;
+    this->buildErr = nullptr;
 }
 
 doca::flow::FlowConfig::Builder & doca::flow::FlowConfig::Builder::SetTuneConfig(const FlowTuneConfig & tuneCfg)
