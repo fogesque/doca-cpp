@@ -1,0 +1,397 @@
+doca_dev
+doca_dev_rep
+
+doca_flow_cfg
+
+doca_flow_port
+doca_flow_port_cfg
+
+doca_flow_pipe
+doca_flow_pipe_entry
+doca_flow_pipe_cfg
+
+===========
+
+doca_flow_target
+doca_flow_parser
+doca_flow_definitions
+
+doca_flow_tune_cfg
+
+doca_flow_shared_resource_type
+doca_flow_flags_type
+doca_flow_pipe_op
+doca_flow_pipe_status
+doca_flow_entry_op
+doca_flow_entry_status
+
+doca_flow_rss_hash_function
+doca_flow_resource_rss_cfg
+
+doca_flow_pipe_type
+doca_flow_pipe_domain
+
+doca_flow_meter_color
+
+doca_flow_l2_meta
+doca_flow_l3_meta
+doca_flow_l4_meta
+doca_flow_crypto_syndrome
+doca_flow_pipe_hash_map_algorithm
+doca_flow_meta
+doca_flow_parser_meta
+
+doca_flow_match_tcp_flags
+
+doca_flow_l2_valid_header
+doca_flow_header_format
+doca_flow_entropy_format
+doca_flow_match
+
+doca_flow_compare_op
+doca_flow_desc_field
+
+doca_flow_match_condition
+doca_flow_encap_action
+doca_flow_push_vlan_action
+doca_flow_push_action_type
+doca_flow_push_action
+doca_flow_nat64_action
+doca_flow_resource_type
+doca_flow_crypto_action
+doca_flow_crypto_encap_action
+doca_flow_resource_encap_cfg
+doca_flow_resource_decap_cfg
+
+doca_flow_actions
+doca_flow_target_type
+doca_flow_fwd_type
+
+doca_rss_type
+
+doca_flow_fwd
+
+doca_flow_meter_algorithm_type
+doca_flow_meter_limit_type
+doca_flow_meter_color_mode
+doca_flow_resource_meter_cfg
+doca_flow_resource_psp_cfg
+doca_flow_resource_ipsec_sa_cfg
+
+doca_flow_mirror_target
+doca_flow_resource_mirror_cfg
+doca_flow_shared_resource_cfg
+
+doca_flow_monitor
+
+doca_flow_action_type
+doca_flow_action_desc
+doca_flow_action_descs
+doca_flow_ordered_list_element_type
+doca_flow_ordered_list_element
+doca_flow_ordered_list
+doca_flow_resource_query
+doca_flow_parser_geneve_opt_mode
+doca_flow_parser_geneve_opt_cfg
+
+doca_flow_port_operation_state
+
+doca_flow_tune_profile
+
+
+===========
+
+GLOBAL:
+    doca_flow_init() <- doca_flow_cfg
+    doca_flow_destroy()
+
+SHARED_RESOURCES:
+    doca_flow_shared_resource_set_cfg() <- doca_flow_shared_resource_type, uint32_t, doca_flow_shared_resource_cfg
+*   doca_flow_shared_resources_bind() <- ...
+*   doca_flow_shared_resources_query() <- ...
+
+
+doca_flow_port_cfg:
+
+    doca_flow_port_cfg <- doca_flow_port_cfg_create() 
+
+    doca_flow_port_cfg_destroy() 
+
+*   doca_flow_port_cfg_set_devargs() <- const char *
+
+*   doca_flow_port_cfg_set_priv_data_size() <- uint16_t
+
+    doca_flow_port_cfg_set_dev() <- doca_dev
+
+    doca_flow_port_cfg_set_dev_rep() <- doca_dev_rep
+
+    doca_flow_port_cfg_set_port_id() <- uint16_t
+
+    doca_flow_port_cfg_set_rss_cfg() <- doca_flow_resource_rss_cfg
+
+    doca_flow_port_cfg_set_ipsec_sn_offload_disable()
+
+    doca_flow_port_cfg_set_operation_state() <- doca_flow_port_operation_state
+
+    doca_flow_port_cfg_set_actions_mem_size() <- uint32_t
+
+    doca_flow_port_cfg_set_service_threads_core() <- uint32_t
+
+    doca_flow_port_cfg_set_service_threads_cycle() <- uint32_t
+
+
+
+
+
+
+
+doca_flow_port:
+
+    doca_flow_port <- doca_flow_port_start() <- doca_flow_port_cfg
+
+    doca_flow_port_stop()
+
+    doca_flow_port_pair() <- doca_flow_port, doca_flow_port
+
+*   uint8_t doca_flow_port_priv_data() 
+
+    doca_flow_port_operation_state_modify() <- doca_flow_port_operation_state
+
+    uint16_t <- doca_flow_port_calc_entropy() <- doca_flow_entropy_format
+
+    doca_flow_port_pipes_flush() 
+
+    doca_flow_aging_handle() <- uint16_t, uint64_t, uint64_t
+
+    doca_flow_entries_process() <- uint16_t, uint64_t, uint32_t
+
+    doca_flow_port <- doca_flow_port_switch_get()
+
+   
+
+
+
+
+doca_flow_pipe_cfg:
+
+    doca_flow_pipe_cfg_create() <- doca_flow_port
+
+    doca_flow_pipe_cfg_destroy() 
+
+    doca_flow_pipe_cfg_set_match() <- doca_flow_match, doca_flow_match
+
+    doca_flow_pipe_cfg_set_actions() <- doca_flow_actions, doca_flow_actions, doca_flow_action_descs, size_t
+
+    doca_flow_pipe_cfg_set_monitor() <- doca_flow_monitor
+
+    doca_flow_pipe_cfg_set_ordered_lists() <- doca_flow_ordered_list, size_t
+
+    doca_flow_pipe_cfg_set_name() <- const char *
+
+    doca_flow_pipe_cfg_set_label() <- onst char *
+
+    doca_flow_pipe_cfg_set_type() <- doca_flow_pipe_type
+
+    doca_flow_pipe_cfg_set_domain() <- doca_flow_pipe_domain
+
+    doca_flow_pipe_cfg_set_is_root() <- bool
+
+    doca_flow_pipe_cfg_set_nr_entries() <- uint32_t
+
+    doca_flow_pipe_cfg_set_is_resizable() <- bool
+
+    doca_flow_pipe_cfg_set_excluded_queue() <- uint16_t
+
+    doca_flow_pipe_cfg_set_miss_counter() <- bool
+
+    doca_flow_pipe_cfg_set_congestion_level_threshold() <- uint8_t
+
+*   doca_flow_pipe_cfg_set_user_ctx() <- void *
+
+    doca_flow_pipe_cfg_set_hash_map_algorithm() <- uint32_t
+
+
+
+
+
+
+doca_flow_pipe:
+
+    doca_flow_pipe <- doca_flow_pipe_create() <- doca_flow_pipe_cfg, doca_flow_fwd, doca_flow_fwd
+
+*   doca_flow_pipe_resize() <- ...
+
+    PIPE_BASIC
+    doca_flow_pipe_entry <- doca_flow_pipe_add_entry() <-
+                                            doca_flow_match
+                                            doca_flow_actions
+                                            doca_flow_monitor
+                                            doca_flow_fwd
+                                            uint32_t 
+                                            void *
+
+    doca_flow_pipe_update_entry() <- doca_flow_actions, doca_flow_monitor, doca_flow_fwd, doca_flow_flags_type
+
+    PIPE_CONTROL
+    doca_flow_pipe_entry <- doca_flow_pipe_control_add_entry() <-
+                                            uint32_t
+                                            doca_flow_match
+                                            doca_flow_match
+                                            doca_flow_match_condition
+                                            doca_flow_actions
+                                            doca_flow_actions
+                                            doca_flow_action_descs
+                                            doca_flow_monitor
+                                            doca_flow_fwd
+                                            void *
+
+    PIPE_LPM
+    doca_flow_pipe_entry <- doca_flow_pipe_lpm_add_entry() <- 
+                                            uint16_t
+                                            doca_flow_match
+                                            doca_flow_match
+                                            doca_flow_actions
+                                            doca_flow_monitor
+                                            doca_flow_fwd
+                                            doca_flow_flags_type
+                                            void * 
+
+    doca_flow_pipe_lpm_update_entry() <- 
+                                            uint16_t
+                                            doca_flow_actions
+                                            doca_flow_monitor
+                                            doca_flow_fwd
+                                            doca_flow_flags_type
+                                            doca_flow_pipe_entry
+
+    PIPE_ORDERED_LIST
+    doca_flow_pipe_entry <- doca_flow_pipe_ordered_list_add_entry() <- 
+                                            uint32_t
+                                            doca_flow_ordered_list
+                                            doca_flow_fwd
+                                            doca_flow_flags_type
+                                            void *
+
+    PIPE_ACL
+    doca_flow_pipe_entry <- doca_flow_pipe_acl_add_entry() <- 
+                                            uint16_t
+                                            doca_flow_match
+                                            doca_flow_match
+                                            uint32_t
+                                            doca_flow_fwd
+                                            doca_flow_flags_type
+                                            void *
+
+    PIPE_HASH
+    doca_flow_pipe_entry <- doca_flow_pipe_hash_add_entry() <- 
+                                            uint16_t
+                                            uint32_t
+                                            doca_flow_actions
+                                            doca_flow_monitor
+                                            doca_flow_fwd
+                                            doca_flow_flags_type
+                                            void *
+
+    doca_flow_pipe_remove_entry() <- uint16_t, uint32_t, doca_flow_pipe_entry
+
+    uint32_t <- doca_flow_pipe_calc_hash() <- doca_flow_match
+
+    doca_flow_pipe_destroy()
+
+    doca_flow_pipe_dump() <- FILE *
+
+    doca_flow_resource_query <- doca_flow_resource_query_pipe_miss()
+
+    doca_flow_pipe_update_miss() <- doca_flow_fwd
+
+
+
+
+
+
+doca_flow_pipe_entry:
+
+    doca_flow_resource_query <- doca_flow_resource_query_entry()
+
+    doca_flow_entry_status <- doca_flow_pipe_entry_get_status()
+
+
+
+
+doca_flow_header_mpls:
+
+    doca_flow_header_mpls <- doca_flow_mpls_label_encode() <- uint32_t, uint8_t, uint8_t, bool
+
+    doca_flow_mpls_label_decode() <- uint32_t, uint8_t, uint8_t, bool
+
+
+
+
+
+doca_flow_parser:
+
+    doca_flow_parser <- doca_flow_parser_geneve_opt_create() <- doca_flow_port, doca_flow_parser_geneve_opt_cfg, uint8_t
+
+    doca_flow_parser_geneve_opt_destroy()
+
+
+
+
+
+doca_flow_target: 
+
+    doca_flow_target <- doca_flow_get_target() <- doca_flow_target_type
+
+
+
+
+doca_flow_tune_cfg:
+
+    doca_flow_tune_cfg <- doca_flow_tune_cfg_create()
+
+    doca_flow_tune_cfg_destroy()
+
+    doca_flow_tune_cfg_set_profile() <- doca_flow_tune_profile
+
+
+
+
+
+
+
+doca_flow_cfg:
+
+    doca_flow_cfg <- doca_flow_cfg_create()
+
+    doca_flow_cfg_destroy()
+
+    doca_flow_cfg_set_tune_cfg() <- doca_flow_tune_cfg
+
+    doca_flow_cfg_set_pipe_queues() <- uint16_t
+
+    doca_flow_cfg_set_nr_counters() <- uint32_t
+
+    doca_flow_cfg_set_nr_meters() <- uint32_t
+
+    doca_flow_cfg_set_nr_acl_collisions() <- uint8_t
+
+    doca_flow_cfg_set_mode_args() <- const char *
+
+    doca_flow_cfg_set_nr_shared_resource() <- uint32_t, doca_flow_shared_resource_type
+
+    doca_flow_cfg_set_queue_depth() <- uint32_t
+
+*   doca_flow_cfg_set_cb_pipe_process() <- ...
+
+*   doca_flow_cfg_set_cb_entry_process() <- ...
+
+*   doca_flow_cfg_set_cb_shared_resource_unbind() <- ...
+
+    doca_flow_cfg_set_rss_key() <- uint8_t *, uint32_t
+
+    doca_flow_cfg_set_default_rss() <- doca_flow_resource_rss_cfg
+
+    doca_flow_cfg_set_definitions() <- doca_flow_definitions
+
+
+
