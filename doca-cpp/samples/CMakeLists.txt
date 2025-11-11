@@ -1,12 +1,17 @@
 cmake_minimum_required(VERSION 3.22)
-project(device_discovery_sample)
+project(doca-cpp-samples)
 
-set(TARGET_NAME ${PROJECT_NAME})
+set(TARGET_PREFIX sample_)
 
 # Find errors
 find_package(errors CONFIG REQUIRED)
 
-add_executable(${TARGET_NAME} device_discovery.cpp)
+# ======================================================================
+# Sample: device_discovery
+# ======================================================================
+set(TARGET_NAME ${TARGET_PREFIX}device_discovery)
+
+add_executable(${TARGET_NAME} ${CMAKE_CURRENT_LIST_DIR}/device_discovery.cpp)
 
 target_link_libraries(${TARGET_NAME}
     PRIVATE
@@ -20,4 +25,27 @@ target_include_directories(${TARGET_NAME}
         ${DOCA_INCLUDE_DIRS} 
 )
 
-install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/examples)
+install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/samples)
+
+
+# ======================================================================
+# Sample: rdma_sender
+# ======================================================================
+set(TARGET_NAME ${TARGET_PREFIX}rdma_sender)
+
+add_executable(${TARGET_NAME} ${CMAKE_CURRENT_LIST_DIR}/rdma_sender.cpp)
+
+target_link_libraries(${TARGET_NAME}
+    PRIVATE
+        doca-cpp
+        errors::errors
+)
+
+target_include_directories(${TARGET_NAME}
+    PRIVATE 
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_SOURCE_DIR}/doca-cpp/include
+        ${DOCA_INCLUDE_DIRS} 
+)
+
+install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/samples)

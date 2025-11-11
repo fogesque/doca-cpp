@@ -12,6 +12,6 @@
         }
     ],
     "overlay-ports": [
-        "/home/fogesque/vcpkg-overlays"
+        "/home/fogesque/vcpkg-ports"
     ]
 }

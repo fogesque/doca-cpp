@@ -31,6 +31,8 @@ class Device;
 
 namespace internal
 {
+// IB devices names of supported devices
+constexpr std::array<std::string_view, sizes::supportedDeviceSize> supportedDevices = { "mlx5_0", "mlx5_1" };
 
 /**
  * @brief Custom deleter for doca_devinfo list
@@ -104,6 +106,8 @@ public:
     DeviceList(DeviceList && other) noexcept = default;
     DeviceList & operator=(DeviceList && other) noexcept = default;
 
+    std::tuple<DeviceInfo, error> GetIbDeviceInfo(const std::string_view & ibDevname) const;
+
     size_t Size() const;
 
     class Iterator
@@ -148,12 +152,13 @@ public:
 
     DeviceInfo GetDeviceInfo() const;
     DOCA_CPP_UNSAFE doca_dev * GetNative() const;
-    bool IsValid() const;
 
 private:
     explicit Device(std::unique_ptr<doca_dev, internal::DeviceDeleter> dev);
 
     std::unique_ptr<doca_dev, internal::DeviceDeleter> device;
 };
+
+using DevicePtr = std::shared_ptr<Device>;
 
 }  // namespace doca

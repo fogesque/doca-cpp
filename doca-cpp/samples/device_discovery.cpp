@@ -71,7 +71,7 @@ int main()
         }
 
         // Get Ipv4 address
-        auto [ipv6Addr, ipv6Err] = devInfo.GetIpv4Address();
+        auto [ipv6Addr, ipv6Err] = devInfo.GetIpv6Address();
         if (ipv6Err) {
             std::println("  IPv6 Address: Error - {}", ipv6Err->What());
         } else {
@@ -90,11 +90,7 @@ int main()
         return 1;
     }
 
-    std::println("Device opened successfully!");
-    std::println("Device is valid: {}", device.IsValid() ? "Yes" : "No");
-
-    // Demonstrate RAII - all resources will be automatically cleaned up
-    std::println("\nAll resources will be automatically cleaned up (RAII)");
+    std::println("Device opened successfully");
     std::println("Example completed successfully!");
 
     return 0;

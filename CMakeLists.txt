@@ -15,10 +15,18 @@ find_package(DOCA REQUIRED)
 # Find errors
 find_package(errors CONFIG REQUIRED)
 
-# Your library
-add_library(${TARGET_NAME}
+# Library sources
+set(DOCA_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/device.cpp
 )
+
+# Library target
+add_library(${TARGET_NAME}
+    ${DOCA_CPP_SOURCES}
+)
+
+# Require C++23 minimum
+target_compile_features(doca-cpp INTERFACE cxx_std_23)
 
 target_include_directories(${TARGET_NAME}
     PUBLIC
@@ -35,12 +43,14 @@ target_link_libraries(${TARGET_NAME}
         # Add other DOCA libs as needed
 )
 
-# Install rules
-install(TARGETS ${TARGET_NAME} EXPORT ${TARGET_NAME}-targets)
-install(DIRECTORY doca-cpp/include/ DESTINATION include)
-install(FILES cmake/FindDOCA.cmake DESTINATION share/doca-cpp/cmake)
+# Build samples and tests (optional, controlled by option)
+option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_SAMPLES "Build samples" OFF)
 
-option(BUILD_SAMPLES "Build doca-cpp usage examples" ON)
+if(BUILD_TESTS)
+    add_subdirectory(doca-cpp/tests)
+endif()
+
 if(BUILD_SAMPLES)
     add_subdirectory(doca-cpp/samples)
 endif()

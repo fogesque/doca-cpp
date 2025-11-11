@@ -1,0 +1,65 @@
+CFG = {
+    doca_flow_cfg_create
+    doca_flow_cfg_set_default_rss
+    doca_flow_cfg_set_pipe_queues
+    doca_flow_cfg_set_mode_args
+    doca_flow_cfg_set_nr_counters
+    doca_flow_cfg_set_nr_meters
+    doca_flow_cfg_set_cb_entry_process
+    doca_flow_cfg_set_cb_pipe_process
+    doca_flow_cfg_set_nr_shared_resource
+    doca_flow_cfg_set_definitions
+}
+
+doca_flow_init(CFG)
+
+if REPRESENTOR {
+    create_doca_flow_port_cfg
+    doca_flow_port_cfg_set_dev_rep
+    doca_flow_port_start
+} else {
+    create_doca_flow_port_cfg
+    doca_flow_port_cfg_set_dev
+    doca_flow_port_cfg_set_operation_state
+    doca_flow_port_start
+}
+
+doca_flow_port_pair 0 - 1
+doca_flow_port_pair 1 - 2
+doca_flow_port_pair 2 - 3
+...
+
+for port : ports {
+    LPM_PIPE:
+        doca_flow_pipe_cfg_create
+        set_flow_pipe_cfg
+        doca_flow_pipe_cfg_set_match
+        doca_flow_pipe_cfg_set_monitor
+        doca_flow_pipe_cfg_set_actions
+        doca_flow_pipe_create
+
+    LPM_PIPE_ENTRIES:
+        doca_flow_pipe_lpm_add_entry
+        doca_flow_pipe_lpm_add_entry
+        doca_flow_pipe_lpm_add_entry
+
+    MAIN_PIPE:
+        doca_flow_pipe_cfg_create
+        set_flow_pipe_cfg
+        doca_flow_pipe_cfg_set_match
+        doca_flow_pipe_cfg_set_monitor
+        doca_flow_pipe_create
+
+    MAIN_PIPE_ENTRIES:
+        doca_flow_pipe_add_entry
+
+    doca_flow_entries_process
+}
+
+doca_flow_resource_query_entry
+
+
+
+doca_flow_port_stop
+doca_flow_port_pipes_flush
+doca_flow_destroy
