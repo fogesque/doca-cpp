@@ -26,7 +26,7 @@ doca_mmap_start(LOCAL_MMAP)
 
 PE = doca_pe_create()
 
-RDMA = doca_rdma_create()
+RDMA = doca_rdma_create(DEVICE)
 RDMA_CTX = doca_rdma_as_ctx(RDMA)
 doca_rdma_set_permissions(RDMA, rdmaWrite)
 doca_rdma_set_gid_index(RDMA)
