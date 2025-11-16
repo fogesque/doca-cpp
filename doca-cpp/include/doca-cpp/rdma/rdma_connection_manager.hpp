@@ -29,7 +29,11 @@ enum class ConnectionMode {
     client,
 };
 
-}
+}  // namespace internal
+
+struct RdmaAddressDeleter {
+    void operator()(doca_rdma_addr * address) const;
+};
 
 class RdmaAddress
 {
@@ -50,43 +54,41 @@ public:
     RdmaAddress & operator=(RdmaAddress && other) noexcept = default;
 
 private:
-    explicit RdmaAddress(std::unique_ptr<doca_rdma_addr, RdmaAddressDeleter> addr);
+    explicit RdmaAddress(std::unique_ptr<doca_rdma_addr, RdmaAddressDeleter> initialAddress);
 
-    std::unique_ptr<doca_rdma_addr, RdmaAddressDeleter> address;
+    std::unique_ptr<doca_rdma_addr, RdmaAddressDeleter> address = nullptr;
 };
 
-class RdmaConnection
-{
-public:
-    explicit RdmaConnection(doca_rdma_connection * conn);
+// class RdmaConnection
+// {
+// public:
+//     explicit RdmaConnection(doca_rdma_connection * conn);
 
-    DOCA_CPP_UNSAFE doca_rdma_connection * GetNative() const;
+//     DOCA_CPP_UNSAFE doca_rdma_connection * GetNative() const;
 
-private:
-    doca_rdma_connection * connection;
-};
-
-}  // namespace internal
-
-class RdmaConnectionManager
-{
-public:
-    static std::tuple<RdmaEngine, error> Create(Device & dev);
-
-    doca_rdma * GetNative() const;
-
-    std::tuple<Context, error> AsContext();
-
-    // Move-only type
-    RdmaEngine(const RdmaEngine &) = delete;
-    RdmaEngine & operator=(const RdmaEngine &) = delete;
-    RdmaEngine(RdmaEngine && other) noexcept;
-    RdmaEngine & operator=(RdmaEngine && other) noexcept;
-
-private:
-    explicit RdmaEngine(std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma);
-
-    std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma;
-};
+// private:
+//     doca_rdma_connection * connection;
+// };
 
 }  // namespace doca::rdma
+
+// class RdmaConnectionManager
+// {
+// public:
+//     static std::tuple<RdmaEngine, error> Create(Device & dev);
+
+//     doca_rdma * GetNative() const;
+
+//     std::tuple<Context, error> AsContext();
+
+//     // Move-only type
+//     RdmaEngine(const RdmaEngine &) = delete;
+//     RdmaEngine & operator=(const RdmaEngine &) = delete;
+//     RdmaEngine(RdmaEngine && other) noexcept;
+//     RdmaEngine & operator=(RdmaEngine && other) noexcept;
+
+// private:
+//     explicit RdmaEngine(std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma);
+
+//     std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma;
+// };
