@@ -53,6 +53,12 @@ using StateChangedCallback = std::function<void(const Data & userData, ContextSt
 class Context
 {
 public:
+    /**
+     * @brief Public constructor for derived classes
+     * @param context Native doca_ctx pointer
+     */
+    explicit Context(doca_ctx * context) : ctx(context) {}
+
     virtual ~Context() = default;
 
     /**
@@ -116,12 +122,6 @@ public:
     DOCA_CPP_UNSAFE doca_ctx * GetNative() const;
 
 protected:
-    /**
-     * @brief Protected constructor for derived classes
-     * @param context Native doca_ctx pointer
-     */
-    explicit Context(doca_ctx * context) : ctx(context) {}
-
     doca_ctx * ctx;
     StateChangedCallback stateCallback;
 
