@@ -1,0 +1,76 @@
+#pragma once
+
+#include <atomic>
+#include <cstddef>
+#include <errors/errors.hpp>
+#include <memory>
+#include <mutex>
+#include <tuple>
+#include <vector>
+
+using MemoryRange = std::vector<std::byte>;
+using MemoryRangePtr = std::shared_ptr<MemoryRange>;
+
+namespace ErrorTypes
+{
+inline auto MemoryRangeNotRegistered = errors::New("Memory range not registered");
+inline auto MemoryRangeAlreadyRegistered = errors::New("Memory range already registered");
+inline auto MemoryRangeLocked = errors::New("Memory range is locked by RDMA engine");
+}  // namespace ErrorTypes
+
+class RdmaBuffer
+{
+public:
+    RdmaBuffer() = default;
+
+    error RegisterMemoryRange(MemoryRangePtr memoryRange)
+    {
+        if (this->memoryRange != nullptr) {
+            return ErrorTypes::MemoryRangeAlreadyRegistered;
+        }
+        this->memoryRange = memoryRange;
+        return nullptr;
+    };
+
+    std::tuple<MemoryRangePtr, error> GetMemoryRange()
+    {
+        if (this->memoryRange == nullptr) {
+            return { nullptr, ErrorTypes::MemoryRangeNotRegistered };
+        }
+
+        if (this->memoryLocked.load()) {
+            return { nullptr, ErrorTypes::MemoryRangeLocked };
+        }
+        return { this->memoryRange, nullptr };
+    }
+
+    bool Locked() const
+    {
+        return this->memoryLocked.load();
+    }
+
+    void LockMemory()
+    {
+        this->memoryLocked.store(true);
+    }
+
+    void UnlockMemory()
+    {
+        this->memoryLocked.store(false);
+    }
+
+    std::size_t MemoryRangeSize() const
+    {
+        if (this->memoryRange == nullptr) {
+            return 0;
+        }
+        return this->memoryRange->size();
+    }
+
+private:
+    MemoryRangePtr memoryRange = nullptr;
+    std::atomic<bool> memoryLocked{ false };
+    std::mutex memoryMutex;
+};
+
+using RdmaBufferPtr = std::shared_ptr<RdmaBuffer>;
