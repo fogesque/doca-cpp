@@ -105,11 +105,11 @@ using TaskCompletionCallback = std::function<void(Task task, Data userData, Data
 class ProgressEngine
 {
 public:
-    static std::tuple<ProgressEngine, error> Create();
+    static std::tuple<ProgressEnginePtr, error> Create();
 
     std::tuple<uint32_t, error> Progress();
 
-    error ConnectContext(Context & ctx);
+    error ConnectContext(ContextPtr ctx);
 
     std::tuple<std::size_t, error> GetNumInflightTasks() const;
 
@@ -128,5 +128,7 @@ private:
 
     std::unique_ptr<doca_pe, ProgressEngineDeleter> progressEngine;
 };
+
+using ProgressEnginePtr = std::shared_ptr<ProgressEngine>;
 
 }  // namespace doca

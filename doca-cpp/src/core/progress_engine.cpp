@@ -26,16 +26,17 @@ void TaskDeleter::operator()(doca_task * task) const
 }
 
 // ProgressEngine implementation
-std::tuple<ProgressEngine, error> ProgressEngine::Create()
+std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
 {
     doca_pe * pe = nullptr;
     auto err = FromDocaError(doca_pe_create(&pe));
     if (err) {
-        return { ProgressEngine(nullptr), errors::Wrap(err, "failed to create progress engine") };
+        return { nullptr, errors::Wrap(err, "failed to create progress engine") };
     }
-
     auto managedPe = std::unique_ptr<doca_pe, ProgressEngineDeleter>(pe);
-    return { ProgressEngine(std::move(managedPe)), nullptr };
+
+    auto progressEnginePtr = std::make_shared<ProgressEngine>(std::move(managedPe));
+    return { progressEnginePtr, nullptr };
 }
 
 ProgressEngine::ProgressEngine(std::unique_ptr<doca_pe, ProgressEngineDeleter> pe) : progressEngine(std::move(pe)) {}
@@ -49,12 +50,12 @@ std::tuple<uint32_t, error> ProgressEngine::Progress()
     return { processed, nullptr };
 }
 
-error ProgressEngine::ConnectContext(Context & ctx)
+error ProgressEngine::ConnectContext(ContextPtr ctx)
 {
     if (!this->progressEngine) {
         return errors::New("progress engine is null");
     }
-    auto err = FromDocaError(doca_pe_connect_ctx(this->progressEngine.get(), ctx.GetNative()));
+    auto err = FromDocaError(doca_pe_connect_ctx(this->progressEngine.get(), ctx->GetNative()));
     if (err) {
         return errors::Wrap(err, "failed to connect context to progress engine");
     }
