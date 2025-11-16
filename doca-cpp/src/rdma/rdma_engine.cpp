@@ -1,136 +1,187 @@
-/**
- * @file rdma.cpp
- * @brief DOCA RDMA implementation
- */
-
 #include "doca-cpp/rdma/rdma_engine.hpp"
 
 namespace doca::rdma
 {
 
-namespace internal
+std::tuple<RdmaEnginePtr, error> RdmaEngine::Create(DevicePtr device)
 {
-
-// Custom deleters implementation
-void RdmaAddressDeleter::operator()(doca_rdma_addr * addr) const
-{
-    if (addr) {
-        doca_rdma_addr_destroy(addr);
-    }
-}
-
-void RdmaEngineDeleter::operator()(doca_rdma * rdma) const
-{
-    if (rdma) {
-        doca_rdma_destroy(rdma);
-    }
-}
-
-// RdmaAddress implementation
-std::tuple<RdmaAddress, error> RdmaAddress::Create(AddrType addrType, const std::string & address, uint16_t port)
-{
-    doca_rdma_addr * addr = nullptr;
-    auto err =
-        FromDocaError(doca_rdma_addr_create(static_cast<doca_rdma_addr_type>(addrType), address.c_str(), port, &addr));
-    if (err) {
-        return { RdmaAddress(nullptr), errors::Wrap(err, "failed to create RDMA address") };
+    // Validate device
+    if (device == nullptr) {
+        return { nullptr, errors::New("device is null") };
     }
 
-    auto managedAddr = std::unique_ptr<doca_rdma_addr, RdmaAddressDeleter>(addr);
-    return { RdmaAddress(std::move(managedAddr)), nullptr };
-}
+    // Create Progress Engine
+    auto [progressEngine, peErr] = ProgressEngine::Create();
+    if (peErr) {
+        return { nullptr, errors::Wrap(peErr, "failed to create Progress Engine for RDMA engine") };
+    }
 
-RdmaAddress::RdmaAddress(std::unique_ptr<doca_rdma_addr, RdmaAddressDeleter> addr) : address(std::move(addr)) {}
-
-doca_rdma_addr * RdmaAddress::GetNative() const
-{
-    return this->address.get();
-}
-
-// RdmaConnection implementation
-RdmaConnection::RdmaConnection(doca_rdma_connection * conn) : connection(conn) {}
-
-doca_rdma_connection * RdmaConnection::GetNative() const
-{
-    return connection;
-}
-
-}  // namespace internal
-
-// RdmaEngine implementation
-std::tuple<RdmaEngine, error> RdmaEngine::Create(Device & dev)
-{
+    // Create RDMA instance
     doca_rdma * rdma = nullptr;
-    auto err = FromDocaError(doca_rdma_create(dev.GetNative(), &rdma));
+    auto err = FromDocaError(doca_rdma_create(device->GetNative(), &rdma));
     if (err) {
-        return { RdmaEngine(nullptr), errors::Wrap(err, "failed to create RDMA instance") };
+        return { nullptr, errors::Wrap(err, "failed to create RDMA instance") };
     }
+    auto rdmaInstance = RdmaInstancePtr(rdma);
 
-    auto managedRdma = std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter>(rdma);
-    return { RdmaEngine(std::move(managedRdma)), nullptr };
+    // Assemble RdmaEngineConfig
+    RdmaEngineConfig config = {
+        .device = std::move(device),
+        .progressEngine = std::move(progressEngine),
+        .rdmaInstance = std::move(rdmaInstance),
+    };
+
+    // Create RdmaEngine
+    auto rdmaEngine = std::make_shared<RdmaEngine>(config);
+    return { rdmaEngine, nullptr };
 }
 
-RdmaEngine::RdmaEngine(std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> r) : rdma(std::move(r)) {}
+error RdmaEngine::Initialize()
+{
+    // Set RDMA engine permissions
+    auto permissions = doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite;
+    auto err = this->setPermissions(static_cast<uint32_t>(permissions));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA engine permissions");
+    }
 
-RdmaEngine::RdmaEngine(RdmaEngine && other) noexcept : rdma(std::move(other.rdma)) {}
+    // Set GID index
+    // err = this->setGidIndex(0);
+
+    // Set maximum connections
+    // TODO: make configurable
+    constexpr uint32_t maxConnections = 1;
+    err = this->setMaxConnections(maxConnections);
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA engine maximum connections");
+    }
+
+    // Set transport type; only Reliable Connection
+    err = this->setTransportType(internal::TransportType::rc);
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA engine transport type");
+    }
+
+    // Connect RDMA context to Progress Engine
+    auto [rdmaCtx, ctxErr] = this->asContext();
+    if (ctxErr) {
+        return errors::Wrap(ctxErr, "failed to get RDMA context");
+    }
+    err = this->progressEngine->ConnectContext(rdmaCtx);
+    if (err) {
+        return errors::Wrap(err, "failed to connect RDMA context to Progress Engine");
+    }
+
+    // Set callbacks for RDMA events
+    err = this->setCallbacks();
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA engine callbacks");
+    }
+
+    return nullptr;
+}
+
+RdmaEngine::RdmaEngine(RdmaEngineConfig & config)
+    : rdmaInstance(std::move(config.rdmaInstance)), device(config.device), progressEngine(config.progressEngine)
+{
+}
+
+RdmaEngine::RdmaEngine(RdmaEngine && other) noexcept
+    : rdmaInstance(std::move(other.rdmaInstance)), device(other.device), progressEngine(other.progressEngine)
+{
+}
 
 RdmaEngine & RdmaEngine::operator=(RdmaEngine && other) noexcept
 {
     if (this != &other) {
-        this->rdma = std::move(other.rdma);
-        other.rdma = nullptr;
+        this->rdmaInstance = std::move(other.rdmaInstance);
+        this->device = other.device;
+        this->progressEngine = other.progressEngine;
+        other.rdmaInstance = nullptr;
     }
     return *this;
 }
 
-std::tuple<std::span<const std::byte>, internal::RdmaConnection, error> RdmaEngine::Export()
+doca_rdma * RdmaEngine::GetNative() const
 {
-    if (!rdma) {
-        return { {}, internal::RdmaConnection(nullptr), errors::New("rdma is null") };
-    }
-
-    const void * connDetails = nullptr;
-    size_t connDetailsSize = 0;
-    doca_rdma_connection * connection = nullptr;
-
-    auto err = FromDocaError(doca_rdma_export(rdma.get(), &connDetails, &connDetailsSize, &connection));
-    if (err) {
-        return { {}, internal::RdmaConnection(nullptr), errors::Wrap(err, "failed to export RDMA connection") };
-    }
-
-    std::span<const std::byte> detailsSpan(static_cast<const std::byte *>(connDetails), connDetailsSize);
-    return { detailsSpan, internal::RdmaConnection(connection), nullptr };
+    return this->rdmaInstance.get();
 }
 
-error RdmaEngine::Connect(std::span<const std::byte> remoteConnDetails, internal::RdmaConnection & connection)
+std::tuple<doca::ContextPtr, error> RdmaEngine::asContext()
 {
-    if (!rdma) {
-        return errors::New("rdma is null");
+    doca_ctx * ctx = nullptr;
+    auto ctx = doca_rdma_as_ctx(this->rdmaInstance.get());
+    if (ctx == nullptr) {
+        return { nullptr, errors::New("failed to get DOCA context from RDMA instance") };
     }
-
-    auto err = FromDocaError(
-        doca_rdma_connect(rdma.get(), remoteConnDetails.data(), remoteConnDetails.size(), connection.GetNative()));
-    if (err) {
-        return errors::Wrap(err, "failed to connect to remote RDMA peer");
-    }
-    return nullptr;
+    auto rdmaCtx = std::make_shared<doca::Context>(ctx);
+    return { rdmaCtx, nullptr };
 }
 
-error RdmaEngine::SetPermissions(uint32_t permissions)
+error RdmaEngine::setPermissions(uint32_t permissions)
 {
-    if (!rdma) {
-        return errors::New("rdma is null");
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
     }
-    auto err = FromDocaError(doca_rdma_set_permissions(rdma.get(), permissions));
+    auto err = FromDocaError(doca_rdma_set_permissions(this->rdmaInstance.get(), permissions));
     if (err) {
         return errors::Wrap(err, "failed to set RDMA permissions");
     }
     return nullptr;
 }
 
-doca_rdma * RdmaEngine::GetNative() const
+error RdmaEngine::setGidIndex(uint32_t gidIndex)
 {
-    return rdma.get();
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
+    }
+    auto err = FromDocaError(doca_rdma_set_gid_index(this->rdmaInstance.get(), gidIndex));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA GID index");
+    }
+    return nullptr;
 }
+
+error RdmaEngine::setMaxConnections(uint32_t maxConnections)
+{
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
+    }
+    auto err = FromDocaError(doca_rdma_set_max_num_connections(this->rdmaInstance.get(), maxConnections));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA maximum number of connections");
+    }
+    return nullptr;
+}
+
+error RdmaEngine::setTransportType(internal::TransportType transportType)
+{
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
+    }
+    auto err = FromDocaError(
+        doca_rdma_set_transport_type(this->rdmaInstance.get(), static_cast<doca_rdma_transport_type>(transportType)));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA transport type");
+    }
+    return nullptr;
+}
+
+error RdmaEngine::setCallbacks()
+{
+    return error();
+}
+
+namespace internal
+{
+
+void RdmaInstanceDeleter::operator()(doca_rdma * rdma) const
+{
+    if (rdma) {
+        doca_rdma_destroy(rdma);
+    }
+}
+
+}  // namespace internal
 
 }  // namespace doca::rdma

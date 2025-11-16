@@ -1,11 +1,3 @@
-/**
- * @file rdma.hpp
- * @brief DOCA RDMA C++ wrapper
- *
- * Provides C++ wrapper for DOCA RDMA operations including send/receive,
- * read/write, and connection management with smart pointers.
- */
-
 #pragma once
 
 #include <doca_rdma.h>
@@ -26,44 +18,42 @@
 namespace doca::rdma
 {
 
-enum class Mode {
-    dynamic,
-    streaming,
-}
+// Forward declarations
+class RdmaEngine;
+using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
 
 namespace internal
 {
-    enum class TransportType {
-        rc = DOCA_RDMA_TRANSPORT_TYPE_RC,  // Reliable Connection
-        dc = DOCA_RDMA_TRANSPORT_TYPE_DC,  // Dynamically Connected
-    };
+enum class TransportType {
+    rc = DOCA_RDMA_TRANSPORT_TYPE_RC,  // Reliable Connection
+    dc = DOCA_RDMA_TRANSPORT_TYPE_DC,  // WTF? Datagram? Dynamic Conn?
+};
 
-    enum class AddrType {
-        ipv4 = DOCA_RDMA_ADDR_TYPE_IPv4,
-        ipv6 = DOCA_RDMA_ADDR_TYPE_IPv6,
-        gid = DOCA_RDMA_ADDR_TYPE_GID,
-    };
+enum class AddrType {
+    ipv4 = DOCA_RDMA_ADDR_TYPE_IPv4,
+    ipv6 = DOCA_RDMA_ADDR_TYPE_IPv6,
+    gid = DOCA_RDMA_ADDR_TYPE_GID,
+};
 
-    using GID = std::array<uint8_t, sizes::gidByteLength>;
+using GID = std::array<uint8_t, sizes::gidByteLength>;
 
-    struct RdmaEngineDeleter {
-        void operator()(doca_rdma * rdma) const;
-    };
+struct RdmaInstanceDeleter {
+    void operator()(doca_rdma * rdma) const;
+};
 
 }  // namespace internal
 
+// ----------------------------------------------------------------------------
+// RdmaEngine: Encapsulates thread-unsafe DOCA RDMA library
+// ----------------------------------------------------------------------------
 class RdmaEngine
 {
 public:
-    static std::tuple<RdmaEngine, error> Create(Device & dev);
+    static std::tuple<RdmaEnginePtr, error> Create(DevicePtr device);
 
-    std::tuple<std::span<const std::byte>, internal::RdmaConnection, error> Export();
-    error Connect(std::span<const std::byte> remoteConnDetails, internal::RdmaConnection & connection);
-    error SetPermissions(uint32_t permissions);
+    error Initialize();
 
-    doca_rdma * GetNative() const;
-
-    std::tuple<Context, error> AsContext();
+    DOCA_CPP_UNSAFE doca_rdma * GetNative() const;
 
     // Move-only type
     RdmaEngine(const RdmaEngine &) = delete;
@@ -72,9 +62,28 @@ public:
     RdmaEngine & operator=(RdmaEngine && other) noexcept;
 
 private:
-    explicit RdmaEngine(std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma);
+    using RdmaInstancePtr = std::unique_ptr<doca_rdma, internal::RdmaInstanceDeleter>;
 
-    std::unique_ptr<doca_rdma, internal::RdmaEngineDeleter> rdma;
+    struct RdmaEngineConfig {
+        DevicePtr device = nullptr;
+        ProgressEnginePtr progressEngine = nullptr;
+        RdmaInstancePtr rdmaInstance = nullptr;
+    };
+
+    explicit RdmaEngine(RdmaEngineConfig & config);
+    explicit RdmaEngine() = default;
+
+    RdmaInstancePtr rdmaInstance = nullptr;
+    DevicePtr device = nullptr;
+    ProgressEnginePtr progressEngine = nullptr;
+
+    std::tuple<doca::ContextPtr, error> asContext();
+
+    error setPermissions(uint32_t permissions);
+    error setGidIndex(uint32_t gidIndex);
+    error setMaxConnections(uint32_t maxConnections);
+    error setTransportType(internal::TransportType transportType);
+    error setCallbacks();
 };
 
 }  // namespace doca::rdma
