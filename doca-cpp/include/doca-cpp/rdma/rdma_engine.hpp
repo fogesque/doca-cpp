@@ -20,7 +20,6 @@ namespace doca::rdma
 
 // Forward declarations
 class RdmaEngine;
-using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
 
 namespace internal
 {
@@ -44,7 +43,7 @@ struct RdmaInstanceDeleter {
 }  // namespace internal
 
 // ----------------------------------------------------------------------------
-// RdmaEngine: Encapsulates thread-unsafe DOCA RDMA library
+// RdmaEngine
 // ----------------------------------------------------------------------------
 class RdmaEngine
 {
@@ -62,7 +61,7 @@ public:
     RdmaEngine & operator=(RdmaEngine && other) noexcept;
 
 private:
-    using RdmaInstancePtr = std::unique_ptr<doca_rdma, internal::RdmaInstanceDeleter>;
+    using RdmaInstancePtr = std::shared_ptr<doca_rdma>;
 
     struct RdmaEngineConfig {
         DevicePtr device = nullptr;
@@ -85,5 +84,7 @@ private:
     error setTransportType(internal::TransportType transportType);
     error setCallbacks();
 };
+
+using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
 
 }  // namespace doca::rdma

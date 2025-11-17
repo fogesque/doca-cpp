@@ -22,13 +22,13 @@ std::tuple<RdmaEnginePtr, error> RdmaEngine::Create(DevicePtr device)
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to create RDMA instance") };
     }
-    auto rdmaInstance = RdmaInstancePtr(rdma);
+    auto rdmaInstance = RdmaInstancePtr(rdma, internal::RdmaInstanceDeleter());
 
     // Assemble RdmaEngineConfig
     RdmaEngineConfig config = {
-        .device = std::move(device),
-        .progressEngine = std::move(progressEngine),
-        .rdmaInstance = std::move(rdmaInstance),
+        .device = device,
+        .progressEngine = progressEngine,
+        .rdmaInstance = rdmaInstance,
     };
 
     // Create RdmaEngine
@@ -82,19 +82,19 @@ error RdmaEngine::Initialize()
 }
 
 RdmaEngine::RdmaEngine(RdmaEngineConfig & config)
-    : rdmaInstance(std::move(config.rdmaInstance)), device(config.device), progressEngine(config.progressEngine)
+    : rdmaInstance(config.rdmaInstance), device(config.device), progressEngine(config.progressEngine)
 {
 }
 
 RdmaEngine::RdmaEngine(RdmaEngine && other) noexcept
-    : rdmaInstance(std::move(other.rdmaInstance)), device(other.device), progressEngine(other.progressEngine)
+    : rdmaInstance(other.rdmaInstance), device(other.device), progressEngine(other.progressEngine)
 {
 }
 
 RdmaEngine & RdmaEngine::operator=(RdmaEngine && other) noexcept
 {
     if (this != &other) {
-        this->rdmaInstance = std::move(other.rdmaInstance);
+        this->rdmaInstance = other.rdmaInstance;
         this->device = other.device;
         this->progressEngine = other.progressEngine;
         other.rdmaInstance = nullptr;
