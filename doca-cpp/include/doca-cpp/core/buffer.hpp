@@ -33,6 +33,8 @@ struct BufferInventoryDeleter {
 class Buffer
 {
 public:
+    explicit Buffer(std::shared_ptr<doca_buf> initialBuffer);
+
     std::tuple<size_t, error> GetLength() const;
     std::tuple<size_t, error> GetDataLength() const;
     std::tuple<void *, error> GetData() const;
@@ -57,10 +59,10 @@ public:
 private:
     friend class BufferInventory;
 
-    explicit Buffer(std::shared_ptr<doca_buf> initialBuffer);
-
     std::shared_ptr<doca_buf> buffer = nullptr;
 };
+
+using BufferPtr = std::shared_ptr<Buffer>;
 
 // ----------------------------------------------------------------------------
 // BufferInventory
@@ -107,5 +109,7 @@ private:
 
     std::shared_ptr<doca_buf_inventory> inventory = nullptr;
 };
+
+using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
 
 }  // namespace doca
