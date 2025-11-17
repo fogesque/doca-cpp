@@ -41,17 +41,17 @@ struct OperationRequest {
 };
 
 // ----------------------------------------------------------------------------
-// RdmaExecutor: Encapsulates thread-unsafe DOCA RDMA library
+// RdmaExecutor
 // ----------------------------------------------------------------------------
 class RdmaExecutor
 {
 public:
     const std::size_t TasksQueueSizeThreshold = 20;
 
-    std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr device);
+    static std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr device);
 
     RdmaExecutor() = delete;
-    RdmaExecutor(doca::DevicePtr initialDevice);
+    RdmaExecutor(RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice);
     ~RdmaExecutor();
 
     RdmaExecutor(const RdmaExecutor &) = delete;
@@ -72,6 +72,8 @@ public:
     const Statistics & GetStatistics() const;
 
 private:
+    RdmaExecutor(RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice);
+
     void WorkerLoop();
 
     error ExecuteOperation(const OperationRequest & request);

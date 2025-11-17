@@ -11,21 +11,19 @@ std::tuple<doca::rdma::RdmaExecutorPtr, error> doca::rdma::RdmaExecutor::Create(
         return { nullptr, errors::Wrap(err, "failed to create RDMA engine for executor") };
     }
 
-    this->rdmaEngine = std::make_shared<RdmaEngine>(std::move(rdmaEngine));
-    this->device = std::move(device);
+    auto rdmaExecutor = std::make_shared<RdmaExecutor>(rdmaEngine, device);
 
-    return std::tuple<RdmaExecutorPtr, error>();
+    return { rdmaExecutor, nullptr };
 }
 
-doca::rdma::RdmaExecutor::RdmaExecutor()
+doca::rdma::RdmaExecutor::RdmaExecutor(RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice)
+    : rdmaEngine(initialRdmaEngine), device(initialDevice)
 {
     std::println("[RdmaExecutor] Initializing...");
     this->running.store(true);
     this->workerThread = std::thread([this] { this->WorkerLoop(); });
     std::println("[RdmaExecutor] Initialized successfully");
 }
-
-doca::rdma::RdmaExecutor::RdmaExecutor(doca::DevicePtr initialDevice) : device(std::move(initialDevice)) {}
 
 doca::rdma::RdmaExecutor::~RdmaExecutor()
 {
@@ -76,6 +74,13 @@ void doca::rdma::RdmaExecutor::WorkerLoop()
     std::println("  [RdmaExecutor::Worker] Thread started (thread_id: {})",
                  std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000);
 
+    auto err = this->rdmaEngine->Initialize();
+    if (err) {
+        this->running.store(false);
+        std::println("  [RdmaExecutor::Worker] ERROR: Failed to initialize RDMA engine: {}", err->What());
+        return;
+    }
+
     while (true) {
         OperationRequest request;
         {
@@ -121,6 +126,7 @@ error doca::rdma::RdmaExecutor::ExecuteSend(const OperationRequest & request)
 {
     std::println("    [ExecuteSend] Preparing RDMA send...");
 
+    // Get memory range from buffer
     auto [range, err] = request.buffer->GetMemoryRange();
     if (err) {
         std::println("    [ExecuteSend] ERROR: {}", err->What());
@@ -128,8 +134,14 @@ error doca::rdma::RdmaExecutor::ExecuteSend(const OperationRequest & request)
         return err;
     }
 
+    // Lock memory in buffer
     request.buffer->LockMemory();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // this->rdmaEngine->SubmitTask();
+
+    // while (!this->rdmaEngine->Progressed()) {    }
+
+    // Unlock memory in buffer
     request.buffer->UnlockMemory();
 
     std::println("    [ExecuteSend] Send completed successfully");
