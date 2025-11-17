@@ -1,30 +1,27 @@
-/**
- * @file device.cpp
- * @brief DOCA Device implementation
- */
-
 #include "doca-cpp/core/device.hpp"
 
 namespace doca
 {
 
-// Custom deleters implementation
-void internal::DeviceListDeleter::operator()(doca_devinfo ** devList) const
+void DeviceListDeleter::operator()(doca_devinfo ** devList) const
 {
     if (devList) {
         doca_devinfo_destroy_list(devList);
     }
 }
 
-void internal::DeviceDeleter::operator()(doca_dev * dev) const
+void DeviceDeleter::operator()(doca_dev * dev) const
 {
     if (dev) {
         doca_dev_close(dev);
     }
 }
 
-// DeviceInfo implementation
-DeviceInfo::DeviceInfo(doca_devinfo * info) : devInfo(info) {}
+// ----------------------------------------------------------------------------
+// DeviceInfo
+// ----------------------------------------------------------------------------
+
+DeviceInfo::DeviceInfo(doca_devinfo * plainDevInfo) : devInfo(plainDevInfo) {}
 
 std::tuple<std::string, error> DeviceInfo::GetPciAddress() const
 {
@@ -191,7 +188,10 @@ doca_devinfo * DeviceInfo::GetNative() const
     return this->devInfo;
 }
 
-// DeviceList implementation
+// ----------------------------------------------------------------------------
+// DeviceList
+// ----------------------------------------------------------------------------
+
 std::tuple<DeviceList, error> DeviceList::Create()
 {
     doca_devinfo ** devList = nullptr;
@@ -202,14 +202,11 @@ std::tuple<DeviceList, error> DeviceList::Create()
         return { DeviceList(nullptr, 0), errors::Wrap(err, "failed to create device list") };
     }
 
-    auto managedList = std::unique_ptr<doca_devinfo *, internal::DeviceListDeleter>(devList);
-    return { DeviceList(std::move(managedList), nbDevs), nullptr };
+    auto managedList = std::shared_ptr<doca_devinfo *>(devList, DeviceListDeleter());
+    return { DeviceList(managedList, nbDevs), nullptr };
 }
 
-DeviceList::DeviceList(std::unique_ptr<doca_devinfo *, internal::DeviceListDeleter> list, uint32_t count)
-    : deviceList(std::move(list)), numDevices(count)
-{
-}
+DeviceList::DeviceList(std::shared_ptr<doca_devinfo *> list, uint32_t count) : deviceList(list), numDevices(count) {}
 
 std::tuple<DeviceInfo, error> DeviceList::GetIbDeviceInfo(const std::string_view & ibDevname) const
 {
@@ -232,6 +229,10 @@ size_t DeviceList::Size() const
 {
     return this->numDevices;
 }
+
+// ----------------------------------------------------------------------------
+// DeviceList::Iterator
+// ----------------------------------------------------------------------------
 
 DeviceList::Iterator::Iterator(doca_devinfo ** list, size_t idx) : deviceList(list), index(idx) {}
 
@@ -261,7 +262,10 @@ DeviceList::Iterator DeviceList::End() const
     return Iterator(this->deviceList.get(), this->numDevices);
 }
 
-// Device implementation
+// ----------------------------------------------------------------------------
+// Device
+// ----------------------------------------------------------------------------
+
 std::tuple<Device, error> Device::Open(const DeviceInfo & devInfo)
 {
     doca_dev * dev = nullptr;
@@ -270,11 +274,11 @@ std::tuple<Device, error> Device::Open(const DeviceInfo & devInfo)
         return { Device(nullptr), errors::Wrap(err, "failed to open device") };
     }
 
-    auto managedDev = std::unique_ptr<doca_dev, internal::DeviceDeleter>(dev);
-    return { Device(std::move(managedDev)), nullptr };
+    auto managedDev = std::shared_ptr<doca_dev>(dev, DeviceDeleter());
+    return { Device(managedDev), nullptr };
 }
 
-Device::Device(std::unique_ptr<doca_dev, internal::DeviceDeleter> dev) : device(std::move(dev)) {}
+Device::Device(std::shared_ptr<doca_dev> initialDevice) : device(initialDevice) {}
 
 error Device::AccelerateResourceReclaim() const
 {

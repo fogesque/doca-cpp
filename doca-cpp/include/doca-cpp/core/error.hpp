@@ -40,7 +40,7 @@ public:
     {
         const char * name = doca_error_get_name(errorCode);
         const char * descr = doca_error_get_descr(errorCode);
-        return std::string("DOCA Error [") + std::to_string(static_cast<int>(errorCode)) + "]: " + name + " - " + descr;
+        return std::string("DOCA Error [") + std::string(name) + "]: " + descr;
     }
 
     /**

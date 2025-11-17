@@ -1,8 +1,3 @@
-/**
- * @file progress_engine.cpp
- * @brief DOCA Progress Engine implementation
- */
-
 #include "doca-cpp/core/progress_engine.hpp"
 
 #include "doca-cpp/core/context.hpp"
@@ -10,7 +5,6 @@
 namespace doca
 {
 
-// Custom deleter implementation
 void ProgressEngineDeleter::operator()(doca_pe * pe) const
 {
     if (pe) {
@@ -25,7 +19,10 @@ void TaskDeleter::operator()(doca_task * task) const
     }
 }
 
-// ProgressEngine implementation
+// ----------------------------------------------------------------------------
+// ProgressEngine
+// ----------------------------------------------------------------------------
+
 std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
 {
     doca_pe * pe = nullptr;
@@ -33,13 +30,15 @@ std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to create progress engine") };
     }
-    auto managedPe = std::unique_ptr<doca_pe, ProgressEngineDeleter>(pe);
+    auto managedPe = std::shared_ptr<doca_pe>(pe, ProgressEngineDeleter{});
 
-    auto progressEnginePtr = std::make_shared<ProgressEngine>(std::move(managedPe));
+    auto progressEnginePtr = std::make_shared<ProgressEngine>(managedPe);
     return { progressEnginePtr, nullptr };
 }
 
-ProgressEngine::ProgressEngine(std::unique_ptr<doca_pe, ProgressEngineDeleter> pe) : progressEngine(std::move(pe)) {}
+ProgressEngine::ProgressEngine(std::shared_ptr<doca_pe> initialProgressEngine) : progressEngine(initialProgressEngine)
+{
+}
 
 std::tuple<uint32_t, error> ProgressEngine::Progress()
 {

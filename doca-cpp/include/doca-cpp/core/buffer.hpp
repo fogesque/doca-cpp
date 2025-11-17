@@ -1,11 +1,3 @@
-/**
- * @file buffer.hpp
- * @brief DOCA Buffer and BufferInventory C++ wrappers
- *
- * Provides RAII wrappers for doca_buf and doca_buf_inventory with smart pointers
- * and custom deleters for automatic resource management.
- */
-
 #pragma once
 
 #include <doca_buf.h>
@@ -23,30 +15,21 @@
 namespace doca
 {
 
-// Forward declaration
+// Forward declarations
 class BufferInventory;
+class Buffer;
 
-/**
- * @brief Custom deleter for doca_buf
- */
 struct BufferDeleter {
     void operator()(doca_buf * buf) const;
 };
 
-/**
- * @brief Custom deleter for doca_buf_inventory
- */
 struct BufferInventoryDeleter {
     void operator()(doca_buf_inventory * inv) const;
 };
 
-/**
- * @class Buffer
- * @brief RAII wrapper for doca_buf with smart pointer and automatic reference counting
- *
- * Buffers reference memory regions within memory maps. They are allocated from
- * a BufferInventory and automatically returned when refcount reaches 0.
- */
+// ----------------------------------------------------------------------------
+// Buffer
+// ----------------------------------------------------------------------------
 class Buffer
 {
 public:
@@ -74,15 +57,14 @@ public:
 private:
     friend class BufferInventory;
 
-    explicit Buffer(std::unique_ptr<doca_buf, BufferDeleter> buf);
+    explicit Buffer(std::shared_ptr<doca_buf> initialBuffer);
 
-    std::unique_ptr<doca_buf, BufferDeleter> buffer;
+    std::shared_ptr<doca_buf> buffer = nullptr;
 };
 
-/**
- * @class BufferInventory
- * @brief RAII wrapper for doca_buf_inventory with smart pointer - manages buffer allocation
- */
+// ----------------------------------------------------------------------------
+// BufferInventory
+// ----------------------------------------------------------------------------
 class BufferInventory
 {
 public:
@@ -94,7 +76,7 @@ public:
     private:
         friend class BufferInventory;
 
-        explicit Builder(doca_buf_inventory * inv);
+        explicit Builder(doca_buf_inventory * plainInventory);
         ~Builder();
 
         Builder(const Builder &) = delete;
@@ -108,7 +90,7 @@ public:
 
     static Builder Create(size_t numElements);
 
-    std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, void * addr, size_t length);
+    std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, void * address, size_t length);
     std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, std::span<std::byte> data);
 
     error Stop();
@@ -121,9 +103,9 @@ public:
     BufferInventory & operator=(BufferInventory && other) noexcept = default;
 
 private:
-    explicit BufferInventory(std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter> inv);
+    explicit BufferInventory(std::shared_ptr<doca_buf_inventory> initialInventory);
 
-    std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter> inventory;
+    std::shared_ptr<doca_buf_inventory> inventory = nullptr;
 };
 
 }  // namespace doca

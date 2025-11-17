@@ -1,14 +1,8 @@
-/**
- * @file mmap.cpp
- * @brief DOCA Memory Map implementation
- */
-
 #include "doca-cpp/core/mmap.hpp"
 
 namespace doca
 {
 
-// Custom deleter implementation
 void MemoryMapDeleter::operator()(doca_mmap * mmap) const
 {
     if (mmap) {
@@ -16,10 +10,16 @@ void MemoryMapDeleter::operator()(doca_mmap * mmap) const
     }
 }
 
-// MemoryMap::Builder implementation
-MemoryMap::Builder::Builder(doca_mmap * m) : mmap(m), buildErr(nullptr), device(nullptr) {}
+// ----------------------------------------------------------------------------
+// MemoryMap::Builder
+// ----------------------------------------------------------------------------
 
-explicit MemoryMap::Builder::Builder(doca_mmap * m, DevicePtr dev) : mmap(m), buildErr(nullptr), device(dev) {}
+MemoryMap::Builder::Builder(doca_mmap * plainMmap) : mmap(plainMmap), buildErr(nullptr), device(nullptr) {}
+
+explicit MemoryMap::Builder::Builder(doca_mmap * plainMmap, DevicePtr device)
+    : mmap(plainMmap), buildErr(nullptr), device(device)
+{
+}
 
 MemoryMap::Builder::~Builder()
 {
@@ -48,14 +48,14 @@ MemoryMap::Builder & MemoryMap::Builder::operator=(Builder && other) noexcept
     return *this;
 }
 
-MemoryMap::Builder & MemoryMap::Builder::AddDevice(DevicePtr dev)
+MemoryMap::Builder & MemoryMap::Builder::AddDevice(DevicePtr device)
 {
     if (this->mmap && !this->buildErr) {
-        auto err = FromDocaError(doca_mmap_add_dev(this->mmap, dev->GetNative()));
+        auto err = FromDocaError(doca_mmap_add_dev(this->mmap, device->GetNative()));
         if (err) {
             this->buildErr = errors::Wrap(err, "failed to add device to mmap");
         }
-        this->device = dev;
+        this->device = device;
     }
     return *this;
 }
@@ -137,7 +137,10 @@ std::tuple<MemoryMap, error> MemoryMap::Builder::Start()
     return { MemoryMap(std::move(managedMmap), this->device), nullptr };
 }
 
-// MemoryMap implementation
+// ----------------------------------------------------------------------------
+// MemoryMap
+// ----------------------------------------------------------------------------
+
 MemoryMap::Builder MemoryMap::Create()
 {
     doca_mmap * mmap = nullptr;
@@ -161,8 +164,8 @@ MemoryMap::Builder MemoryMap::CreateFromExport(std::span<const std::byte> export
     return Builder(mmap, dev);
 }
 
-MemoryMap::MemoryMap(std::unique_ptr<doca_mmap, MemoryMapDeleter> mmap, DevicePtr dev)
-    : memoryMap(std::move(mmap)), device(dev)
+MemoryMap::MemoryMap(std::shared_ptr<doca_mmap> initialMemoryMap, DevicePtr device)
+    : memoryMap(initialMemoryMap), device(device)
 {
 }
 

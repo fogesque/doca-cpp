@@ -1,14 +1,13 @@
-/**
- * @file context.cpp
- * @brief DOCA Context implementation
- */
-
 #include "doca-cpp/core/context.hpp"
 
 #include "doca-cpp/core/progress_engine.hpp"
 
 namespace doca
 {
+
+// ----------------------------------------------------------------------------
+// Context
+// ----------------------------------------------------------------------------
 
 error Context::Start()
 {
@@ -36,7 +35,8 @@ error Context::Stop()
 
 error Context::ConnectToProgressEngine(ProgressEngine & pe)
 {
-    return pe.ConnectContext(*this);
+    auto self = std::make_shared<Context>(*this);
+    return pe.ConnectContext(self);
 }
 
 std::tuple<size_t, error> Context::GetNumInflightTasks() const

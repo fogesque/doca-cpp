@@ -1,11 +1,3 @@
-/**
- * @file device.hpp
- * @brief DOCA Device C++ wrapper
- *
- * This file provides RAII wrappers for DOCA devices with smart pointers and
- * custom deleters for automatic resource management.
- */
-
 #pragma once
 
 #include <doca_dev.h>
@@ -27,37 +19,32 @@ namespace doca
 
 // Forward declarations
 class Device;
+class DeviceInfo;
+class DeviceList;
 // class DeviceRepresentor; // TODO: Add representor support
 
 namespace internal
 {
+
 // IB devices names of supported devices
 constexpr std::array<std::string_view, sizes::supportedDeviceSize> supportedDevices = { "mlx5_0", "mlx5_1" };
 
-/**
- * @brief Custom deleter for doca_devinfo list
- */
+}  // namespace internal
 struct DeviceListDeleter {
     void operator()(doca_devinfo ** devList) const;
 };
 
-/**
- * @brief Custom deleter for doca_dev
- */
 struct DeviceDeleter {
     void operator()(doca_dev * dev) const;
 };
 
-}  // namespace internal
-
-/**
- * @class DeviceInfo
- * @brief Wrapper for doca_devinfo - provides device information and queries
- */
+// ----------------------------------------------------------------------------
+// DeviceInfo
+// ----------------------------------------------------------------------------
 class DeviceInfo
 {
 public:
-    DOCA_CPP_UNSAFE explicit DeviceInfo(doca_devinfo * info);
+    DOCA_CPP_UNSAFE explicit DeviceInfo(doca_devinfo * plainDevInfo);
 
     std::tuple<std::string, error> GetPciAddress() const;
 
@@ -91,10 +78,11 @@ private:
     doca_devinfo * devInfo;
 };
 
-/**
- * @class DeviceList
- * @brief RAII wrapper for DOCA device list using smart pointers
- */
+using DeviceInfoPtr = std::shared_ptr<DeviceInfo>;
+
+// ----------------------------------------------------------------------------
+// DeviceList
+// ----------------------------------------------------------------------------
 class DeviceList
 {
 public:
@@ -127,16 +115,17 @@ public:
     Iterator End() const;
 
 private:
-    DeviceList(std::unique_ptr<doca_devinfo *, internal::DeviceListDeleter> list, uint32_t count);
+    DeviceList(std::shared_ptr<doca_devinfo *> initialDeviceList, uint32_t count);
 
-    std::unique_ptr<doca_devinfo *, internal::DeviceListDeleter> deviceList;
-    uint32_t numDevices;
+    std::shared_ptr<doca_devinfo *> deviceList = nullptr;
+    uint32_t numDevices = 0;
 };
 
-/**
- * @class Device
- * @brief RAII wrapper for doca_dev using smart pointer with custom deleter
- */
+using DeviceListPtr = std::shared_ptr<DeviceList>;
+
+// ----------------------------------------------------------------------------
+// Device
+// ----------------------------------------------------------------------------
 class Device
 {
 public:
@@ -154,9 +143,9 @@ public:
     DOCA_CPP_UNSAFE doca_dev * GetNative() const;
 
 private:
-    explicit Device(std::unique_ptr<doca_dev, internal::DeviceDeleter> dev);
+    explicit Device(std::shared_ptr<doca_dev> initialDevice);
 
-    std::unique_ptr<doca_dev, internal::DeviceDeleter> device;
+    std::shared_ptr<doca_dev> device = nullptr;
 };
 
 using DevicePtr = std::shared_ptr<Device>;

@@ -24,8 +24,11 @@ void BufferInventoryDeleter::operator()(doca_buf_inventory * inv) const
     }
 }
 
-// Buffer implementation
-Buffer::Buffer(std::unique_ptr<doca_buf, BufferDeleter> buf) : buffer(std::move(buf)) {}
+// ----------------------------------------------------------------------------
+// Buffer
+// ----------------------------------------------------------------------------
+
+Buffer::Buffer(std::shared_ptr<doca_buf> initialBuffer) : buffer(initialBuffer) {}
 
 std::tuple<size_t, error> Buffer::GetLength() const
 {
@@ -154,8 +157,11 @@ doca_buf * Buffer::GetNative() const
     return this->buffer.get();
 }
 
-// BufferInventory::Builder implementation
-BufferInventory::Builder::Builder(doca_buf_inventory * inv) : inventory(inv), buildErr(nullptr) {}
+// ----------------------------------------------------------------------------
+// Buffer::Builder
+// ----------------------------------------------------------------------------
+
+BufferInventory::Builder::Builder(doca_buf_inventory * plainInventory) : inventory(plainInventory), buildErr(nullptr) {}
 
 BufferInventory::Builder::~Builder()
 {
@@ -205,12 +211,15 @@ std::tuple<BufferInventory, error> BufferInventory::Builder::Start()
         return { BufferInventory(nullptr), errors::Wrap(err, "failed to start inventory") };
     }
 
-    auto managedInventory = std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter>(this->inventory);
+    auto managedInventory = std::shared_ptr<doca_buf_inventory>(this->inventory, BufferInventoryDeleter());
     this->inventory = nullptr;
-    return { BufferInventory(std::move(managedInventory)), nullptr };
+    return { BufferInventory(managedInventory), nullptr };
 }
 
-// BufferInventory implementation
+// ----------------------------------------------------------------------------
+// BufferInventory
+// ----------------------------------------------------------------------------
+
 BufferInventory::Builder BufferInventory::Create(size_t numElements)
 {
     doca_buf_inventory * inventory = nullptr;
@@ -221,10 +230,7 @@ BufferInventory::Builder BufferInventory::Create(size_t numElements)
     return Builder(inventory);
 }
 
-BufferInventory::BufferInventory(std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter> inv)
-    : inventory(std::move(inv))
-{
-}
+BufferInventory::BufferInventory(std::shared_ptr<doca_buf_inventory> initialInventory) : inventory(initialInventory) {}
 
 std::tuple<Buffer, error> BufferInventory::AllocBuffer(const MemoryMap & mmap, void * addr, size_t length)
 {
@@ -239,8 +245,8 @@ std::tuple<Buffer, error> BufferInventory::AllocBuffer(const MemoryMap & mmap, v
         return { Buffer(nullptr), errors::Wrap(err, "failed to allocate buffer from inventory") };
     }
 
-    auto managedBuf = std::unique_ptr<doca_buf, BufferDeleter>(buf);
-    return { Buffer(std::move(managedBuf)), nullptr };
+    auto managedBuf = std::shared_ptr<doca_buf>(buf, BufferDeleter());
+    return { Buffer(managedBuf), nullptr };
 }
 
 std::tuple<Buffer, error> BufferInventory::AllocBuffer(const MemoryMap & mmap, std::span<std::byte> data)
