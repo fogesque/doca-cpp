@@ -8,6 +8,7 @@ Connections:
 ====================================
 
 
+[open_device]
 DEV_LIST = doca_devinfo_create_list()
 for dev_ib_name != input_ib_name {
     dev_ib_name = doca_devinfo_get_ibdev_name(DEV_LIST[i])
@@ -19,89 +20,130 @@ LOCAL_MEMRANGE = calloc()    // 4096 bytes
 
 [create_local_mmap]
 LOCAL_MMAP = doca_mmap_create()
-doca_mmap_set_permissions(LOCAL_MMAP, localReadWrite)
-doca_mmap_set_LOCAL_memrange(LOCAL_MMAP, LOCAL_MEMRANGE)
+doca_mmap_set_permissions(LOCAL_MMAP, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE)
+doca_mmap_set_memrange(LOCAL_MMAP, LOCAL_MEMRANGE)
 doca_mmap_add_dev(LOCAL_MMAP, DEVICE)
 doca_mmap_start(LOCAL_MMAP)
 
 PE = doca_pe_create()
 
-RDMA = doca_rdma_create()
+RDMA = doca_rdma_create(DEVICE)
 RDMA_CTX = doca_rdma_as_ctx(RDMA)
-doca_rdma_set_permissions(RDMA, localReadWrite)
+doca_rdma_set_permissions(RDMA, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE)
 doca_rdma_set_gid_index(RDMA)
 doca_rdma_set_max_num_connections(RDMA, NUM_CONNECTIONS)
-doca_rdma_set_transport_type(RDMA, CM)
+doca_rdma_set_transport_type(RDMA, RC)
 
 doca_pe_connect_ctx(PE, RDMA_CTX)
 
-doca_rdma_task_WRITE_set_conf(RDMA, func{rdma_WRITE_completed_callback} func{rdma_WRITE_error_callback})
+
+doca_rdma_task_write_set_conf(RDMA, func{rdma_write_requester_completed_callback} func{rdma_write_requester_error_callback})
     
-    rdma_WRITE_completed_callback:
-        RDMA_TASK = doca_rdma_task_send_as_task(RDMA_TASK)
+    rdma_write_requester_completed_callback(TASK_WRITE, TASK_USER_DATA, CTX_USER_DATA):
+
+        ALL = CTX_USER_DATA
+        ERROR = TASK_USER_DATA
+        RDMA_TASK = doca_rdma_task_send_as_task(TASK_WRITE)
         doca_task_free(RDMA_TASK)
-        doca_buf_dec_refcount(SOURCE_BUF)
-        doca_buf_dec_refcount(DEST_BUF)
+        doca_buf_dec_refcount(ALL::DEST_BUF)
+        doca_buf_dec_refcount(ALL::SOURCE_BUF)
         if REMAINING_TASKS == 0 {
-            doca_rdma_connection_disconnect(RDMA_CONNECTION)
-            doca_ctx_stop(RDMA_CTX)
+            for i : ALL::CONNECTIONS {
+                doca_rdma_connection_disconnect(ALL::CONNECTIONS[i])
+            }
+            doca_ctx_stop(ALL::RDMA_CTX)
         }
 
-    rdma_WRITE_error_callback:
-        RDMA_TASK = doca_rdma_task_send_as_task(RDMA_TASK)
-        doca_task_get_status(RDMA_TASK)
-        doca_buf_dec_refcount(SOURCE_BUF)
-        doca_buf_dec_refcount(DEST_BUF)
-        doca_task_free(RDMA_TASK)        
-        doca_rdma_connection_disconnect(RDMA_CONNECTION)
-        doca_ctx_stop(RDMA_CTX)
+    rdma_write_requester_error_callback(TASK_WRITE, TASK_USER_DATA, CTX_USER_DATA):
+
+        ALL = CTX_USER_DATA
+        ERROR = TASK_USER_DATA
+        RDMA_TASK = doca_rdma_task_send_as_task(TASK_WRITE)
+        doca_task_get_status(RDMA_TASK)        
+        doca_buf_dec_refcount(ALL::DEST_BUF)
+        doca_buf_dec_refcount(ALL::SOURCE_BUF)
+        doca_task_free(RDMA_TASK)
+        if REMAINING_TASKS == 0 {
+            for i : ALL::CONNECTIONS {
+                doca_rdma_connection_disconnect(ALL::CONNECTIONS[i])
+            }
+            doca_ctx_stop(ALL::RDMA_CTX)
+        }
 
 
-doca_ctx_set_state_changed_cb(RDMA_CTX, func{rdma_WRITE_state_change_callback})
+doca_ctx_set_state_changed_cb(RDMA_CTX, func{rdma_write_requester_state_change_callback})
 
-    rdma_WRITE_state_change_callback:
-        if CTX == RUNNING {
+    rdma_write_requester_state_change_callback(USER_DATA, CTX, CTX_PREV_STATE, CTX_NEXT_STATE):
+
+        ALL = USER_DATA
+
+        if CTX_NEXT_STATE == RUNNING {
             if SERVER {
-                doca_rdma_start_listen_to_port(RDMA)
+                doca_rdma_start_listen_to_port(ALL::RDMA, PORT)
             }
             if CLIENT {
-                ADDR = doca_rdma_addr_create()
-                doca_rdma_connect_to_addr(ADDR)
+                CM_ADDRESS = doca_rdma_addr_create(ADDRESS_TYPE, ADRESS, PORT)
+                CONNECTION_DATA = ALL
+                doca_rdma_connect_to_addr(ALL::RDMA, CM_ADDRESS, CONNECTION_DATA)
             }
         }
-        if CTX == IDLE {
-            RUN_PE = false
+        if CTX_NEXT_STATE == IDLE {
+            ALL::RUN_PE = false
         }
 
 
-BUFF_INVENTORY = doca_buf_inventory_create()
-doca_buf_inventory_start(BUFF_INVENTORY)
+BUF_INVENTORY = doca_buf_inventory_create(INITIAL_ELEMENTS_NUMBER)
+doca_buf_inventory_start(BUF_INVENTORY)
 
 REQUIRE_REMOTE_MMAP = true
 IS_REQUESTER = true
+NEED_SEND_TASK = false
+NEED_RECEIVE_TASK = true
 
-doca_rdma_task_receive_set_conf(RDMA, func{RECEIVE_task_completion_callback}, func{RECEIVE_task_error_callback})
+doca_rdma_task_receive_set_conf(RDMA, func{receive_task_completion_callback}, func{receive_task_error_callback})
     
-    RECEIVE_task_completion_callback:
-        DST_BUF = doca_rdma_task_receive_get_dst_buf(RECEIVE_TASK)
-        BUF_LEN = doca_buf_get_data_len(DST_BUF)
-        RECEIVE_TASK = doca_rdma_task_receive_as_task(RECEIVE_TASK)
-        doca_task_free(RECEIVE_TASK)
-        doca_buf_dec_refcount(DST_BUF)
-        REMOTE_MMAP = doca_mmap_create_from_export(REMOTE_MMAP_DESCRIPTOR, DEVICE)
+    receive_task_completion_callback(TASK_RECEIVE, TASK_USER_DATA, CTX_USER_DATA):
+
+        DEST_BUF = doca_rdma_task_receive_get_dst_buf(TASK_RECEIVE)
+        ALL = CTX_USER_DATA
+
+        DEST_BUF_LEN = doca_buf_get_data_len(DEST_BUF)
+        RDMA_TASK = doca_rdma_task_receive_as_task(TASK_RECEIVE)
+        doca_task_free(RDMA_TASK)
+        doca_buf_dec_refcount(DEST_BUF)
+
+        ALL::REMOTE_MMAP_DESCRIPTOR_SIZE = DEST_BUF_LEN
+
+
+        --- [create_and_submit_write_task] -----------------
+
+        REMOTE_MMAP = doca_mmap_create_from_export(USER_DATA = NULL, ALL::REMOTE_MMAP_DESCRIPTOR,
+                                                   ALL::REMOTE_MMAP_DESCRIPTOR_SIZE, ALL::DEVICE)
         REMOTE_MEMRANGE = doca_mmap_get_memrange(REMOTE_MMAP)
-        SOURCE_BUF = doca_buf_inventory_buf_get_by_data(LOCAL_MMAP, LOCAL_MEMRANGE)
+
+        ALL::SOURCE_BUF = doca_buf_inventory_buf_get_by_data(ALL::BUF_INVENTORY, ALL::LOCAL_MMAP, ALL::LOCAL_MEMRANGE)
         SOURCE_BUF_DATA = doca_buf_get_data(SOURCE_BUF)
-        strcpy(WRITE_MESSAGE, SOURCE_BUF_DATA)  
-        DEST_BUF = doca_buf_inventory_buf_get_by_addr(REMOTE_MMAP, REMOTE_MEMRANGE)
-        RDMA_WRITE_TASK = doca_rdma_task_write_allocate_init(RDMA_CONNECTION, SOURCE_BUF, DST_BUF)
+
+        strcpy("Hello", SOURCE_BUF_DATA)  
+
+        ALL::DEST_BUF = doca_buf_inventory_buf_get_by_addr(ALL::BUF_INVENTORY, ALL::REMOTE_MMAP, ALL::REMOTE_MEMRANGE)
+        TASK_USER_DATA = ALL::ERROR
+        
+        RDMA_WRITE_TASK = doca_rdma_task_write_allocate_init(ALL::RDMA, ALL::CONNECTIONS[0], 
+                                                             ALL::SOURCE_BUF, ALL::DEST_BUF, TASK_USER_DATA)
         doca_task_submit(RDMA_WRITE_TASK)
 
-    RECEIVE_task_error_callback:
-        RECEIVE_TASK = doca_rdma_task_receive_as_task(RECEIVE_TASK)
-        doca_task_free(RECEIVE_TASK)
-        DST_BUF = doca_rdma_task_receive_get_dst_buf(RECEIVE_TASK)
-        doca_buf_dec_refcount(DST_BUF)
+        ----------------------------------------------------
+
+    receive_task_error_callback(TASK_RECEIVE, TASK_USER_DATA, CTX_USER_DATA):
+
+        ALL = CTX_USER_DATA
+        RDMA_TASK = doca_rdma_task_receive_as_task(TASK_RECEIVE)
+        doca_task_get_status(RDMA_TASK)   
+        doca_task_free(RECEIVE_TASK) 
+
+        BUF = doca_rdma_task_receive_get_dst_buf(RECEIVE_TASK)
+        doca_buf_dec_refcount(BUF)
         doca_ctx_stop(RDMA_CTX)
 
 
@@ -113,24 +155,59 @@ doca_rdma_set_connection_state_callbacks(
     func{rdma_cm_connect_failure_cb},
     func{rdma_cm_disconnect_cb},
 )
-    rdma_cm_connect_request_cb:
+    rdma_cm_connect_request_cb(RDMA_CONNECTION, CTX_USER_DATA):
+
+        ALL = CTX_USER_DATA
         doca_rdma_connection_accept(RDMA_CONNECTION)
+        doca_rdma_connection_set_user_data(RDMA_CONNECTION, CTX_USER_DATA)
 
-    rdma_cm_connect_established_cb:
+    rdma_cm_connect_established_cb(RDMA_CONNECTION, CONNECTION_USER_DATA, CTX_USER_DATA):
+
+        ALL = CTX_USER_DATA
+        CONNECTION_DATA = CONNECTION_INDEX = 0
+        doca_rdma_connection_set_user_data(RDMA_CONNECTION, CONNECTION_DATA)
+        ALL::CONNECTIONS[CONNECTION_INDEX] = RDMA_CONNECTION
+
+        --- [rdma_requester_recv_data_from_rdma_responder] ------------------
+
         RECEIVE_DESCRIPTOR = malloc()
-        RECEIVE_DESCRIPTOR_MMAP = create_local_mmap(localReadWrite, RECEIVE_DESCRIPTOR, DEVICE)
-        DESC_BUF = doca_buf_inventory_buf_get_by_addr(BUFF_INVENTORY, RECEIVE_DESCRIPTOR_MMAP, RECEIVE_DESCRIPTOR)
-        RECEIVE_TASK = doca_rdma_task_receive_allocate_init(RDMA, DESC_BUF)
-        doca_task_submit(RECEIVE_TASK)
 
-    rdma_cm_connect_failure_cb: 
-        RUN_PE = false
+        RECEIVE_DESCRIPTOR_MMAP = doca_mmap_create()
+        doca_mmap_set_permissions(RECEIVE_DESCRIPTOR_MMAP, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE)
+        doca_mmap_set_memrange(RECEIVE_DESCRIPTOR_MMAP, RECEIVE_DESCRIPTOR)
+        doca_mmap_add_dev(RECEIVE_DESCRIPTOR_MMAP, ALL::DEVICE)
+        doca_mmap_start(RECEIVE_DESCRIPTOR_MMAP)
 
-    rdma_cm_disconnect_cb
+        DESCRIPTOR_BUF = doca_buf_inventory_buf_get_by_addr(ALL::BUF_INVENTORY, RECEIVE_DESCRIPTOR_MMAP, RECEIVE_DESCRIPTOR)
+        TASK_USER_DATA = ALL
+        RECEIVE_TASK = doca_rdma_task_receive_allocate_init(ALL::RDMA, DESCRIPTOR_BUF, TASK_USER_DATA)
+        RDMA_TASK = doca_rdma_task_receive_as_task(RECEIVE_TASK)
+        doca_task_submit(RDMA_TASK)
+
+        ALL::REMOTE_MMAP_DESCRIPTOR = RECEIVE_DESCRIPTOR
+        ALL::REMOTE_MMAP_DESCRIPTOR_MMAP = RECEIVE_DESCRIPTOR_MMAP
+
+        ---------------------------------------------------------------------
+
+    rdma_cm_connect_failure_cb(RDMA_CONNECTION, CONNECTION_USER_DATA, CTX_USER_DATA): 
+
+        CONNECTION_INDEX = CONNECTION_USER_DATA
+        ALL = CTX_USER_DATA
+        -rm ALL::CONNECTIONS[CONNECTION_INDEX]
+        ALL::RUN_PE = false
+
+    rdma_cm_disconnect_cb(RDMA_CONNECTION, CONNECTION_USER_DATA, CTX_USER_DATA):
+
+        CONNECTION_INDEX = CONNECTION_USER_DATA
+        ALL = CTX_USER_DATA
         doca_rdma_connection_disconnect(RDMA_CONNECTION)
+        -rm ALL::CONNECTIONS[CONNECTION_INDEX]
 
 
+CTX_USER_DATA = ALL
+doca_ctx_set_user_data(RDMA_CTX, CTX_USER_DATA)
 doca_ctx_start(RDMA_CTX)
+
 while RUN_PE {
     doca_pe_progress(PE)
 }
