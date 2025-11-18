@@ -8,6 +8,9 @@
 #include <tuple>
 #include <vector>
 
+namespace doca::rdma
+{
+
 using MemoryRange = std::vector<std::byte>;
 using MemoryRangePtr = std::shared_ptr<MemoryRange>;
 
@@ -17,6 +20,11 @@ inline auto MemoryRangeNotRegistered = errors::New("Memory range not registered"
 inline auto MemoryRangeAlreadyRegistered = errors::New("Memory range already registered");
 inline auto MemoryRangeLocked = errors::New("Memory range is locked by RDMA engine");
 }  // namespace ErrorTypes
+
+enum class RdmaBufferType {
+    source,
+    destination,
+};
 
 class RdmaBuffer
 {
@@ -74,3 +82,5 @@ private:
 };
 
 using RdmaBufferPtr = std::shared_ptr<RdmaBuffer>;
+
+}  // namespace doca::rdma
