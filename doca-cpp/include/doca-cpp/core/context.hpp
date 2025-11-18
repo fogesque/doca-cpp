@@ -14,16 +14,7 @@ namespace doca
 
 class ProgressEngine;
 
-enum class ContextState {
-    idle = DOCA_CTX_STATE_IDLE,
-    starting = DOCA_CTX_STATE_STARTING,
-    running = DOCA_CTX_STATE_RUNNING,
-    stopping = DOCA_CTX_STATE_STOPPING,
-};
-
 class Context;  // forward declaration
-
-using StateChangedCallback = std::function<void(const Data & userData, ContextState prevState, ContextState nextState)>;
 
 // ----------------------------------------------------------------------------
 // Context
@@ -31,6 +22,13 @@ using StateChangedCallback = std::function<void(const Data & userData, ContextSt
 class Context
 {
 public:
+    enum class State {
+        idle = DOCA_CTX_STATE_IDLE,
+        starting = DOCA_CTX_STATE_STARTING,
+        running = DOCA_CTX_STATE_RUNNING,
+        stopping = DOCA_CTX_STATE_STOPPING,
+    };
+
     explicit Context(doca_ctx * context) : ctx(context) {}
 
     virtual ~Context() = default;
@@ -45,23 +43,25 @@ public:
 
     error SetStateChangedCallback(StateChangedCallback callback);
 
-    std::tuple<ContextState, error> GetState() const;
+    std::tuple<State, error> GetState() const;
 
     error FlushTasks();
 
     DOCA_CPP_UNSAFE doca_ctx * GetNative() const;
-
-protected:
-    doca_ctx * ctx;
-    StateChangedCallback stateCallback;
 
 private:
     DOCA_CPP_UNSAFE error setUserData(const Data & data);
 
     static void stateChangedCallback(const doca_data userData, doca_ctx * ctx, doca_ctx_states prevState,
                                      doca_ctx_states nextState);
+
+    doca_ctx * ctx;
+    StateChangedCallback stateCallback = nullptr;
 };
 
 using ContextPtr = std::shared_ptr<Context>;
+
+using StateChangedCallback =
+    std::function<void(const Data & userData, Context::State prevState, Context::State nextState)>;
 
 }  // namespace doca
