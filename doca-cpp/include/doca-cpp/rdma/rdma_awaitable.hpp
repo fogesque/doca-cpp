@@ -13,8 +13,8 @@
 #include <tuple>
 #include <vector>
 
-#include "rdma_buffer.hpp"
-#include "rdma_peer.hpp"
+#include "doca-cpp/rdma/rdma_buffer.hpp"
+#include "doca-cpp/rdma/rdma_peer.hpp"
 
 namespace doca::rdma
 {
