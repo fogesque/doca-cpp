@@ -15,14 +15,14 @@
 namespace doca::rdma
 {
 
-enum class ConnectionType {
+enum class RdmaConnectionType {
     outOfBand,
     connManagerIpv4,
     connManagerIpv6,
     connManagerGid,
 };
 
-enum class ConnectionMode {
+enum class RdmaConnectionMode {
     server,
     client,
 };
@@ -46,6 +46,8 @@ public:
 
     DOCA_CPP_UNSAFE doca_rdma_addr * GetNative() const;
 
+    RdmaAddress(const std::string & address, uint16_t port);
+
     // Move-only type
     RdmaAddress(const RdmaAddress &) = delete;
     RdmaAddress & operator=(const RdmaAddress &) = delete;
@@ -55,7 +57,10 @@ public:
 private:
     explicit RdmaAddress(std::shared_ptr<doca_rdma_addr> initialAddress);
 
-    std::shared_ptr<doca_rdma_addr> address = nullptr;
+    std::shared_ptr<doca_rdma_addr> rdamAddress = nullptr;
+
+    std::string address = "";
+    uint16_t port = 0;
 };
 
 using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
@@ -66,7 +71,14 @@ using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
 class RdmaConnection
 {
 public:
-    static std::tuple<RdmaConnectionPtr, error> Create(ConnectionType type);
+    enum class State {
+        requested,
+        established,
+        failed,
+        disconnected,
+    };
+
+    static std::tuple<RdmaConnectionPtr, error> Create(RdmaConnectionType type);
 
     doca_rdma_connection * GetNative() const;
 
@@ -92,7 +104,7 @@ using RdmaConectionsMap = std::map<uint32_t, RdmaConnectionPtr>;  // key: connec
 class RdmaConnectionManager
 {
 public:
-    static std::tuple<RdmaConnectionManagerPtr, error> Create(ConnectionMode mode);
+    static std::tuple<RdmaConnectionManagerPtr, error> Create(RdmaConnectionMode mode);
 
     // Move-only type
     RdmaConnectionManager(const RdmaConnectionManager &) = delete;

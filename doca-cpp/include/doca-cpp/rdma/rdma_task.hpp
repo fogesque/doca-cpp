@@ -14,6 +14,7 @@
 #include "doca-cpp/core/buffer.hpp"
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
+#include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_connection.hpp"
 #include "doca-cpp/rdma/rdma_engine.hpp"
 
@@ -53,9 +54,9 @@ public:
 
     virtual TaskPtr AsTask() = 0;
 
-    virtual error SetBuffer(doca::BufferPtr buffer) = 0;
+    virtual error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) = 0;
 
-    virtual std::tuple<doca::BufferPtr, error> GetBuffer() = 0;
+    virtual std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) = 0;
 };
 
 using RdmaTaskInterfacePtr = std::shared_ptr<RdmaTaskInterface>;
@@ -72,7 +73,7 @@ public:
         BufferPtr buffer = nullptr;
     };
 
-    static std::tuple<doca::rdma::RdmaSendTaskPtr, error> Create(Config & config);
+    static std::tuple<RdmaSendTaskPtr, error> Create(Config & config);
 
     RdmaSendTask() = delete;
 
@@ -80,9 +81,9 @@ public:
 
     TaskPtr AsTask() override;
 
-    error SetBuffer(doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer() override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
 private:
     explicit RdmaSendTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
@@ -100,7 +101,12 @@ using RdmaSendTaskPtr = std::shared_ptr<RdmaSendTask>;
 class RdmaReceiveTask : public RdmaTaskInterface
 {
 public:
-    static std::tuple<std::shared_ptr<RdmaReceiveTaskPtr>, error> Create(RdmaEnginePtr rdmaEngine);
+    struct Config {
+        RdmaEnginePtr rdmaEngine = nullptr;
+        BufferPtr buffer = nullptr;
+    };
+
+    static std::tuple<RdmaReceiveTaskPtr, error> Create(Config & config);
 
     RdmaReceiveTask() = delete;
 
@@ -108,9 +114,9 @@ public:
 
     TaskPtr AsTask() override;
 
-    error SetBuffer(doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer() override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
 private:
     explicit RdmaReceiveTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
@@ -128,7 +134,14 @@ using RdmaReceiveTaskPtr = std::shared_ptr<RdmaReceiveTask>;
 class RdmaWriteTask : public RdmaTaskInterface
 {
 public:
-    static std::tuple<std::shared_ptr<RdmaWriteTaskPtr>, error> Create(RdmaEnginePtr rdmaEngine);
+    struct Config {
+        RdmaEnginePtr rdmaEngine = nullptr;
+        RdmaConnectionPtr rdmaConnection = nullptr;
+        BufferPtr sourceBuffer = nullptr;
+        BufferPtr destinationBuffer = nullptr;
+    };
+
+    static std::tuple<RdmaWriteTaskPtr, error> Create(Config & config);
 
     RdmaWriteTask() = delete;
 
@@ -136,9 +149,9 @@ public:
 
     TaskPtr AsTask() override;
 
-    error SetBuffer(doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer() override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
 private:
     explicit RdmaWriteTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
@@ -156,7 +169,14 @@ using RdmaWriteTaskPtr = std::shared_ptr<RdmaWriteTask>;
 class RdmaReadTask : public RdmaTaskInterface
 {
 public:
-    static std::tuple<std::shared_ptr<RdmaReadTaskPtr>, error> Create(RdmaEnginePtr rdmaEngine);
+    struct Config {
+        RdmaEnginePtr rdmaEngine = nullptr;
+        RdmaConnectionPtr rdmaConnection = nullptr;
+        BufferPtr sourceBuffer = nullptr;
+        BufferPtr destinationBuffer = nullptr;
+    };
+
+    static std::tuple<RdmaReadTaskPtr, error> Create(Config & config);
 
     RdmaReadTask() = delete;
 
@@ -164,9 +184,9 @@ public:
 
     TaskPtr AsTask() override;
 
-    error SetBuffer(doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer() override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
 private:
     explicit RdmaReadTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
