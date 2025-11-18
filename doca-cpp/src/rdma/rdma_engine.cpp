@@ -81,6 +81,36 @@ error RdmaEngine::Initialize()
     return nullptr;
 }
 
+error RdmaEngine::StartContext(std::chrono::milliseconds timeout)
+{
+    auto [rdmaCtx, ctxErr] = this->asContext();
+    if (ctxErr) {
+        return errors::Wrap(ctxErr, "failed to get RDMA context");
+    }
+
+    auto err = rdmaCtx->Start();
+    if (err) {
+        return errors::Wrap(err, "failed to start RDMA context");
+    }
+
+    auto startTime = std::chrono::steady_clock::now();
+    while (true) {
+        auto [state, stateErr] = rdmaCtx->GetState();
+        if (stateErr) {
+            return errors::Wrap(stateErr, "failed to get RDMA context state");
+        }
+        if (state == Context::State::running) {
+            break;
+        }
+        if (std::chrono::steady_clock::now() - startTime > timeout) {
+            return errors::New("timeout while waiting for RDMA context to start");
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    return nullptr;
+}
+
 RdmaEngine::RdmaEngine(RdmaEngineConfig & config)
     : rdmaInstance(config.rdmaInstance), device(config.device), progressEngine(config.progressEngine)
 {
@@ -169,7 +199,39 @@ error RdmaEngine::setTransportType(internal::TransportType transportType)
 
 error RdmaEngine::setCallbacks()
 {
-    return error();
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
+    }
+
+    auto err = FromDocaError(doca_rdma_connection_set_user_data(nullptr, { .ptr = this }));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA connection user data");
+    }
+
+    // TODO: avoid this callbacks shit
+    auto err = FromDocaError(doca_rdma_set_connection_state_callbacks(
+        this->rdmaInstance.get(),
+        [](doca_rdma_connection * rdmaConnection, union doca_data ctxUserData) {
+            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
+            enginePtr->connectionRequestCallback(rdmaConnection, ctxUserData);
+        },
+        [](doca_rdma_connection * rdmaConnection, union doca_data connectionUserData, union doca_data ctxUserData) {
+            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
+            enginePtr->connectionEstablishedCallback(rdmaConnection, connectionUserData, ctxUserData);
+        },
+        [](doca_rdma_connection * rdmaConnection, union doca_data connectionUserData, union doca_data ctxUserData) {
+            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
+            enginePtr->connectionFailureCallback(rdmaConnection, connectionUserData, ctxUserData);
+        },
+        [](doca_rdma_connection * rdmaConnection, union doca_data connectionUserData, union doca_data ctxUserData) {
+            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
+            enginePtr->connectionDisconnectionCallback(rdmaConnection, connectionUserData, ctxUserData);
+        }));
+
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA connection state callbacks");
+    }
+    return nullptr;
 }
 
 namespace internal

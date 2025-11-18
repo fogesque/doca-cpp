@@ -2,10 +2,12 @@
 
 #include <doca_rdma.h>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <span>
 #include <string>
+#include <thread>
 #include <tuple>
 
 #include "doca-cpp/core/buffer.hpp"
@@ -51,6 +53,7 @@ public:
     static std::tuple<RdmaEnginePtr, error> Create(DevicePtr device);
 
     error Initialize();
+    error StartContext(std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
 
     DOCA_CPP_UNSAFE doca_rdma * GetNative() const;
 
@@ -75,6 +78,7 @@ private:
     RdmaInstancePtr rdmaInstance = nullptr;
     DevicePtr device = nullptr;
     ProgressEnginePtr progressEngine = nullptr;
+    RdmaConnectionManagerPtr connectionManager = nullptr;
 
     std::tuple<doca::ContextPtr, error> asContext();
 
@@ -83,6 +87,22 @@ private:
     error setMaxConnections(uint32_t maxConnections);
     error setTransportType(internal::TransportType transportType);
     error setCallbacks();
+
+    struct State {
+        RdmaConnection::State connectionState = RdmaConnection::State::disconnected;
+        Context::State contextState = Context::State::idle;
+    };
+
+    State state = {};
+
+    // DOCA Connection callbacks
+    void connectionRequestCallback(doca_rdma_connection * rdmaConnection, union doca_data ctxUserData);
+    void connectionEstablishedCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
+                                       union doca_data ctxUserData);
+    void connectionFailureCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
+                                   union doca_data ctxUserData);
+    void connectionDisconnectionCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
+                                         union doca_data ctxUserData);
 };
 
 using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;

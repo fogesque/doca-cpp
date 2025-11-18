@@ -6,51 +6,42 @@
 #include <tuple>
 
 #include "doca-cpp/core/device.hpp"
-#include "doca-cpp/rdma/rdma_connection_manager.hpp"
+#include "doca-cpp/rdma/rdma_connection.hpp"
+#include "doca-cpp/rdma/rdma_peer.hpp"
+
+/*
+   TODO: Arhitecture issues:
+   RdmaServer must be a facade for user to run rdma operations after connection is established
+   All operations that initialize DOCA RDMA resources must be hidden inside RdmaServer implementation
+   Now it is handled by RdmaExecutor inside RdmaPeer, but it is too complex now as it has RdmaEngine
+   which manages all RDMA resources and also runs RDMA in other thread.
+   We need to simplify it in the future.
+*/
 
 namespace doca::rdma
 {
 
 class RdmaServer;
-using RdmaServerPtr = std::shared_ptr<RdmaServer>;
-
-namespace internal
-{
-
-// TODO: implement
-class RdmaTaskPool;
-using RdmaTaskPoolPtr = std::shared_ptr<RdmaTaskPool>;
-
-// TODO: implement
-class RdmaConnectionManager;
-using RdmaConnectionManagerPtr = std::shared_ptr<RdmaConnectionManager>;
 
 struct RdmaServerConfig {
-    rdma::ConnectionType connType = rdma::ConnectionType::connManagerIpv4;
-    rdma::Address address = rdma::Address("127.0.0.1:4791");
-    rdma::ConnectionMode mode = rdma::ConnectionMode::client;
+    RdmaConnectionType connType = RdmaConnectionType::connManagerIpv4;
+    uint16_t port = 4791;
 };
 
-using RdmaServerConfigPtr = std::shared_ptr<RdmaServerConfig>;
-
-}  // namespace internal
-
-class RdmaServer
+class RdmaServer : public RdmaPeer
 {
 public:
-    error RegisterTaskPool(internal::RdmaTaskPoolPtr taskPool);
-    error Serve();
+    error StartListenToPort(uint16_t port);
+    error StopListenToPort(uint16_t port);
 
     class Builder
     {
     public:
         ~Builder() = default;
-        Build();
 
         Builder & SetDevice(doca::DevicePtr device);
-        Builder & SetConnectionType(rdma::ConnectionType type);
-        Builder & SetAddress(rdma::Address address);
-        Builder & SetMode(rdma::ConnectionMode mode);
+        Builder & SetConnectionType(RdmaConnectionType type);
+        Builder & SetListenPort(uint16_t port);
 
         std::tuple<RdmaServerPtr, error> Build();
 
@@ -63,10 +54,10 @@ public:
 
         error buildErr = nullptr;
         doca::DevicePtr device = nullptr;
-        internal::RdmaServerConfigPtr serverConfig = nullptr;
+        RdmaServerConfig serverConfig = {};
     };
 
-    static Builder CreateBuilder();
+    static Builder Create();
 
     // Move-only type
     RdmaServer(const RdmaServer &) = delete;
@@ -75,14 +66,15 @@ public:
     RdmaServer & operator=(RdmaServer && other) noexcept;  // TODO: implement
 
 private:
-    explicit RdmaServer(doca::DevicePtr initialDevice, internal::RdmaServerConfigPtr initialConfig = nullptr);
+    explicit RdmaServer(doca::DevicePtr initialDevice, RdmaServerConfig initialConfig);
 
     doca::DevicePtr device = nullptr;
 
-    internal::RdmaServerConfigPtr config = nullptr;
+    RdmaServerConfig config = {};
 
-    internal::RdmaTaskPoolPtr taskPool = nullptr;
-    internal::RdmaConnectionManagerPtr connManager = nullptr;
+    RdmaConnectionManagerPtr connManager = nullptr;
 };
+
+using RdmaServerPtr = std::shared_ptr<RdmaServer>;
 
 }  // namespace doca::rdma
