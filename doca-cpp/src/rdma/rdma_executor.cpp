@@ -74,10 +74,19 @@ void doca::rdma::RdmaExecutor::WorkerLoop()
     std::println("  [RdmaExecutor::Worker] Thread started (thread_id: {})",
                  std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000);
 
+    // Initialize RDMA engine
     auto err = this->rdmaEngine->Initialize();
     if (err) {
         this->running.store(false);
         std::println("  [RdmaExecutor::Worker] ERROR: Failed to initialize RDMA engine: {}", err->What());
+        return;
+    }
+
+    // Start RDMA context with timeout
+    err = this->rdmaEngine->StartContext();
+    if (err) {
+        this->running.store(false);
+        std::println("  [RdmaExecutor::Worker] ERROR: Failed to start RDMA context: {}", err->What());
         return;
     }
 
