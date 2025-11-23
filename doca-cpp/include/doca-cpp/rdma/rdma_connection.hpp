@@ -2,15 +2,19 @@
 
 #include <doca_rdma.h>
 
+#include <chrono>
+#include <cstdint>
 #include <errors/errors.hpp>
 #include <map>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
+#include "doca-cpp/rdma/rdma_engine.hpp"
 
 namespace doca::rdma
 {
@@ -38,15 +42,15 @@ class RdmaAddress
 {
 public:
     enum class Type {
-        ipv4,
-        ipv6,
+        ipv4 = DOCA_RDMA_ADDR_TYPE_IPv4,
+        ipv6 = DOCA_RDMA_ADDR_TYPE_IPv6,
+        gid = DOCA_RDMA_ADDR_TYPE_GID,
     };
 
-    static std::tuple<RdmaAddress, error> Create(Type addrType, const std::string & address, uint16_t port);
+    static std::tuple<RdmaAddressPtr, error> Create(RdmaAddress::Type addressType, const std::string & address,
+                                                    uint16_t port);
 
-    DOCA_CPP_UNSAFE doca_rdma_addr * GetNative() const;
-
-    RdmaAddress(const std::string & address, uint16_t port);
+    DOCA_CPP_UNSAFE doca_rdma_addr * GetNative();
 
     // Move-only type
     RdmaAddress(const RdmaAddress &) = delete;
@@ -55,12 +59,9 @@ public:
     RdmaAddress & operator=(RdmaAddress && other) noexcept = default;
 
 private:
-    explicit RdmaAddress(std::shared_ptr<doca_rdma_addr> initialAddress);
+    explicit RdmaAddress(std::shared_ptr<doca_rdma_addr> initialRdmaAddress);
 
-    std::shared_ptr<doca_rdma_addr> rdamAddress = nullptr;
-
-    std::string address = "";
-    uint16_t port = 0;
+    std::shared_ptr<doca_rdma_addr> rdmaAddress = nullptr;
 };
 
 using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
@@ -72,15 +73,22 @@ class RdmaConnection
 {
 public:
     enum class State {
+        idle,
         requested,
         established,
         failed,
         disconnected,
     };
 
-    static std::tuple<RdmaConnectionPtr, error> Create(RdmaConnectionType type);
+    static RdmaConnectionPtr Create(doca_rdma_connection * nativeConnection);
 
-    doca_rdma_connection * GetNative() const;
+    DOCA_CPP_UNSAFE doca_rdma_connection * GetNative() const;
+
+    void SetState(State newState);
+    RdmaConnection::State GetState() const;
+
+    bool IsAccepted() const;
+    void SetAccepted();
 
     // Move-only type
     RdmaConnection(const RdmaConnection &) = delete;
@@ -89,14 +97,19 @@ public:
     RdmaConnection & operator=(RdmaConnection && other) noexcept;
 
 private:
-    explicit RdmaConnection(std::shared_ptr<doca_rdma_connection> initialRdmaConnection);
-    std::shared_ptr<doca_rdma_connection> rdmaConnection = nullptr;
+    explicit RdmaConnection(doca_rdma_connection * nativeConnection);
+    doca_rdma_connection * rdmaConnection = nullptr;
+
+    RdmaConnection::State connectionState = RdmaConnection::State::idle;
+
+    bool accepted = false;
 };
 
 using RdmaConnectionPtr = std::shared_ptr<RdmaConnection>;
 
 using RdmaConnectionsVector = std::vector<RdmaConnectionPtr>;
-using RdmaConectionsMap = std::map<uint32_t, RdmaConnectionPtr>;  // key: connection ID
+using RdmaConectionsMap =
+    std::map<uint32_t, RdmaConnectionPtr>;  // key: connection ID // TODO: change to UUID via boost::uuid
 
 // ----------------------------------------------------------------------------
 // RdmaConnectionManager
@@ -104,7 +117,33 @@ using RdmaConectionsMap = std::map<uint32_t, RdmaConnectionPtr>;  // key: connec
 class RdmaConnectionManager
 {
 public:
-    static std::tuple<RdmaConnectionManagerPtr, error> Create(RdmaConnectionMode mode);
+    struct Config {
+        RdmaConnectionMode rdmaConnectionMode = RdmaConnectionMode::client;
+        RdmaEnginePtr rdmaEngine = nullptr;
+    };
+
+    static std::tuple<RdmaConnectionManagerPtr, error> Create(RdmaConnectionManager::Config & config);
+
+    // TODO: make client-server architecture: maybe derive RdmaConnectionManager to
+    // RdmaClientConnectionManager and RdmaServerConnectionManager
+
+    // Connect as a client to a remote RDMA address
+    error Connect(RdmaAddress::Type addressType, const std::string & address, std::uint16_t port,
+                  std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
+
+    // Listen as a server on a given port for incoming RDMA connections
+    error ListenToPort(uint16_t port);
+
+    // Accept as a server an incoming RDMA connection
+    error AcceptConnection(std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
+
+    std::tuple<RdmaConnection::State, error> GetConnectionState();
+
+    void SetConnection(RdmaConnectionPtr connection);
+
+    error SetConnectionUserData(RdmaEnginePtr rdmaEngine);
+
+    explicit RdmaConnectionManager(RdmaConnectionManager::Config & config);
 
     // Move-only type
     RdmaConnectionManager(const RdmaConnectionManager &) = delete;
@@ -113,9 +152,35 @@ public:
     RdmaConnectionManager & operator=(RdmaConnectionManager && other) noexcept;
 
 private:
-    RdmaConnectionsVector rdmaConnections;
+    RdmaConnectionPtr rdmaConnection = nullptr;  // TODO: support multiple connections
+    RdmaConnectionMode rdmaConnectionMode = RdmaConnectionMode::client;
+    RdmaEnginePtr rdmaEngine = nullptr;
+
+    error setConnectionStateCallbacks();
+
+    error waitForConnectionState(RdmaConnection::State desiredState,
+                                 std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
+
+    bool timeoutExpired(const std::chrono::steady_clock::time_point & startTime, std::chrono::milliseconds timeout);
 };
 
 using RdmaConnectionManagerPtr = std::shared_ptr<RdmaConnectionManager>;
+
+// Callbacks for DOCA RDMA connection events
+namespace callbacks
+{
+
+void ConnectionRequestCallback(doca_rdma_connection * rdmaConnection, union doca_data ctxUserData);
+
+void ConnectionEstablishedCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
+                                   union doca_data ctxUserData);
+
+void ConnectionFailureCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
+                               union doca_data ctxUserData);
+
+void ConnectionDisconnectionCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
+                                     union doca_data ctxUserData);
+
+}  // namespace callbacks
 
 }  // namespace doca::rdma
