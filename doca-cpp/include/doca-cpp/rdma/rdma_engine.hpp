@@ -16,6 +16,7 @@
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/core/types.hpp"
+#include "doca-cpp/rdma/rdma_connection.hpp"
 
 namespace doca::rdma
 {
@@ -28,12 +29,6 @@ namespace internal
 enum class TransportType {
     rc = DOCA_RDMA_TRANSPORT_TYPE_RC,  // Reliable Connection
     dc = DOCA_RDMA_TRANSPORT_TYPE_DC,  // WTF? Datagram? Dynamic Conn?
-};
-
-enum class AddrType {
-    ipv4 = DOCA_RDMA_ADDR_TYPE_IPv4,
-    ipv6 = DOCA_RDMA_ADDR_TYPE_IPv6,
-    gid = DOCA_RDMA_ADDR_TYPE_GID,
 };
 
 using GID = std::array<uint8_t, sizes::gidByteLength>;
@@ -57,6 +52,12 @@ public:
 
     DOCA_CPP_UNSAFE doca_rdma * GetNative() const;
 
+    void UpdateConnectionState(RdmaConnection::State newState);
+
+    RdmaConnectionManagerPtr GetConnectionManager();
+
+    void Progress();
+
     // Move-only type
     RdmaEngine(const RdmaEngine &) = delete;
     RdmaEngine & operator=(const RdmaEngine &) = delete;
@@ -73,7 +74,6 @@ private:
     };
 
     explicit RdmaEngine(RdmaEngineConfig & config);
-    explicit RdmaEngine() = default;
 
     RdmaInstancePtr rdmaInstance = nullptr;
     DevicePtr device = nullptr;
@@ -86,25 +86,42 @@ private:
     error setGidIndex(uint32_t gidIndex);
     error setMaxConnections(uint32_t maxConnections);
     error setTransportType(internal::TransportType transportType);
+
     error setCallbacks();
-
-    struct State {
-        RdmaConnection::State connectionState = RdmaConnection::State::disconnected;
-        Context::State contextState = Context::State::idle;
-    };
-
-    State state = {};
-
-    // DOCA Connection callbacks
-    void connectionRequestCallback(doca_rdma_connection * rdmaConnection, union doca_data ctxUserData);
-    void connectionEstablishedCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
-                                       union doca_data ctxUserData);
-    void connectionFailureCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
-                                   union doca_data ctxUserData);
-    void connectionDisconnectionCallback(doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
-                                         union doca_data ctxUserData);
 };
 
 using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
+
+namespace callbacks
+{
+
+void ContextStateChangedCallback(const union doca_data user_data, struct doca_ctx * ctx,
+                                 enum doca_ctx_states prev_state, enum doca_ctx_states next_state);
+
+void ReceiveTaskCompletionCallback(struct doca_rdma_task_receive * task, union doca_data task_user_data,
+                                   union doca_data ctx_user_data);
+
+void ReceiveTaskErrorCallback(struct doca_rdma_task_receive * task, union doca_data task_user_data,
+                              union doca_data ctx_user_data);
+
+void SendTaskCompletionCallback(struct doca_rdma_task_send * task, union doca_data task_user_data,
+                                union doca_data ctx_user_data);
+
+void SendTaskErrorCallback(struct doca_rdma_task_send * task, union doca_data task_user_data,
+                           union doca_data ctx_user_data);
+
+void ReadTaskCompletionCallback(struct doca_rdma_task_read * task, union doca_data task_user_data,
+                                union doca_data ctx_user_data);
+
+void ReadTaskErrorCallback(struct doca_rdma_task_read * task, union doca_data task_user_data,
+                           union doca_data ctx_user_data);
+
+void WriteTaskCompletionCallback(struct doca_rdma_task_write * task, union doca_data task_user_data,
+                                 union doca_data ctx_user_data);
+
+void WriteTaskErrorCallback(struct doca_rdma_task_write * task, union doca_data task_user_data,
+                            union doca_data ctx_user_data);
+
+}  // namespace callbacks
 
 }  // namespace doca::rdma

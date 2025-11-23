@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/rdma_engine.hpp"
 
+#include "rdma_engine.hpp"
+
 namespace doca::rdma
 {
 
@@ -78,6 +80,18 @@ error RdmaEngine::Initialize()
         return errors::Wrap(err, "failed to set RDMA engine callbacks");
     }
 
+    // TODO: Create buffer inventory
+
+    // TODO: Set ctx state changed callback
+
+    // Set ctx user data to this RdmaEngine
+
+    // TODO: Set RDMA tasks callbacks
+
+    // Start RDMA context and wait till it's running
+
+    // Create Connection Manager
+
     return nullptr;
 }
 
@@ -137,6 +151,11 @@ doca_rdma * RdmaEngine::GetNative() const
     return this->rdmaInstance.get();
 }
 
+RdmaConnectionManagerPtr RdmaEngine::GetConnectionManager()
+{
+    return this->connectionManager;
+}
+
 std::tuple<doca::ContextPtr, error> RdmaEngine::asContext()
 {
     doca_ctx * ctx = nullptr;
@@ -193,43 +212,6 @@ error RdmaEngine::setTransportType(internal::TransportType transportType)
         doca_rdma_set_transport_type(this->rdmaInstance.get(), static_cast<doca_rdma_transport_type>(transportType)));
     if (err) {
         return errors::Wrap(err, "failed to set RDMA transport type");
-    }
-    return nullptr;
-}
-
-error RdmaEngine::setCallbacks()
-{
-    if (!this->rdmaInstance) {
-        return errors::New("RDMA instance is not initialized");
-    }
-
-    auto err = FromDocaError(doca_rdma_connection_set_user_data(nullptr, { .ptr = this }));
-    if (err) {
-        return errors::Wrap(err, "failed to set RDMA connection user data");
-    }
-
-    // TODO: avoid this callbacks shit
-    auto err = FromDocaError(doca_rdma_set_connection_state_callbacks(
-        this->rdmaInstance.get(),
-        [](doca_rdma_connection * rdmaConnection, union doca_data ctxUserData) {
-            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
-            enginePtr->connectionRequestCallback(rdmaConnection, ctxUserData);
-        },
-        [](doca_rdma_connection * rdmaConnection, union doca_data connectionUserData, union doca_data ctxUserData) {
-            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
-            enginePtr->connectionEstablishedCallback(rdmaConnection, connectionUserData, ctxUserData);
-        },
-        [](doca_rdma_connection * rdmaConnection, union doca_data connectionUserData, union doca_data ctxUserData) {
-            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
-            enginePtr->connectionFailureCallback(rdmaConnection, connectionUserData, ctxUserData);
-        },
-        [](doca_rdma_connection * rdmaConnection, union doca_data connectionUserData, union doca_data ctxUserData) {
-            auto enginePtr = static_cast<RdmaEngine *>(ctxUserData.ptr);
-            enginePtr->connectionDisconnectionCallback(rdmaConnection, connectionUserData, ctxUserData);
-        }));
-
-    if (err) {
-        return errors::Wrap(err, "failed to set RDMA connection state callbacks");
     }
     return nullptr;
 }
