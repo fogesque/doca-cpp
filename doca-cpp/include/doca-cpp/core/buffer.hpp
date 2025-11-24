@@ -73,13 +73,14 @@ public:
     class Builder
     {
     public:
-        std::tuple<BufferInventory, error> Start();
+        std::tuple<BufferInventoryPtr, error> Start();
+
+        ~Builder();
 
     private:
         friend class BufferInventory;
 
         explicit Builder(doca_buf_inventory * plainInventory);
-        ~Builder();
 
         Builder(const Builder &) = delete;
         Builder & operator=(const Builder &) = delete;

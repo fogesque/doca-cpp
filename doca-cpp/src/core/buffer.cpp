@@ -190,30 +190,32 @@ BufferInventory::Builder & BufferInventory::Builder::operator=(Builder && other)
     return *this;
 }
 
-std::tuple<BufferInventory, error> BufferInventory::Builder::Start()
+std::tuple<BufferInventoryPtr, error> BufferInventory::Builder::Start()
 {
     if (this->buildErr) {
         if (this->inventory) {
             doca_buf_inventory_destroy(this->inventory);
             this->inventory = nullptr;
         }
-        return { BufferInventory(nullptr), buildErr };
+        return { nullptr, buildErr };
     }
 
     if (!this->inventory) {
-        return { BufferInventory(nullptr), errors::New("inventory is null") };
+        return { nullptr, errors::New("inventory is null") };
     }
 
     auto err = FromDocaError(doca_buf_inventory_start(this->inventory));
     if (err) {
         doca_buf_inventory_destroy(this->inventory);
         this->inventory = nullptr;
-        return { BufferInventory(nullptr), errors::Wrap(err, "failed to start inventory") };
+        return { nullptr, errors::Wrap(err, "failed to start inventory") };
     }
 
     auto managedInventory = std::shared_ptr<doca_buf_inventory>(this->inventory, BufferInventoryDeleter());
     this->inventory = nullptr;
-    return { BufferInventory(managedInventory), nullptr };
+
+    auto bufferInventoryPtr = std::make_shared<BufferInventory>(managedInventory);
+    return { bufferInventoryPtr, nullptr };
 }
 
 // ----------------------------------------------------------------------------
