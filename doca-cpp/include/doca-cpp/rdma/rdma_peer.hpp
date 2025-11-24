@@ -15,15 +15,10 @@
 namespace doca::rdma
 {
 
-enum class RdmaPeerType {
-    rdmaServer,
-    rdmaClient,
-};
-
 class RdmaPeer
 {
 public:
-    explicit RdmaPeer(RdmaPeerType type) : executor(std::make_shared<RdmaExecutor>()), peerType(type) {}
+    explicit RdmaPeer(RdmaConnectionRole peerRole) : executor(std::make_shared<RdmaExecutor>(peerRole)) {}
 
     std::tuple<RdmaAwaitable, error> Send(RdmaBufferPtr buffer)
     {
@@ -62,7 +57,6 @@ public:
 
 private:
     RdmaExecutorPtr executor = nullptr;
-    RdmaPeerType peerType = RdmaPeerType::rdmaClient;
 };
 
 using RdmaPeerPtr = std::shared_ptr<RdmaPeer>;
