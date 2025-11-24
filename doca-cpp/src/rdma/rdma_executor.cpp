@@ -1,31 +1,95 @@
 #include "doca-cpp/rdma/rdma_executor.hpp"
 
-std::tuple<doca::rdma::RdmaExecutorPtr, error> doca::rdma::RdmaExecutor::Create(doca::DevicePtr device)
+using doca::rdma::OperationRequest;
+using doca::rdma::RdmaConnectionRole;
+using doca::rdma::RdmaEnginePtr;
+using doca::rdma::RdmaExecutor;
+using doca::rdma::RdmaExecutorPtr;
+
+std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(RdmaConnectionRole connectionRole, doca::DevicePtr device)
 {
     if (device == nullptr) {
         return { nullptr, errors::New("device is null") };
     }
 
-    auto [rdmaEngine, err] = RdmaEngine::Create(device);
+    // Create Connection Manager
+    auto [connManager, err] = RdmaConnectionManager::Create(connectionRole);
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RDMA engine for executor") };
+        return { nullptr, errors::Wrap(err, "failed to create RDMA Connection Manager") };
     }
+
+    // Create RDMA engine
+    auto [rdmaEngine, err] = RdmaEngine::Create(connectionRole, connManager, device);
+    if (err) {
+        return { nullptr, errors::Wrap(err, "failed to create RDMA Engine") };
+    }
+    connManager->AttachToRdmaEngine(rdmaEngine);
 
     auto rdmaExecutor = std::make_shared<RdmaExecutor>(rdmaEngine, device);
 
     return { rdmaExecutor, nullptr };
 }
 
-doca::rdma::RdmaExecutor::RdmaExecutor(RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice)
-    : rdmaEngine(initialRdmaEngine), device(initialDevice)
+error doca::rdma::RdmaExecutor::Start()
 {
-    std::println("[RdmaExecutor] Initializing...");
+    if (this->running.load()) {
+        return errors::New("RdmaExecutor is already running");
+    }
+
+    if (this->rdmaEngine == nullptr) {
+        return errors::New("RdmaEngine is not initialized");
+    }
+
+    // Initialize RDMA engine
+    auto err = this->rdmaEngine->Initialize();
+    if (err) {
+        return errors::Wrap(err, "failed to initialize RDMA engine");
+    }
+
+    auto connManager = this->rdmaEngine->GetConnectionManager();
+    const auto & connRole = connManager->GetConnectionRole();
+
+    const uint16_t serverPort = 12345;                  // TODO: make port configurable
+    const std::string serverAddress = "192.168.88.92";  // TODO: make address configurable
+
+    // Server Role
+    if (connRole == RdmaConnectionRole::server) {
+        // Listen for incoming connections
+        auto err = connManager->ListenToPort(serverPort);  // TODO: make port configurable
+        if (err) {
+            return errors::Wrap(err, "failed to start listening on port 4791");
+        }
+        // Accept incoming connection
+        const auto acceptTimeout =
+            std::chrono::milliseconds(30000);  // 30 seconds // TODO: make server listening in cycle
+        err = connManager->AcceptConnection(acceptTimeout);
+        if (err) {
+            return errors::Wrap(err, "failed to accept incoming RDMA connection");
+        }
+    }
+
+    // Client Role
+    if (connRole == RdmaConnectionRole::client) {
+        // Connect to server
+        auto err = connManager->Connect(RdmaAddress::Type::ipv4, serverAddress, serverPort);
+        if (err) {
+            return errors::Wrap(err, "failed to connect to RDMA server");
+        }
+    }
+
+    // Start worker thread
     this->running.store(true);
-    this->workerThread = std::thread([this] { this->WorkerLoop(); });
+    this->workerThread = std::make_unique<std::thread>([this] { this->WorkerLoop(); });
     std::println("[RdmaExecutor] Initialized successfully");
 }
 
-doca::rdma::RdmaExecutor::~RdmaExecutor()
+RdmaExecutor::RdmaExecutor(RdmaConnectionRole connectionRole, RdmaEnginePtr initialRdmaEngine,
+                           doca::DevicePtr initialDevice)
+    : rdmaEngine(initialRdmaEngine), device(initialDevice), running(false), workerThread(nullptr)
+{
+}
+
+RdmaExecutor::~RdmaExecutor()
 {
     std::println("[RdmaExecutor] Shutting down...");
     {
@@ -34,13 +98,13 @@ doca::rdma::RdmaExecutor::~RdmaExecutor()
     }
     this->queueCondVar.notify_one();
 
-    if (this->workerThread.joinable()) {
-        this->workerThread.join();
+    if (this->workerThread->joinable()) {
+        this->workerThread->join();
     }
     std::println("[RdmaExecutor] Shutdown complete");
 }
 
-error doca::rdma::RdmaExecutor::SubmitOperation(OperationRequest request)
+error RdmaExecutor::SubmitOperation(OperationRequest request)
 {
     std::println("[RdmaExecutor] Submitting {} operation", request.type == OperationRequest::Type::Send      ? "Send"
                                                            : request.type == OperationRequest::Type::Receive ? "Receive"
@@ -64,31 +128,15 @@ error doca::rdma::RdmaExecutor::SubmitOperation(OperationRequest request)
     return nullptr;
 }
 
-const doca::rdma::RdmaExecutor::Statistics & doca::rdma::RdmaExecutor::GetStatistics() const
+const RdmaExecutor::Statistics & RdmaExecutor::GetStatistics() const
 {
     return this->stats;
 }
 
-void doca::rdma::RdmaExecutor::WorkerLoop()
+void RdmaExecutor::WorkerLoop()
 {
     std::println("  [RdmaExecutor::Worker] Thread started (thread_id: {})",
                  std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000);
-
-    // Initialize RDMA engine
-    auto err = this->rdmaEngine->Initialize();
-    if (err) {
-        this->running.store(false);
-        std::println("  [RdmaExecutor::Worker] ERROR: Failed to initialize RDMA engine: {}", err->What());
-        return;
-    }
-
-    // Start RDMA context with timeout
-    err = this->rdmaEngine->StartContext();
-    if (err) {
-        this->running.store(false);
-        std::println("  [RdmaExecutor::Worker] ERROR: Failed to start RDMA context: {}", err->What());
-        return;
-    }
 
     while (true) {
         OperationRequest request;
@@ -109,7 +157,7 @@ void doca::rdma::RdmaExecutor::WorkerLoop()
     }
 }
 
-error doca::rdma::RdmaExecutor::ExecuteOperation(const OperationRequest & request)
+error RdmaExecutor::ExecuteOperation(const OperationRequest & request)
 {
     std::println("    [RdmaExecutor] Executing {} operation on RDMA thread",
                  request.type == OperationRequest::Type::Send      ? "Send"
@@ -131,7 +179,7 @@ error doca::rdma::RdmaExecutor::ExecuteOperation(const OperationRequest & reques
     return errors::New("Unknown operation type");
 }
 
-error doca::rdma::RdmaExecutor::ExecuteSend(const OperationRequest & request)
+error RdmaExecutor::ExecuteSend(const OperationRequest & request)
 {
     std::println("    [ExecuteSend] Preparing RDMA send...");
 
@@ -158,7 +206,7 @@ error doca::rdma::RdmaExecutor::ExecuteSend(const OperationRequest & request)
     return nullptr;
 }
 
-error doca::rdma::RdmaExecutor::ExecuteReceive(const OperationRequest & request)
+error RdmaExecutor::ExecuteReceive(const OperationRequest & request)
 {
     std::println("    [ExecuteReceive] Preparing RDMA receive...");
 
@@ -181,7 +229,7 @@ error doca::rdma::RdmaExecutor::ExecuteReceive(const OperationRequest & request)
     return nullptr;
 }
 
-error doca::rdma::RdmaExecutor::ExecuteRead(const OperationRequest & request)
+error RdmaExecutor::ExecuteRead(const OperationRequest & request)
 {
     std::println("    [ExecuteRead] Executing RDMA read...");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -190,7 +238,7 @@ error doca::rdma::RdmaExecutor::ExecuteRead(const OperationRequest & request)
     return nullptr;
 }
 
-error doca::rdma::RdmaExecutor::ExecuteWrite(const OperationRequest & request)
+error RdmaExecutor::ExecuteWrite(const OperationRequest & request)
 {
     std::println("    [ExecuteWrite] Executing RDMA write...");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

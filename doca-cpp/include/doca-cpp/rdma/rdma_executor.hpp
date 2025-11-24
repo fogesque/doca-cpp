@@ -48,10 +48,12 @@ class RdmaExecutor
 public:
     const std::size_t TasksQueueSizeThreshold = 20;
 
-    static std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr device);
+    static std::tuple<RdmaExecutorPtr, error> Create(RdmaConnectionRole connectionRole, doca::DevicePtr device);
+
+    error Start();
 
     RdmaExecutor() = delete;
-    RdmaExecutor(RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice);
+    RdmaExecutor(RdmaConnectionRole connectionRole, RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice);
     ~RdmaExecutor();
 
     RdmaExecutor(const RdmaExecutor &) = delete;
@@ -84,7 +86,7 @@ private:
     error ExecuteWrite(const OperationRequest & request);
 
     std::atomic<bool> running;
-    std::thread workerThread;
+    std::unique_ptr<std::thread> workerThread = nullptr;
     std::queue<OperationRequest> operationQueue;
     std::mutex queueMutex;
     std::condition_variable queueCondVar;
