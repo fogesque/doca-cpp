@@ -32,13 +32,20 @@ enum class TransportType {
     dc = DOCA_RDMA_TRANSPORT_TYPE_DC,  // WTF? Datagram? Dynamic Conn?
 };
 
-using Gid = std::array<uint8_t, sizes::gidByteLength>;
+// using Gid = std::array<uint8_t, sizes::gidByteLength>; // TODO: use it?
 
 struct RdmaInstanceDeleter {
     void operator()(doca_rdma * rdma) const;
 };
 
 }  // namespace internal
+
+enum class RdmaOperationRequestType {
+    send,
+    receive,
+    read,
+    write,
+};
 
 // ----------------------------------------------------------------------------
 // RdmaEngine
@@ -59,6 +66,13 @@ public:
     RdmaConnectionManagerPtr GetConnectionManager();
 
     void Progress();
+
+    error Send(RdmaBufferPtr buffer);
+
+    std::tuple<TaskPtr, error> CreateSendTask(doca::BufferPtr sourceBuffer);
+    std::tuple<TaskPtr, error> CreateReceiveTask(doca::BufferPtr destinationBuffer);
+    std::tuple<TaskPtr, error> CreateReadTask(doca::BufferPtr sourceBuffer, doca::BufferPtr destinationBuffer);
+    std::tuple<TaskPtr, error> CreateWriteTask(doca::BufferPtr sourceBuffer, doca::BufferPtr destinationBuffer);
 
     // Move-only type
     RdmaEngine(const RdmaEngine &) = delete;
@@ -100,6 +114,7 @@ private:
 };
 
 using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
+using RdmaEngineWeakPtr = std::weak_ptr<RdmaEngine>;
 
 namespace callbacks
 {

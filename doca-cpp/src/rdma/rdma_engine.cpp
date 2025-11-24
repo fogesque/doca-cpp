@@ -5,6 +5,7 @@ using doca::rdma::RdmaConnectionManagerPtr;
 using doca::rdma::RdmaConnectionRole;
 using doca::rdma::RdmaEngine;
 using doca::rdma::RdmaEnginePtr;
+using doca::rdma::TaskPtr;
 
 // TODO: check what num_tasks actually means in tasks set_conf() functions and make it configurable
 namespace constants
@@ -182,6 +183,47 @@ doca_rdma * RdmaEngine::GetNative() const
 RdmaConnectionManagerPtr RdmaEngine::GetConnectionManager()
 {
     return this->connectionManager;
+}
+
+error doca::rdma::RdmaEngine::Send(RdmaBufferPtr buffer)
+{
+    if (buffer == nullptr) {
+        return errors::New("RdmaBuffer is null");
+    }
+
+    if (this->rdmaInstance == nullptr) {
+        return errors::New("RDMA instance is not initialized");
+    }
+
+    buffer->LockMemory();
+
+    // Get memory range from buffer
+    auto [memoryRange, err] = buffer->GetMemoryRange();
+    if (err) {
+        return errors::Wrap(err, "failed to get memory range from RdmaBuffer");
+    }
+
+    // Create memory map for the send buffer
+    auto [bufferMmap, err] = doca::MemoryMap::Create()
+                                 .AddDevice(this->device)
+                                 .SetPermissions(doca::AccessFlags::localReadWrite)
+                                 .SetMemoryRange(*memoryRange)
+                                 .Start();
+    if (err) {
+        return errors::Wrap(err, "failed to create memory map for send buffer");
+    }
+
+    auto [docaBuffer, err] = this->bufferInventory->AllocBuffer(bufferMmap, *memoryRange);
+    if (err) {
+        return errors::Wrap(err, "failed to allocate DOCA buffer from buffer inventory");
+    }
+
+    auto sendTaskConfig = doca::rdma::RdmaSendTask::Config{
+        .rdmaEngine = this->rdmaEngine,
+        .buffer = nullptr,  // TODO: set buffer
+    };
+
+    return error();
 }
 
 std::tuple<doca::ContextPtr, error> RdmaEngine::asContext()
