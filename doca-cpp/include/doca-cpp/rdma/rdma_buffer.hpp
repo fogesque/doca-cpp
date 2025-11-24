@@ -5,13 +5,14 @@
 #include <errors/errors.hpp>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <tuple>
 #include <vector>
 
 namespace doca::rdma
 {
 
-using MemoryRange = std::vector<std::byte>;
+using MemoryRange = std::span<std::byte>;
 using MemoryRangePtr = std::shared_ptr<MemoryRange>;
 
 namespace ErrorTypes
@@ -72,7 +73,7 @@ public:
         if (this->memoryRange == nullptr) {
             return 0;
         }
-        return this->memoryRange->size();
+        return this->memoryRange->size_bytes();
     }
 
 private:
