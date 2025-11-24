@@ -1,14 +1,9 @@
 #include "doca-cpp/core/mmap.hpp"
 
-namespace doca
-{
-
-void MemoryMapDeleter::operator()(doca_mmap * mmap) const
-{
-    if (mmap) {
-        doca_mmap_destroy(mmap);
-    }
-}
+using doca::AccessFlags;
+using doca::DevicePtr;
+using doca::MemoryMap;
+using doca::MemoryMapPtr;
 
 // ----------------------------------------------------------------------------
 // MemoryMap::Builder
@@ -24,7 +19,7 @@ explicit MemoryMap::Builder::Builder(doca_mmap * plainMmap, DevicePtr device)
 MemoryMap::Builder::~Builder()
 {
     if (this->mmap) {
-        doca_mmap_destroy(this->mmap);
+        std::ignore = doca_mmap_destroy(this->mmap);
     }
 }
 
@@ -38,7 +33,7 @@ MemoryMap::Builder & MemoryMap::Builder::operator=(Builder && other) noexcept
 {
     if (this != &other) {
         if (this->mmap) {
-            doca_mmap_destroy(this->mmap);
+            std::ignore = doca_mmap_destroy(this->mmap);
         }
         this->mmap = other.mmap;
         this->buildErr = other.buildErr;
@@ -75,7 +70,7 @@ MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(std::span<std::byte> buf
 {
     if (this->mmap && !this->buildErr) {
         auto dataPtr = static_cast<void *>(buffer.data());
-        auto dataLength = buffer.size_bytes();
+        auto dataLength = buffer.size();
         auto err = FromDocaError(doca_mmap_set_memrange(this->mmap, dataPtr, dataLength));
         if (err) {
             this->buildErr = errors::Wrap(err, "failed to set memory range");
@@ -107,34 +102,33 @@ MemoryMap::Builder & MemoryMap::Builder::SetUserData(const Data & data)
     return *this;
 }
 
-std::tuple<MemoryMap, error> MemoryMap::Builder::Start()
+std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
 {
     if (this->buildErr) {
         if (this->mmap) {
-            doca_mmap_destroy(this->mmap);
+            std::ignore = doca_mmap_destroy(this->mmap);
             this->mmap = nullptr;
         }
-        return { MemoryMap(nullptr), this->buildErr };
+        return { nullptr, this->buildErr };
     }
 
     if (!this->mmap) {
-        return { MemoryMap(nullptr), errors::New("mmap is null") };
+        return { nullptr, errors::New("mmap is null") };
     }
 
     if (!this->device) {
-        return { MemoryMap(nullptr), errors::New("no device added to mmap") };
+        return { nullptr, errors::New("no device added to mmap") };
     }
 
     auto err = FromDocaError(doca_mmap_start(this->mmap));
     if (err) {
-        doca_mmap_destroy(this->mmap);
+        std::ignore = doca_mmap_destroy(this->mmap);
         this->mmap = nullptr;
-        return { MemoryMap(nullptr), errors::Wrap(err, "failed to start mmap") };
+        return { nullptr, errors::Wrap(err, "failed to start mmap") };
     }
 
-    auto managedMmap = std::unique_ptr<doca_mmap, MemoryMapDeleter>(this->mmap);
-    this->mmap = nullptr;
-    return { MemoryMap(std::move(managedMmap), this->device), nullptr };
+    auto memoryMapPtr = std::make_shared<MemoryMap>(this->mmap, this->device, std::make_shared<Deleter>());
+    return { memoryMapPtr, nullptr };
 }
 
 // ----------------------------------------------------------------------------
@@ -151,12 +145,11 @@ MemoryMap::Builder MemoryMap::Create()
     return Builder(mmap);
 }
 
-MemoryMap::Builder MemoryMap::CreateFromExport(std::span<const std::byte> exportDesc, DevicePtr dev)
+MemoryMap::Builder MemoryMap::CreateFromExport(std::span<std::byte> exportDesc, DevicePtr dev)
 {
     doca_mmap * mmap = nullptr;
     doca_data * userData = nullptr;
-    auto exportDescPtr = const_cast<std::byte *>(exportDesc.data());
-    auto err = FromDocaError(doca_mmap_create_from_export(userData, static_cast<void *>(exportDescPtr),
+    auto err = FromDocaError(doca_mmap_create_from_export(userData, static_cast<void *>(exportDesc.data()),
                                                           exportDesc.size(), dev->GetNative(), &mmap));
     if (err) {
         return Builder(nullptr);
@@ -164,9 +157,24 @@ MemoryMap::Builder MemoryMap::CreateFromExport(std::span<const std::byte> export
     return Builder(mmap, dev);
 }
 
-MemoryMap::MemoryMap(std::shared_ptr<doca_mmap> initialMemoryMap, DevicePtr device)
-    : memoryMap(initialMemoryMap), device(device)
+MemoryMap::MemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter)
+    : memoryMap(initialMemoryMap), device(device), deleter(deleter)
 {
+}
+
+void doca::MemoryMap::Deleter::Delete(doca_mmap * mmap)
+{
+    if (mmap) {
+        std::ignore = doca_mmap_stop(mmap);
+        std::ignore = doca_mmap_destroy(mmap);
+    }
+}
+
+MemoryMap::~MemoryMap()
+{
+    if (this->memoryMap && this->deleter) {
+        this->deleter->Delete(this->memoryMap);
+    }
 }
 
 error MemoryMap::Stop()
@@ -174,7 +182,7 @@ error MemoryMap::Stop()
     if (!this->memoryMap) {
         return errors::New("mmap is null");
     }
-    auto err = FromDocaError(doca_mmap_stop(this->memoryMap.get()));
+    auto err = FromDocaError(doca_mmap_stop(this->memoryMap));
     if (err) {
         return errors::Wrap(err, "failed to stop mmap");
     }
@@ -189,7 +197,7 @@ error MemoryMap::RemoveDevice()
     if (!this->memoryMap) {
         return errors::New("mmap is null");
     }
-    auto err = FromDocaError(doca_mmap_rm_dev(this->memoryMap.get(), this->device->GetNative()));
+    auto err = FromDocaError(doca_mmap_rm_dev(this->memoryMap, this->device->GetNative()));
     if (err) {
         return errors::Wrap(err, "failed to deregister device from mmap");
     }
@@ -208,8 +216,8 @@ std::tuple<std::span<const std::byte>, error> MemoryMap::ExportPci() const
     const void * exportDesc = nullptr;
     size_t exportDescLen = 0;
 
-    auto err = FromDocaError(
-        doca_mmap_export_pci(this->memoryMap.get(), this->device->GetNative(), &exportDesc, &exportDescLen));
+    auto err =
+        FromDocaError(doca_mmap_export_pci(this->memoryMap, this->device->GetNative(), &exportDesc, &exportDescLen));
     if (err) {
         return { {}, errors::Wrap(err, "failed to export mmap for PCI") };
     }
@@ -229,8 +237,8 @@ std::tuple<std::span<const std::byte>, error> MemoryMap::ExportRdma() const
     const void * exportDesc = nullptr;
     size_t exportDescLen = 0;
 
-    auto err = FromDocaError(
-        doca_mmap_export_rdma(this->memoryMap.get(), this->device->GetNative(), &exportDesc, &exportDescLen));
+    auto err =
+        FromDocaError(doca_mmap_export_rdma(this->memoryMap, this->device->GetNative(), &exportDesc, &exportDescLen));
     if (err) {
         return { {}, errors::Wrap(err, "failed to export mmap for RDMA") };
     }
@@ -240,7 +248,5 @@ std::tuple<std::span<const std::byte>, error> MemoryMap::ExportRdma() const
 
 doca_mmap * MemoryMap::GetNative() const
 {
-    return this->memoryMap.get();
+    return this->memoryMap;
 }
-
-}  // namespace doca

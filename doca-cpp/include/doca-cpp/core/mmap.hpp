@@ -14,10 +14,6 @@
 namespace doca
 {
 
-struct MemoryMapDeleter {
-    void operator()(doca_mmap * mmap) const;
-};
-
 // ----------------------------------------------------------------------------
 // MemoryMap
 // ----------------------------------------------------------------------------
@@ -34,7 +30,7 @@ public:
         Builder & SetMemoryRange(std::span<std::byte> buffer);
         Builder & SetMaxNumDevices(uint32_t maxDevices);
         Builder & SetUserData(const Data & data);
-        std::tuple<MemoryMap, error> Start();
+        std::tuple<MemoryMapPtr, error> Start();
 
     private:
         friend class MemoryMap;
@@ -52,7 +48,7 @@ public:
     };
 
     static Builder Create();
-    static Builder CreateFromExport(std::span<const std::byte> exportDesc, DevicePtr device);
+    static Builder CreateFromExport(std::span<std::byte> exportDesc, DevicePtr device);
 
     // Move-only type
     MemoryMap(const MemoryMap &) = delete;
@@ -67,12 +63,23 @@ public:
 
     DOCA_CPP_UNSAFE doca_mmap * GetNative() const;
 
-private:
-    explicit MemoryMap(std::shared_ptr<doca_mmap> initialMemoryMap, DevicePtr device = nullptr);
+    struct Deleter {
+        void Delete(doca_mmap * mmap);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    std::shared_ptr<doca_mmap> memoryMap = nullptr;
+    ~MemoryMap();
+
+private:
+    explicit MemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter);
+
+    doca_mmap * memoryMap = nullptr;
 
     DevicePtr device = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
+
+using MemoryMapPtr = std::shared_ptr<MemoryMap>;
 
 }  // namespace doca
