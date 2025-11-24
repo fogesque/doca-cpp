@@ -79,7 +79,12 @@ error doca::rdma::RdmaExecutor::Start()
 
     // Start worker thread
     this->running.store(true);
-    this->workerThread = std::make_unique<std::thread>([this] { this->WorkerLoop(); });
+    if (connRole == RdmaConnectionRole::server) {
+        this->workerThread = std::make_unique<std::thread>([this] { this->ServerWorkerLoop(); });
+    }
+    if (connRole == RdmaConnectionRole::client) {
+        this->workerThread = std::make_unique<std::thread>([this] { this->ClientWorkerLoop(); });
+    }
     std::println("[RdmaExecutor] Initialized successfully");
 }
 
@@ -133,7 +138,7 @@ const RdmaExecutor::Statistics & RdmaExecutor::GetStatistics() const
     return this->stats;
 }
 
-void RdmaExecutor::WorkerLoop()
+void RdmaExecutor::ClientWorkerLoop()
 {
     std::println("  [RdmaExecutor::Worker] Thread started (thread_id: {})",
                  std::hash<std::thread::id>{}(std::this_thread::get_id()) % 10000);
@@ -183,22 +188,16 @@ error RdmaExecutor::ExecuteSend(const OperationRequest & request)
 {
     std::println("    [ExecuteSend] Preparing RDMA send...");
 
-    // Get memory range from buffer
-    auto [range, err] = request.buffer->GetMemoryRange();
+    auto & buffer = request.buffer;
+    buffer->LockMemory();
+
+    auto err = this->rdmaEngine->Send(buffer);
     if (err) {
         std::println("    [ExecuteSend] ERROR: {}", err->What());
+        request.buffer->UnlockMemory();
         this->stats.failedOperations++;
         return err;
     }
-
-    // Lock memory in buffer
-    request.buffer->LockMemory();
-
-    // this->rdmaEngine->SubmitTask();
-
-    // while (!this->rdmaEngine->Progressed()) {    }
-
-    // Unlock memory in buffer
     request.buffer->UnlockMemory();
 
     std::println("    [ExecuteSend] Send completed successfully");
