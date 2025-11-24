@@ -12,9 +12,9 @@
 namespace doca
 {
 
+// Forward declarations
 class ProgressEngine;
-
-class Context;  // forward declaration
+class Context;
 
 // ----------------------------------------------------------------------------
 // Context
@@ -29,19 +29,15 @@ public:
         stopping = DOCA_CTX_STATE_STOPPING,
     };
 
-    explicit Context(doca_ctx * context) : ctx(context) {}
+    explicit Context(doca_ctx * context);
 
-    virtual ~Context() = default;
+    virtual ~Context();
 
     error Start();
 
     error Stop();
 
-    error ConnectToProgressEngine(ProgressEnginePtr progressEngine);
-
     std::tuple<size_t, error> GetNumInflightTasks() const;
-
-    error SetStateChangedCallback(StateChangedCallback callback);
 
     std::tuple<State, error> GetState() const;
 
@@ -52,15 +48,9 @@ public:
     DOCA_CPP_UNSAFE error SetUserData(const Data & data);
 
 private:
-    static void stateChangedCallback(const doca_data userData, doca_ctx * ctx, doca_ctx_states prevState,
-                                     doca_ctx_states nextState);
-
     doca_ctx * ctx;
-    StateChangedCallback stateCallback = nullptr;
 };
 
 using ContextPtr = std::shared_ptr<Context>;
-
-using StateChangedCallback = std::function<void(const Data &, Context::State, Context::State)>;
 
 }  // namespace doca

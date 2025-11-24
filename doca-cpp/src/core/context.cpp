@@ -6,6 +6,14 @@
 // Context
 // ----------------------------------------------------------------------------
 
+doca::Context::Context(doca_ctx * context) : ctx(context) {}
+
+doca::Context::~Context()
+{
+    std::ignore = this->FlushTasks();
+    std::ignore = this->Stop();
+}
+
 error doca::Context::Start()
 {
     if (!this->ctx) {
@@ -30,12 +38,6 @@ error doca::Context::Stop()
     return nullptr;
 }
 
-error doca::Context::ConnectToProgressEngine(ProgressEnginePtr progressEngine)
-{
-    auto self = std::make_shared<Context>(*this);
-    return progressEngine->ConnectContext(self);
-}
-
 std::tuple<size_t, error> doca::Context::GetNumInflightTasks() const
 {
     if (!this->ctx) {
@@ -47,24 +49,6 @@ std::tuple<size_t, error> doca::Context::GetNumInflightTasks() const
         return { 0, errors::Wrap(err, "failed to get number of inflight tasks") };
     }
     return { numTasks, nullptr };
-}
-
-error doca::Context::SetStateChangedCallback(StateChangedCallback callback)
-{
-    if (!this->ctx) {
-        return errors::New("context is null");
-    }
-
-    // Store the callback
-    this->stateCallback = std::move(callback);
-
-    // Set C callback that forwards to our C++ callback
-    auto err = FromDocaError(doca_ctx_set_state_changed_cb(this->ctx, &Context::stateChangedCallback));
-    if (err) {
-        return errors::Wrap(err, "failed to set state changed callback");
-    }
-
-    return nullptr;
 }
 
 std::tuple<doca::Context::State, error> doca::Context::GetState() const
@@ -104,11 +88,4 @@ DOCA_CPP_UNSAFE error doca::Context::SetUserData(const Data & data)
         return errors::Wrap(err, "failed to set user data");
     }
     return nullptr;
-}
-
-// TODO: remove if not used
-void doca::Context::stateChangedCallback(const doca_data userData, doca_ctx * ctx, doca_ctx_states prevState,
-                                         doca_ctx_states nextState)
-{
-    return;
 }
