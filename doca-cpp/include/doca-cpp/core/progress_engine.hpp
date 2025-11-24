@@ -17,14 +17,6 @@ class Context;
 class ProgressEngine;
 class Task;
 
-struct ProgressEngineDeleter {
-    void operator()(doca_pe * pe) const;
-};
-
-struct TaskDeleter {
-    void operator()(doca_task * task) const;
-};
-
 enum class MaxTasksInBatch {
     tasks16 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_16,
     tasks32 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_32,
@@ -97,10 +89,17 @@ public:
     ProgressEngine(ProgressEngine && other) noexcept = default;
     ProgressEngine & operator=(ProgressEngine && other) noexcept = default;
 
-private:
-    explicit ProgressEngine(std::shared_ptr<doca_pe> initialProgressEngine);
+    struct Deleter {
+        void Delete(doca_pe * pe);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    std::shared_ptr<doca_pe> progressEngine = nullptr;
+private:
+    explicit ProgressEngine(doca_pe * initialProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
+
+    doca_pe * progressEngine = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
 
 using ProgressEnginePtr = std::shared_ptr<ProgressEngine>;
