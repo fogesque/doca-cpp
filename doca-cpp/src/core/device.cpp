@@ -1,21 +1,12 @@
 #include "doca-cpp/core/device.hpp"
 
-namespace doca
-{
-
-void DeviceListDeleter::operator()(doca_devinfo ** devList) const
-{
-    if (devList) {
-        doca_devinfo_destroy_list(devList);
-    }
-}
-
-void DeviceDeleter::operator()(doca_dev * dev) const
-{
-    if (dev) {
-        doca_dev_close(dev);
-    }
-}
+using doca::Device;
+using doca::DeviceInfo;
+using doca::DeviceInfoPtr;
+using doca::DeviceList;
+using doca::DeviceListPtr;
+using doca::DevicePtr;
+using doca::PciFuncType;
 
 // ----------------------------------------------------------------------------
 // DeviceInfo
@@ -192,21 +183,29 @@ doca_devinfo * DeviceInfo::GetNative() const
 // DeviceList
 // ----------------------------------------------------------------------------
 
-std::tuple<DeviceList, error> DeviceList::Create()
+std::tuple<DeviceListPtr, error> DeviceList::Create()
 {
     doca_devinfo ** devList = nullptr;
     uint32_t nbDevs = 0;
-
     auto err = FromDocaError(doca_devinfo_create_list(&devList, &nbDevs));
     if (err) {
-        return { DeviceList(nullptr, 0), errors::Wrap(err, "failed to create device list") };
+        return { nullptr, errors::Wrap(err, "failed to create device list") };
     }
-
-    auto managedList = std::shared_ptr<doca_devinfo *>(devList, DeviceListDeleter());
-    return { DeviceList(managedList, nbDevs), nullptr };
+    auto managedList = std::make_shared<DeviceList>(devList, nbDevs, DeviceList::Deleter());
+    return { managedList, nullptr };
 }
 
-DeviceList::DeviceList(std::shared_ptr<doca_devinfo *> list, uint32_t count) : deviceList(list), numDevices(count) {}
+DeviceList::~DeviceList()
+{
+    if (this->deleter && this->deviceList) {
+        this->deleter->Delete(this->deviceList);
+    }
+}
+
+DeviceList::DeviceList(doca_devinfo ** list, uint32_t count, DeleterPtr deleter)
+    : deviceList(list), numDevices(count), deleter(deleter)
+{
+}
 
 std::tuple<DeviceInfo, error> DeviceList::GetIbDeviceInfo(const std::string_view & ibDevname) const
 {
@@ -254,35 +253,35 @@ bool DeviceList::Iterator::operator!=(const Iterator & other) const
 
 DeviceList::Iterator DeviceList::Begin() const
 {
-    return Iterator(this->deviceList.get(), 0);
+    return Iterator(this->deviceList, 0);
 }
 
 DeviceList::Iterator DeviceList::End() const
 {
-    return Iterator(this->deviceList.get(), this->numDevices);
+    return Iterator(this->deviceList, this->numDevices);
 }
 
 // ----------------------------------------------------------------------------
 // Device
 // ----------------------------------------------------------------------------
 
-std::tuple<Device, error> Device::Open(const DeviceInfo & devInfo)
+std::tuple<DevicePtr, error> Device::Open(const DeviceInfoPtr devInfo)
 {
     doca_dev * dev = nullptr;
-    auto err = FromDocaError(doca_dev_open(devInfo.GetNative(), &dev));
+    auto err = FromDocaError(doca_dev_open(devInfo->GetNative(), &dev));
     if (err) {
-        return { Device(nullptr), errors::Wrap(err, "failed to open device") };
+        return { nullptr, errors::Wrap(err, "failed to open device") };
     }
 
-    auto managedDev = std::shared_ptr<doca_dev>(dev, DeviceDeleter());
-    return { Device(managedDev), nullptr };
+    auto managedDev = std::make_shared<Device>(dev, Device::Deleter());
+    return { managedDev, nullptr };
 }
 
-Device::Device(std::shared_ptr<doca_dev> initialDevice) : device(initialDevice) {}
+Device::Device(doca_dev * initialDevice, Device::DeleterPtr deleter) : device(initialDevice), deleter(deleter) {}
 
 error Device::AccelerateResourceReclaim() const
 {
-    auto err = FromDocaError(doca_dev_accelerate_resource_reclaim(this->device.get()));
+    auto err = FromDocaError(doca_dev_accelerate_resource_reclaim(this->device));
     if (err) {
         return errors::Wrap(err, "failed to accelerate resource reclaim for device");
     }
@@ -291,12 +290,31 @@ error Device::AccelerateResourceReclaim() const
 
 DeviceInfo Device::GetDeviceInfo() const
 {
-    return DeviceInfo(doca_dev_as_devinfo(this->device.get()));
+    return DeviceInfo(doca_dev_as_devinfo(this->device));
 }
 
 doca_dev * Device::GetNative() const
 {
-    return this->device.get();
+    return this->device;
 }
 
-}  // namespace doca
+doca::Device::~Device()
+{
+    if (this->deleter && this->device) {
+        this->deleter->Delete(this->device);
+    }
+}
+
+void doca::Device::Deleter::Delete(doca_dev * dev)
+{
+    if (dev) {
+        doca_dev_close(dev);
+    }
+}
+
+void doca::DeviceList::Deleter::Delete(doca_devinfo ** devList)
+{
+    if (devList) {
+        doca_devinfo_destroy_list(devList);
+    }
+}

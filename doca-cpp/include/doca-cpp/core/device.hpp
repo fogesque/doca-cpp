@@ -30,13 +30,6 @@ namespace internal
 constexpr std::array<std::string_view, sizes::supportedDeviceSize> supportedDevices = { "mlx5_0", "mlx5_1" };
 
 }  // namespace internal
-struct DeviceListDeleter {
-    void operator()(doca_devinfo ** devList) const;
-};
-
-struct DeviceDeleter {
-    void operator()(doca_dev * dev) const;
-};
 
 // ----------------------------------------------------------------------------
 // DeviceInfo
@@ -86,7 +79,7 @@ using DeviceInfoPtr = std::shared_ptr<DeviceInfo>;
 class DeviceList
 {
 public:
-    static std::tuple<DeviceList, error> Create();
+    static std::tuple<DeviceListPtr, error> Create();
 
     // Move-only type
     DeviceList(const DeviceList &) = delete;
@@ -114,11 +107,20 @@ public:
     Iterator Begin() const;
     Iterator End() const;
 
-private:
-    DeviceList(std::shared_ptr<doca_devinfo *> initialDeviceList, uint32_t count);
+    struct Deleter {
+        void Delete(doca_devinfo ** devList);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    std::shared_ptr<doca_devinfo *> deviceList = nullptr;
+    ~DeviceList();
+
+private:
+    DeviceList(doca_devinfo ** initialDeviceList, uint32_t count, DeleterPtr deleter);
+
+    doca_devinfo ** deviceList = nullptr;
     uint32_t numDevices = 0;
+
+    DeleterPtr deleter = nullptr;
 };
 
 using DeviceListPtr = std::shared_ptr<DeviceList>;
@@ -129,7 +131,7 @@ using DeviceListPtr = std::shared_ptr<DeviceList>;
 class Device
 {
 public:
-    static std::tuple<Device, error> Open(const DeviceInfo & devInfo);
+    static std::tuple<DevicePtr, error> Open(const DeviceInfoPtr devInfo);
 
     // Move-only type
     Device(const Device &) = delete;
@@ -142,10 +144,19 @@ public:
     DeviceInfo GetDeviceInfo() const;
     DOCA_CPP_UNSAFE doca_dev * GetNative() const;
 
-private:
-    explicit Device(std::shared_ptr<doca_dev> initialDevice);
+    struct Deleter {
+        void Delete(doca_dev * dev);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    std::shared_ptr<doca_dev> device = nullptr;
+    ~Device();
+
+private:
+    explicit Device(doca_dev * initialDevice, DeleterPtr deleter);
+
+    doca_dev * device = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
 
 using DevicePtr = std::shared_ptr<Device>;
