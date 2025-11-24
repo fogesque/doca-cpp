@@ -26,7 +26,7 @@ enum class RdmaConnectionType {
     connManagerGid,
 };
 
-enum class RdmaConnectionMode {
+enum class RdmaConnectionRole {
     server,
     client,
 };
@@ -117,12 +117,7 @@ using RdmaConectionsMap =
 class RdmaConnectionManager
 {
 public:
-    struct Config {
-        RdmaConnectionMode rdmaConnectionMode = RdmaConnectionMode::client;
-        RdmaEnginePtr rdmaEngine = nullptr;
-    };
-
-    static std::tuple<RdmaConnectionManagerPtr, error> Create(RdmaConnectionManager::Config & config);
+    static std::tuple<RdmaConnectionManagerPtr, error> Create(RdmaConnectionRole connectionRole);
 
     // TODO: make client-server architecture: maybe derive RdmaConnectionManager to
     // RdmaClientConnectionManager and RdmaServerConnectionManager
@@ -139,11 +134,15 @@ public:
 
     std::tuple<RdmaConnection::State, error> GetConnectionState();
 
+    error AttachToRdmaEngine(RdmaEnginePtr rdmaEngine);
+
     void SetConnection(RdmaConnectionPtr connection);
 
     error SetConnectionUserData(RdmaEnginePtr rdmaEngine);
 
-    explicit RdmaConnectionManager(RdmaConnectionManager::Config & config);
+    explicit RdmaConnectionManager(RdmaConnectionRole connectionRole);
+
+    RdmaConnectionRole GetConnectionRole() const;
 
     // Move-only type
     RdmaConnectionManager(const RdmaConnectionManager &) = delete;
@@ -153,7 +152,7 @@ public:
 
 private:
     RdmaConnectionPtr rdmaConnection = nullptr;  // TODO: support multiple connections
-    RdmaConnectionMode rdmaConnectionMode = RdmaConnectionMode::client;
+    RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
     RdmaEnginePtr rdmaEngine = nullptr;
 
     error setConnectionStateCallbacks();

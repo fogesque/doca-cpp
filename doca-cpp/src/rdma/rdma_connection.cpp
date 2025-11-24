@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/rdma_connection.hpp"
 
+#include "rdma_connection.hpp"
+
 using doca::rdma::RdmaAddress;
 using doca::rdma::RdmaAddressDeleter;
 using doca::rdma::RdmaAddressPtr;
@@ -7,6 +9,7 @@ using doca::rdma::RdmaConnection;
 using doca::rdma::RdmaConnectionManager;
 using doca::rdma::RdmaConnectionManagerPtr;
 using doca::rdma::RdmaConnectionPtr;
+using doca::rdma::RdmaConnectionRole;
 using doca::rdma::RdmaEngine;
 using doca::rdma::RdmaEnginePtr;
 
@@ -87,19 +90,19 @@ void doca::rdma::RdmaConnection::SetAccepted()
 // RdmaConnectionManager
 // ----------------------------------------------------------------------------
 
-std::tuple<RdmaConnectionManagerPtr, error> RdmaConnectionManager::Create(RdmaConnectionManager::Config & config)
+std::tuple<RdmaConnectionManagerPtr, error> RdmaConnectionManager::Create(RdmaConnectionRole connectionRole)
 {
-    auto connManager = std::make_shared<RdmaConnectionManager>(config);
-    auto err = connManager->setConnectionStateCallbacks();
-    if (err) {
-        return { nullptr, errors::Wrap(err, "failed to set RDMA connection state callbacks") };
-    }
+    auto connManager = std::make_shared<RdmaConnectionManager>(connectionRole);
     return { connManager, nullptr };
 }
 
 error RdmaConnectionManager::Connect(RdmaAddress::Type addressType, const std::string & address, std::uint16_t port,
                                      std::chrono::milliseconds timeout)
 {
+    if (this->rdmaConnectionRole != RdmaConnectionRole::client) {
+        return errors::New("RdmaConnectionManager is not configured as client");
+    }
+
     if (this->rdmaEngine == nullptr) {
         return errors::New("RdmaEngine is null");
     }
@@ -143,8 +146,12 @@ error RdmaConnectionManager::Connect(RdmaAddress::Type addressType, const std::s
     return nullptr;
 }
 
-error doca::rdma::RdmaConnectionManager::ListenToPort(uint16_t port)
+error RdmaConnectionManager::ListenToPort(uint16_t port)
 {
+    if (this->rdmaConnectionRole != RdmaConnectionRole::server) {
+        return errors::New("RdmaConnectionManager is not configured as server");
+    }
+
     if (this->rdmaEngine == nullptr) {
         return errors::New("RdmaEngine is null");
     }
@@ -157,9 +164,12 @@ error doca::rdma::RdmaConnectionManager::ListenToPort(uint16_t port)
     return nullptr;
 }
 
-error doca::rdma::RdmaConnectionManager::AcceptConnection(
-    std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+error RdmaConnectionManager::AcceptConnection(std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
 {
+    if (this->rdmaConnectionRole != RdmaConnectionRole::server) {
+        return errors::New("RdmaConnectionManager is not configured as server");
+    }
+
     if (this->rdmaEngine == nullptr) {
         return errors::New("RdmaEngine is null");
     }
@@ -217,13 +227,17 @@ error doca::rdma::RdmaConnectionManager::AcceptConnection(
     return err;
 }
 
-RdmaConnectionManager::RdmaConnectionManager(RdmaConnectionManager::Config & config)
-    : rdmaConnectionMode(config.rdmaConnectionMode), rdmaEngine(config.rdmaEngine),
-      rdmaConnection(RdmaConnection::Create(nullptr))
+RdmaConnectionManager::RdmaConnectionManager(RdmaConnectionRole connectionRole)
+    : rdmaConnectionRole(connectionRole), rdmaEngine(nullptr), rdmaConnection(RdmaConnection::Create(nullptr))
 {
 }
 
-std::tuple<RdmaConnection::State, error> doca::rdma::RdmaConnectionManager::GetConnectionState()
+RdmaConnectionRole RdmaConnectionManager::GetConnectionRole() const
+{
+    return this->rdmaConnectionRole;
+}
+
+std::tuple<RdmaConnection::State, error> RdmaConnectionManager::GetConnectionState()
 {
     if (this->rdmaConnection == nullptr) {
         return { RdmaConnection::State::idle, errors::New("RdmaConnection is null") };
@@ -231,12 +245,27 @@ std::tuple<RdmaConnection::State, error> doca::rdma::RdmaConnectionManager::GetC
     return { this->rdmaConnection->GetState(), nullptr };
 }
 
+error RdmaConnectionManager::AttachToRdmaEngine(RdmaEnginePtr rdmaEngine)
+{
+    if (rdmaEngine == nullptr) {
+        return errors::New("RdmaEngine is null");
+    }
+
+    auto err = this->setConnectionStateCallbacks();
+    if (err) {
+        return { nullptr, errors::Wrap(err, "failed to set RDMA connection state callbacks") };
+    }
+
+    this->rdmaEngine = rdmaEngine;
+    return nullptr;
+}
+
 void RdmaConnectionManager::SetConnection(RdmaConnectionPtr connection)
 {
     this->rdmaConnection = connection;
 }
 
-error doca::rdma::RdmaConnectionManager::SetConnectionUserData(RdmaEnginePtr rdmaEngine)
+error RdmaConnectionManager::SetConnectionUserData(RdmaEnginePtr rdmaEngine)
 {
     if (this->rdmaConnection == nullptr) {
         return errors::New("RdmaConnection is null");
@@ -271,8 +300,8 @@ error RdmaConnectionManager::setConnectionStateCallbacks()
     return err;
 }
 
-error doca::rdma::RdmaConnectionManager::waitForConnectionState(RdmaConnection::State desiredState,
-                                                                std::chrono::milliseconds timeout)
+error RdmaConnectionManager::waitForConnectionState(RdmaConnection::State desiredState,
+                                                    std::chrono::milliseconds timeout)
 {
     if (this->rdmaConnection == nullptr) {
         return errors::New("RdmaConnection is null");
@@ -291,8 +320,8 @@ error doca::rdma::RdmaConnectionManager::waitForConnectionState(RdmaConnection::
 
     return nullptr;
 }
-bool doca::rdma::RdmaConnectionManager::timeoutExpired(const std::chrono::steady_clock::time_point & startTime,
-                                                       std::chrono::milliseconds timeout)
+bool RdmaConnectionManager::timeoutExpired(const std::chrono::steady_clock::time_point & startTime,
+                                           std::chrono::milliseconds timeout)
 {
     if (timeout == std::chrono::milliseconds::zero()) {
         return false;
