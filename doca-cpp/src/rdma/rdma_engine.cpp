@@ -1,15 +1,30 @@
 #include "doca-cpp/rdma/rdma_engine.hpp"
 
-#include "rdma_engine.hpp"
+using doca::DevicePtr;
+using doca::rdma::RdmaConnectionManagerPtr;
+using doca::rdma::RdmaConnectionRole;
+using doca::rdma::RdmaEngine;
+using doca::rdma::RdmaEnginePtr;
 
-namespace doca::rdma
+// TODO: check what num_tasks actually means in tasks set_conf() functions and make it configurable
+namespace constants
 {
+const size_t tasksNumber = 1;
+const size_t maxConnections = 1;
+const size_t bufferInventorySize = 16;  // Took from DOCA samples, need to investigate optimal size
+}  // namespace constants
 
-std::tuple<RdmaEnginePtr, error> RdmaEngine::Create(DevicePtr device)
+std::tuple<RdmaEnginePtr, error> RdmaEngine::Create(RdmaConnectionRole connectionRole,
+                                                    RdmaConnectionManagerPtr connManager, DevicePtr device)
 {
     // Validate device
     if (device == nullptr) {
         return { nullptr, errors::New("device is null") };
+    }
+
+    // Validate Connection Manager
+    if (connManager == nullptr) {
+        return { nullptr, errors::New("Connection Manager is null") };
     }
 
     // Create Progress Engine
@@ -31,6 +46,8 @@ std::tuple<RdmaEnginePtr, error> RdmaEngine::Create(DevicePtr device)
         .device = device,
         .progressEngine = progressEngine,
         .rdmaInstance = rdmaInstance,
+        .connectionRole = connectionRole,
+        .connectionManager = connManager,
     };
 
     // Create RdmaEngine
@@ -51,9 +68,7 @@ error RdmaEngine::Initialize()
     // err = this->setGidIndex(0);
 
     // Set maximum connections
-    // TODO: make configurable
-    constexpr uint32_t maxConnections = 1;
-    err = this->setMaxConnections(maxConnections);
+    err = this->setMaxConnections(constants::maxConnections);
     if (err) {
         return errors::Wrap(err, "failed to set RDMA engine maximum connections");
     }
@@ -64,33 +79,44 @@ error RdmaEngine::Initialize()
         return errors::Wrap(err, "failed to set RDMA engine transport type");
     }
 
-    // Connect RDMA context to Progress Engine
+    // Fetch RDMA context from RDMA instance
     auto [rdmaCtx, ctxErr] = this->asContext();
     if (ctxErr) {
         return errors::Wrap(ctxErr, "failed to get RDMA context");
     }
-    err = this->progressEngine->ConnectContext(rdmaCtx);
+    this->rdmaContext = rdmaCtx;
+
+    // Set RDMA engine as user data in RDMA context
+    auto ctxUserData = doca::Data(static_cast<void *>(this));
+    err = this->rdmaContext->SetUserData(ctxUserData);
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA engine as user data in RDMA context");
+    }
+
+    // Set ctx state changed callback
+    err = this->setContextStateChangedCallback();
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA context state changed callback");
+    }
+
+    // Connect RDMA context to Progress Engine
+    err = this->progressEngine->ConnectContext(this->rdmaContext);
     if (err) {
         return errors::Wrap(err, "failed to connect RDMA context to Progress Engine");
     }
 
-    // Set callbacks for RDMA events
-    err = this->setCallbacks();
+    // Set callbacks for RDMA tasks
+    err = this->setRdmaTasksCallbacks();
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA engine callbacks");
+        return errors::Wrap(err, "failed to set RDMA tasks callbacks");
     }
 
-    // TODO: Create buffer inventory
-
-    // TODO: Set ctx state changed callback
-
-    // Set ctx user data to this RdmaEngine
-
-    // TODO: Set RDMA tasks callbacks
-
-    // Start RDMA context and wait till it's running
-
-    // Create Connection Manager
+    // Create and start buffer inventory
+    auto [bufferInventory, bufInvErr] = doca::BufferInventory::Create(constants::bufferInventorySize).Start();
+    if (bufInvErr) {
+        return errors::Wrap(bufInvErr, "failed to create and start RDMA buffer inventory");
+    }
+    this->bufferInventory = bufferInventory;
 
     return nullptr;
 }
@@ -126,12 +152,14 @@ error RdmaEngine::StartContext(std::chrono::milliseconds timeout)
 }
 
 RdmaEngine::RdmaEngine(RdmaEngineConfig & config)
-    : rdmaInstance(config.rdmaInstance), device(config.device), progressEngine(config.progressEngine)
+    : rdmaInstance(config.rdmaInstance), device(config.device), progressEngine(config.progressEngine),
+      connectionRole(config.connectionRole), connectionManager(config.connectionManager)
 {
 }
 
 RdmaEngine::RdmaEngine(RdmaEngine && other) noexcept
-    : rdmaInstance(other.rdmaInstance), device(other.device), progressEngine(other.progressEngine)
+    : rdmaInstance(other.rdmaInstance), device(other.device), progressEngine(other.progressEngine),
+      connectionRole(other.connectionRole), connectionManager(other.connectionManager)
 {
 }
 
@@ -216,7 +244,70 @@ error RdmaEngine::setTransportType(internal::TransportType transportType)
     return nullptr;
 }
 
-namespace internal
+error RdmaEngine::setRdmaTasksCallbacks()
+{
+    error joinedErr = nullptr;
+
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
+    }
+
+    // Set Receive Task callbacks
+    auto err = FromDocaError(
+        doca_rdma_task_receive_set_conf(this->rdmaInstance.get(), callbacks::ReceiveTaskCompletionCallback,
+                                        callbacks::ReceiveTaskErrorCallback, constants::tasksNumber));
+    if (err) {
+        joinedErr = errors::Join(joinedErr, errors::Wrap(err, "failed to set RDMA Receive Task callbacks"));
+    }
+
+    // Set Send Task callbacks
+    auto err =
+        FromDocaError(doca_rdma_task_send_set_conf(this->rdmaInstance.get(), callbacks::SendTaskCompletionCallback,
+                                                   callbacks::SendTaskErrorCallback, constants::tasksNumber));
+    if (err) {
+        joinedErr = errors::Join(joinedErr, errors::Wrap(err, "failed to set RDMA Send Task callbacks"));
+    }
+
+    // Set Read Task callbacks
+    auto err =
+        FromDocaError(doca_rdma_task_read_set_conf(this->rdmaInstance.get(), callbacks::ReadTaskCompletionCallback,
+                                                   callbacks::ReadTaskErrorCallback, constants::tasksNumber));
+    if (err) {
+        joinedErr = errors::Join(joinedErr, errors::Wrap(err, "failed to set RDMA Read Task callbacks"));
+    }
+
+    // Set Write Task callbacks
+    auto err =
+        FromDocaError(doca_rdma_task_write_set_conf(this->rdmaInstance.get(), callbacks::WriteTaskCompletionCallback,
+                                                    callbacks::WriteTaskErrorCallback, constants::tasksNumber));
+    if (err) {
+        joinedErr = errors::Join(joinedErr, errors::Wrap(err, "failed to set RDMA Write Task callbacks"));
+    }
+
+    return joinedErr;
+}
+
+error RdmaEngine::setContextStateChangedCallback()
+{
+    if (!this->rdmaInstance) {
+        return errors::New("RDMA instance is not initialized");
+    }
+
+    if (!this->rdmaContext) {
+        return errors::New("RDMA context is not initialized");
+    }
+
+    // Set Receive Task callbacks
+    auto err = FromDocaError(
+        doca_ctx_set_state_changed_cb(this->rdmaContext->GetNative(), callbacks::ContextStateChangedCallback));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA Context state changed callback");
+    }
+
+    return nullptr;
+}
+
+namespace doca::rdma::internal
 {
 
 void RdmaInstanceDeleter::operator()(doca_rdma * rdma) const
@@ -226,6 +317,4 @@ void RdmaInstanceDeleter::operator()(doca_rdma * rdma) const
     }
 }
 
-}  // namespace internal
-
-}  // namespace doca::rdma
+}  // namespace doca::rdma::internal

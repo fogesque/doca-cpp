@@ -17,6 +17,7 @@
 #include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/core/types.hpp"
 #include "doca-cpp/rdma/rdma_connection.hpp"
+#include "doca-cpp/rdma/rdma_task.hpp"
 
 namespace doca::rdma
 {
@@ -31,7 +32,7 @@ enum class TransportType {
     dc = DOCA_RDMA_TRANSPORT_TYPE_DC,  // WTF? Datagram? Dynamic Conn?
 };
 
-using GID = std::array<uint8_t, sizes::gidByteLength>;
+using Gid = std::array<uint8_t, sizes::gidByteLength>;
 
 struct RdmaInstanceDeleter {
     void operator()(doca_rdma * rdma) const;
@@ -45,7 +46,8 @@ struct RdmaInstanceDeleter {
 class RdmaEngine
 {
 public:
-    static std::tuple<RdmaEnginePtr, error> Create(DevicePtr device);
+    static std::tuple<RdmaEnginePtr, error> Create(RdmaConnectionRole connectionRole,
+                                                   RdmaConnectionManagerPtr connManager, doca::DevicePtr device);
 
     error Initialize();
     error StartContext(std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
@@ -68,17 +70,23 @@ private:
     using RdmaInstancePtr = std::shared_ptr<doca_rdma>;
 
     struct RdmaEngineConfig {
-        DevicePtr device = nullptr;
-        ProgressEnginePtr progressEngine = nullptr;
+        doca::DevicePtr device = nullptr;
+        doca::ProgressEnginePtr progressEngine = nullptr;
         RdmaInstancePtr rdmaInstance = nullptr;
+        RdmaConnectionRole connectionRole = RdmaConnectionRole::client;
+        RdmaConnectionManagerPtr connectionManager = nullptr;
     };
 
     explicit RdmaEngine(RdmaEngineConfig & config);
 
     RdmaInstancePtr rdmaInstance = nullptr;
-    DevicePtr device = nullptr;
-    ProgressEnginePtr progressEngine = nullptr;
+    doca::DevicePtr device = nullptr;
+    doca::ProgressEnginePtr progressEngine = nullptr;
     RdmaConnectionManagerPtr connectionManager = nullptr;
+    doca::BufferInventoryPtr bufferInventory = nullptr;
+    doca::ContextPtr rdmaContext = nullptr;
+
+    RdmaConnectionRole connectionRole = RdmaConnectionRole::client;
 
     std::tuple<doca::ContextPtr, error> asContext();
 
@@ -87,7 +95,8 @@ private:
     error setMaxConnections(uint32_t maxConnections);
     error setTransportType(internal::TransportType transportType);
 
-    error setCallbacks();
+    error setRdmaTasksCallbacks();
+    error setContextStateChangedCallback();
 };
 
 using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
