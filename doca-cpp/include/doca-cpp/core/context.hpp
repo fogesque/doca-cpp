@@ -37,7 +37,7 @@ public:
 
     error Stop();
 
-    error ConnectToProgressEngine(ProgressEngine & pe);
+    error ConnectToProgressEngine(ProgressEnginePtr progressEngine);
 
     std::tuple<size_t, error> GetNumInflightTasks() const;
 
@@ -49,9 +49,9 @@ public:
 
     DOCA_CPP_UNSAFE doca_ctx * GetNative() const;
 
-private:
-    DOCA_CPP_UNSAFE error setUserData(const Data & data);
+    DOCA_CPP_UNSAFE error SetUserData(const Data & data);
 
+private:
     static void stateChangedCallback(const doca_data userData, doca_ctx * ctx, doca_ctx_states prevState,
                                      doca_ctx_states nextState);
 
@@ -61,7 +61,6 @@ private:
 
 using ContextPtr = std::shared_ptr<Context>;
 
-using StateChangedCallback =
-    std::function<void(const Data & userData, Context::State prevState, Context::State nextState)>;
+using StateChangedCallback = std::function<void(const Data &, Context::State, Context::State)>;
 
 }  // namespace doca
