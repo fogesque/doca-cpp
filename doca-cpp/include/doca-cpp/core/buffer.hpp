@@ -16,12 +16,8 @@ namespace doca
 {
 
 // Forward declarations
-class BufferInventory;
 class Buffer;
-
-struct BufferDeleter {
-    void operator()(doca_buf * buf) const;
-};
+class BufferInventory;
 
 struct BufferInventoryDeleter {
     void operator()(doca_buf_inventory * inv) const;
@@ -33,7 +29,13 @@ struct BufferInventoryDeleter {
 class Buffer
 {
 public:
-    explicit Buffer(std::shared_ptr<doca_buf> initialBuffer);
+    struct Deleter {
+        void Delete(doca_buf * buf);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
+
+    static BufferPtr CreateRef(doca_buf * nativeBuffer);
+    static BufferPtr Create(doca_buf * nativeBuffer);
 
     std::tuple<size_t, error> GetLength() const;
     std::tuple<size_t, error> GetDataLength() const;
@@ -56,10 +58,16 @@ public:
     Buffer(Buffer && other) noexcept = default;
     Buffer & operator=(Buffer && other) noexcept = default;
 
+    ~Buffer();
+
 private:
+    explicit Buffer(doca_buf * nativeBuffer, DeleterPtr deleter = nullptr);
+
     friend class BufferInventory;
 
-    std::shared_ptr<doca_buf> buffer = nullptr;
+    doca_buf * buffer = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
 
 using BufferPtr = std::shared_ptr<Buffer>;
@@ -91,10 +99,15 @@ public:
         error buildErr = nullptr;
     };
 
+    struct BufferInventoryDeleter {
+        void Delete(doca_buf_inventory * inv);
+    };
+    using BufferInventoryDeleterPtr = std::shared_ptr<BufferInventoryDeleter>;
+
     static Builder Create(size_t numElements);
 
-    std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, void * address, size_t length);
-    std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, std::span<std::byte> data);
+    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, void * address, size_t length);
+    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, std::span<std::byte> data);
 
     error Stop();
     doca_buf_inventory * GetNative() const;
@@ -106,9 +119,11 @@ public:
     BufferInventory & operator=(BufferInventory && other) noexcept = default;
 
 private:
-    explicit BufferInventory(std::shared_ptr<doca_buf_inventory> initialInventory);
+    explicit BufferInventory(doca_buf_inventory * initialInventory);
 
-    std::shared_ptr<doca_buf_inventory> inventory = nullptr;
+    doca_buf_inventory * inventory = nullptr;
+
+    BufferInventoryDeleterPtr deleter = nullptr;
 };
 
 using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
