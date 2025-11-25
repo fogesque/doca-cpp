@@ -21,23 +21,27 @@
 namespace doca::rdma
 {
 
+// Forward declarations
 class RdmaServer;
 
-struct RdmaServerConfig {
-    RdmaConnectionType connType = RdmaConnectionType::connManagerIpv4;
-    uint16_t port = 4791;
-};
-
+// ----------------------------------------------------------------------------
+// RdmaServer
+// ----------------------------------------------------------------------------
 class RdmaServer : public RdmaPeer
 {
 public:
-    error StartListenToPort(uint16_t port);
-    error StopListenToPort(uint16_t port);
+    error Serve();
+
+    struct Config {
+        RdmaConnectionType connType = RdmaConnectionType::connManagerIpv4;
+        uint16_t port = 4791;
+    };
 
     class Builder
     {
     public:
         ~Builder() = default;
+        Builder() = default;
 
         Builder & SetDevice(doca::DevicePtr device);
         Builder & SetConnectionType(RdmaConnectionType type);
@@ -54,7 +58,7 @@ public:
 
         error buildErr = nullptr;
         doca::DevicePtr device = nullptr;
-        RdmaServerConfig serverConfig = {};
+        RdmaServer::Config serverConfig = {};
     };
 
     static Builder Create();
@@ -66,11 +70,11 @@ public:
     RdmaServer & operator=(RdmaServer && other) noexcept;  // TODO: implement
 
 private:
-    explicit RdmaServer(doca::DevicePtr initialDevice, RdmaServerConfig initialConfig);
+    explicit RdmaServer(doca::DevicePtr initialDevice, RdmaServer::Config initialConfig);
 
     doca::DevicePtr device = nullptr;
 
-    RdmaServerConfig config = {};
+    RdmaServer::Config config = {};
 
     RdmaConnectionManagerPtr connManager = nullptr;
 };

@@ -15,10 +15,19 @@
 namespace doca::rdma
 {
 
+// ----------------------------------------------------------------------------
+// RdmaPeer
+// ----------------------------------------------------------------------------
 class RdmaPeer
 {
 public:
     explicit RdmaPeer(RdmaConnectionRole peerRole) : executor(std::make_shared<RdmaExecutor>(peerRole)) {}
+
+    error StartExecutor()
+    {
+        auto err = this->executor->Start();
+        return err;
+    }
 
     std::tuple<RdmaAwaitable, error> Send(RdmaBufferPtr buffer)
     {
