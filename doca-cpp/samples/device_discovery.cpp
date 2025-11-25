@@ -16,16 +16,16 @@ int main()
         return 1;
     }
 
-    std::println("Found {} DOCA device(s)\n", devices.Size());
+    std::println("Found {} DOCA device(s)\n", devices->Size());
 
-    if (devices.Size() == 0) {
+    if (devices->Size() == 0) {
         std::println("No DOCA devices found. Please ensure DOCA-compatible hardware is available.");
         return 0;
     }
 
     // Query device information
     size_t devNum = 0;
-    for (auto devIter = devices.Begin(); devIter != devices.End(); ++devIter) {
+    for (auto devIter = devices->Begin(); devIter != devices->End(); ++devIter) {
         auto devInfo = *devIter;
 
         std::println("Device #{}:", devNum++);
@@ -83,7 +83,7 @@ int main()
 
     // Open the first device
     std::println("Opening first device...");
-    auto firstDeviceInfo = *devices.Begin();
+    auto firstDeviceInfo = *devices->Begin();
     auto [device, openErr] = doca::Device::Open(firstDeviceInfo);
     if (openErr) {
         std::println("Error opening device: {}", openErr->What());

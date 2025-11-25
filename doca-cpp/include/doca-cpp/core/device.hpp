@@ -131,7 +131,7 @@ using DeviceListPtr = std::shared_ptr<DeviceList>;
 class Device
 {
 public:
-    static std::tuple<DevicePtr, error> Open(const DeviceInfoPtr devInfo);
+    static std::tuple<DevicePtr, error> Open(const DeviceInfo & devInfo);
 
     // Move-only type
     Device(const Device &) = delete;

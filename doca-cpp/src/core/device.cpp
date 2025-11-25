@@ -265,10 +265,10 @@ DeviceList::Iterator DeviceList::End() const
 // Device
 // ----------------------------------------------------------------------------
 
-std::tuple<DevicePtr, error> Device::Open(const DeviceInfoPtr devInfo)
+std::tuple<DevicePtr, error> Device::Open(const DeviceInfo & devInfo)
 {
     doca_dev * dev = nullptr;
-    auto err = FromDocaError(doca_dev_open(devInfo->GetNative(), &dev));
+    auto err = FromDocaError(doca_dev_open(devInfo.GetNative(), &dev));
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to open device") };
     }
