@@ -31,10 +31,6 @@ enum class RdmaConnectionRole {
     client,
 };
 
-struct RdmaAddressDeleter {
-    void operator()(doca_rdma_addr * address) const;
-};
-
 // ----------------------------------------------------------------------------
 // RdmaAddress
 // ----------------------------------------------------------------------------
@@ -58,10 +54,19 @@ public:
     RdmaAddress(RdmaAddress && other) noexcept = default;
     RdmaAddress & operator=(RdmaAddress && other) noexcept = default;
 
-private:
-    explicit RdmaAddress(std::shared_ptr<doca_rdma_addr> initialRdmaAddress);
+    struct Deleter {
+        void Delete(doca_rdma_addr * address);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    std::shared_ptr<doca_rdma_addr> rdmaAddress = nullptr;
+    ~RdmaAddress();
+
+private:
+    explicit RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPtr deleter);
+
+    doca_rdma_addr * rdmaAddress = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
 
 using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;

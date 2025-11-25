@@ -1,9 +1,6 @@
 #include "doca-cpp/rdma/rdma_connection.hpp"
 
-#include "rdma_connection.hpp"
-
 using doca::rdma::RdmaAddress;
-using doca::rdma::RdmaAddressDeleter;
 using doca::rdma::RdmaAddressPtr;
 using doca::rdma::RdmaConnection;
 using doca::rdma::RdmaConnectionManager;
@@ -17,11 +14,19 @@ using doca::rdma::RdmaEnginePtr;
 // RdmaAddress
 // ----------------------------------------------------------------------------
 
-explicit RdmaAddress::RdmaAddress(std::shared_ptr<doca_rdma_addr> initialRdmaAddress) : rdmaAddress(initialRdmaAddress)
+explicit RdmaAddress::RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPtr deleter)
+    : rdmaAddress(initialRdmaAddress), deleter(deleter)
 {
 }
 
-void RdmaAddressDeleter::operator()(doca_rdma_addr * address) const
+doca::rdma::RdmaAddress::~RdmaAddress()
+{
+    if (this->rdmaAddress && this->deleter) {
+        this->deleter->Delete(this->rdmaAddress);
+    }
+}
+
+void RdmaAddress::Deleter::Delete(doca_rdma_addr * address)
 {
     if (address) {
         doca_rdma_addr_destroy(address);
@@ -39,14 +44,13 @@ std::tuple<RdmaAddressPtr, error> RdmaAddress::Create(RdmaAddress::Type addressT
         return { nullptr, errors::Wrap(err, "failed to create RDMA address") };
     }
 
-    auto managedRdmaAddress = std::shared_ptr<doca_rdma_addr>(nativeRdmaAddress, RdmaAddressDeleter());
-    auto rdmaAddress = std::make_shared<RdmaAddress>(managedRdmaAddress);
+    auto rdmaAddress = std::make_shared<RdmaAddress>(nativeRdmaAddress, std::make_shared<RdmaAddress::Deleter>());
     return { rdmaAddress, nullptr };
 }
 
 DOCA_CPP_UNSAFE doca_rdma_addr * RdmaAddress::GetNative()
 {
-    return this->rdmaAddress.get();
+    return this->rdmaAddress;
 }
 
 // ----------------------------------------------------------------------------
