@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/rdma_engine.hpp"
 
+#include "rdma_engine.hpp"
+
 using doca::DevicePtr;
 using doca::rdma::RdmaEngine;
 using doca::rdma::RdmaEnginePtr;
@@ -107,12 +109,14 @@ doca_rdma * RdmaEngine::GetNative() const
 
 std::tuple<doca::ContextPtr, error> doca::rdma::RdmaEngine::GetContext()
 {
-    auto plainContext = doca_rdma_as_ctx(this->rdmaInstance);
-    if (plainContext == nullptr) {
-        return { nullptr, errors::New("Failed to get RDMA context from RDMA engine") };
+    if (this->context == nullptr) {
+        return { nullptr, errors::New("RDMA context is null") };
     }
-    auto rdmaContext = std::make_shared<doca::Context>(plainContext);
-    return { rdmaContext, nullptr };
+
+    // This will create Context pointer that will not destroy it in Destructor
+    auto contextRef = doca::Context::CreateReferenceFromNative(this->context->GetNative());
+
+    return { contextRef, nullptr };
 }
 
 error doca::rdma::RdmaEngine::Initialize()
@@ -139,18 +143,97 @@ error doca::rdma::RdmaEngine::Initialize()
         return errors::Wrap(err, "failed to set RDMA context state change callback");
     }
 
-    TasksCallbacks callbacks = {};
-    callbacks.receiveSuccessCallback = callbacks::ReceiveTaskCompletionCallback;
-    callbacks.receiveErrorCallback = callbacks::ReceiveTaskErrorCallback;
-    callbacks.receiveSuccessCallback = callbacks::ReceiveTaskCompletionCallback;
-    callbacks.receiveErrorCallback = callbacks::ReceiveTaskErrorCallback;
-    callbacks.receiveSuccessCallback = callbacks::ReceiveTaskCompletionCallback;
-    callbacks.receiveErrorCallback = callbacks::ReceiveTaskErrorCallback;
+    TasksCallbacks tasksCallbacks = {};
+    tasksCallbacks.receiveSuccessCallback = callbacks::ReceiveTaskCompletionCallback;
+    tasksCallbacks.receiveErrorCallback = callbacks::ReceiveTaskErrorCallback;
+    tasksCallbacks.receiveSuccessCallback = callbacks::ReceiveTaskCompletionCallback;
+    tasksCallbacks.receiveErrorCallback = callbacks::ReceiveTaskErrorCallback;
+    tasksCallbacks.receiveSuccessCallback = callbacks::ReceiveTaskCompletionCallback;
+    tasksCallbacks.receiveErrorCallback = callbacks::ReceiveTaskErrorCallback;
 
     // Set RDMA tasks completion callbacks
-    err = this->setTasksCompletionCallbacks(callbacks);
+    err = this->setTasksCompletionCallbacks(tasksCallbacks);
     if (err) {
         return errors::Wrap(err, "failed to set RDMA tasks callbacks");
+    }
+
+    // Set RDMA connection callbacks
+    ConnectionCallbacks connectionCallbacks;
+    connectionCallbacks.requestCallback = callbacks::ConnectionRequestCallback;
+    connectionCallbacks.establishedCallback = callbacks::ConnectionEstablishedCallback;
+    connectionCallbacks.failureCallback = callbacks::ConnectionFailureCallback;
+    connectionCallbacks.disconnectCallback = callbacks::ConnectionDisconnectionCallback;
+
+    // Set RDMA connection callbacks
+    err = this->setConnectionStateCallbacks(connectionCallbacks);
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA connection callbacks");
+    }
+
+    return nullptr;
+}
+
+error doca::rdma::RdmaEngine::Connect(RdmaAddress::Type addressType, const std::string & address, std::uint16_t port,
+                                      std::chrono::milliseconds timeout)
+{
+    if (this->rdmaConnectionRole != RdmaConnectionRole::client) {
+        return errors::New("RdmaConnectionManager is not configured as client");
+    }
+
+    if (this->rdmaEngine == nullptr) {
+        return errors::New("RdmaEngine is null");
+    }
+
+    if (this->rdmaConnection == nullptr) {
+        return errors::New("RdmaConnection is null");
+    }
+
+    auto startTime = std::chrono::steady_clock::now();
+
+    // Wait for RdmaConnection to be created by the RDMA engine callbacks
+    while (this->rdmaConnection->GetState() == RdmaConnection::State::idle) {
+        if (this->timeoutExpired(startTime, timeout)) {
+            return errors::New("timeout while waiting for RdmaConnection to be created");
+        }
+        this->rdmaEngine->Progress();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // Try to connect to remote peer and wait for connection to be established
+    while (this->rdmaConnection->GetState() != RdmaConnection::State::established) {
+        auto [rdmaAddress, err] = RdmaAddress::Create(addressType, address, port);
+        if (err) {
+            return errors::Wrap(err, "failed to create RDMA address");
+        }
+
+        auto connectionUserData = doca::Data(static_cast<void *>(this));
+        auto err = FromDocaError(doca_rdma_connect_to_addr(this->rdmaEngine->GetNative(), rdmaAddress->GetNative(),
+                                                           connectionUserData.ToNative()));
+        if (err) {
+            return errors::Wrap(err, "failed to connect to RDMA address");
+        }
+
+        if (this->timeoutExpired(startTime, timeout)) {
+            return errors::New("timeout while waiting for RdmaConnection to be established");
+        }
+        this->rdmaEngine->Progress();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    return nullptr;
+}
+
+error RdmaEngine::setContextStateChangedCallback(const doca::ContextStateChangedCallback & callback)
+{
+    auto [rdmaContext, err] = this->GetContext();
+    if (err) {
+        return errors::Wrap(err, "failed to get RDMA Context");
+    }
+
+    // Set context state changed callback
+    err = FromDocaError(doca_ctx_set_state_changed_cb(rdmaContext->GetNative(), callback));
+    if (err) {
+        return errors::Wrap(err, "failed to set RDMA Context state changed callback");
     }
 
     return nullptr;
@@ -160,7 +243,7 @@ error RdmaEngine::setTasksCompletionCallbacks(const TasksCallbacks & callbacks)
 {
     error joinedErr = nullptr;
 
-    if (!this->rdmaInstance) {
+    if (this->rdmaInstance == nullptr) {
         return errors::New("RDMA instance is not initialized");
     }
 
@@ -195,18 +278,17 @@ error RdmaEngine::setTasksCompletionCallbacks(const TasksCallbacks & callbacks)
     return joinedErr;
 }
 
-error RdmaEngine::setContextStateChangedCallback(const doca::ContextStateChangedCallback & callback)
+error doca::rdma::RdmaEngine::setConnectionStateCallbacks(const ConnectionCallbacks & callbacks)
 {
-    auto [rdmaContext, err] = this->GetContext();
-    if (err) {
-        return errors::Wrap(err, "failed to get RDMA Context");
+    if (this->rdmaInstance == nullptr) {
+        return errors::New("RDMA instance is not initialized");
     }
 
-    // Set context state changed callback
-    err = FromDocaError(doca_ctx_set_state_changed_cb(rdmaContext->GetNative(), callback));
+    auto err = FromDocaError(doca_rdma_set_connection_state_callbacks(
+        this->rdmaInstance, callbacks.requestCallback, callbacks.establishedCallback, callbacks.failureCallback,
+        callbacks.disconnectCallback));
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA Context state changed callback");
+        return errors::Wrap(err, "failed to set RDMA connection state callbacks");
     }
-
-    return nullptr;
+    return err;
 }
