@@ -22,6 +22,9 @@ class Context;
 class Context
 {
 public:
+    static ContextPtr CreateFromNative(doca_ctx * plainCtx);
+    static ContextPtr CreateReferenceFromNative(doca_ctx * plainCtx);
+
     enum class State {
         idle = DOCA_CTX_STATE_IDLE,
         starting = DOCA_CTX_STATE_STARTING,
@@ -29,9 +32,12 @@ public:
         stopping = DOCA_CTX_STATE_STOPPING,
     };
 
-    explicit Context(doca_ctx * context);
+    struct Deleter {
+        void Delete(doca_ctx * ctx);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    virtual ~Context();
+    ~Context();
 
     error Start();
 
@@ -48,7 +54,11 @@ public:
     DOCA_CPP_UNSAFE error SetUserData(const Data & data);
 
 private:
-    doca_ctx * ctx;
+    explicit Context(doca_ctx * context, DeleterPtr deleter = nullptr);
+
+    doca_ctx * ctx = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
 
 using ContextPtr = std::shared_ptr<Context>;
