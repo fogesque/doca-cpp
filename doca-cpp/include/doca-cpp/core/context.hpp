@@ -16,6 +16,8 @@ namespace doca
 class ProgressEngine;
 class Context;
 
+using ContextStateChangedCallback = doca_ctx_state_changed_callback_t;
+
 // ----------------------------------------------------------------------------
 // Context
 // ----------------------------------------------------------------------------
