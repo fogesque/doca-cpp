@@ -55,6 +55,8 @@ public:
 
     DOCA_CPP_UNSAFE error SetUserData(const Data & data);
 
+    error SetContextStateChangedCallback(ContextStateChangedCallback callback);
+
 private:
     explicit Context(doca_ctx * context, DeleterPtr deleter = nullptr);
 
