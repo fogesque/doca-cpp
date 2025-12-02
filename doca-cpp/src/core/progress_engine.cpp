@@ -17,7 +17,7 @@ std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to create progress engine") };
     }
-    auto managedPe = std::make_shared<ProgressEngine>(pe);
+    auto managedPe = std::make_shared<ProgressEngine>(pe, std::make_shared<Deleter>());
     return { managedPe, nullptr };
 }
 
@@ -29,7 +29,14 @@ ProgressEngine::ProgressEngine(doca_pe * initialProgressEngine, DeleterPtr delet
 void doca::ProgressEngine::Deleter::Delete(doca_pe * pe)
 {
     if (pe) {
-        doca_pe_destroy(pe);
+        std::ignore = doca_pe_destroy(pe);
+    }
+}
+
+doca::ProgressEngine::~ProgressEngine()
+{
+    if (this->progressEngine && this->deleter) {
+        this->deleter->Delete(this->progressEngine);
     }
 }
 

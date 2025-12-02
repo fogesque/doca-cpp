@@ -49,21 +49,26 @@ enum class ProgressEngineEventMode {
 // ----------------------------------------------------------------------------
 // Task
 // ----------------------------------------------------------------------------
-class Task  // TODO: make design with ProgressEngine
+class Task
 {
 public:
-    virtual ~Task() = default;
+    virtual ~Task();
 
-    virtual error Submit() = 0;
-    virtual error SubmitWithFlag(TaskSubmitFlags flag) = 0;
-    virtual error TrySubmit() = 0;
-    virtual void Free() = 0;
-    virtual error GetError() = 0;
-    virtual Context & GetContext() = 0;
-    DOCA_CPP_UNSAFE virtual doca_task * GetNative() const = 0;
+    virtual error Submit();
+    virtual error SubmitWithFlag(TaskSubmitFlags flag);
+    virtual error TrySubmit();
+    virtual void Free();
+    virtual error GetError();
+    virtual Context & GetContext();
+    DOCA_CPP_UNSAFE virtual doca_task * GetNative();
+
+private:
+    explicit Task(doca_task * initialTask);
+
+    doca_task * task = nullptr;
 };
 
-using TaskCompletionCallback = std::function<void(Task task, Data userData, Data ctxData)>;
+using TaskPtr = std::shared_ptr<Task>;
 
 // ----------------------------------------------------------------------------
 // ProgressEngine
@@ -71,16 +76,22 @@ using TaskCompletionCallback = std::function<void(Task task, Data userData, Data
 class ProgressEngine
 {
 public:
+    // Creates new ProgressEngine with RAII
     static std::tuple<ProgressEnginePtr, error> Create();
 
+    // Progresses all tasks in all contexts associated with ProgressEngine
     std::tuple<uint32_t, error> Progress();
 
+    // Connects Context to this ProgressEngine
     error ConnectContext(ContextPtr ctx);
 
+    // Get number of all inflight tasks in this ProgressEngine
     std::tuple<std::size_t, error> GetNumInflightTasks() const;
 
+    // Set ProgressEngine event mode
     error SetEventMode(ProgressEngineEventMode mode);
 
+    // Get raw C-style pointer to doca_pe
     DOCA_CPP_UNSAFE doca_pe * GetNative() const;
 
     // Move-only type
@@ -93,6 +104,8 @@ public:
         void Delete(doca_pe * pe);
     };
     using DeleterPtr = std::shared_ptr<Deleter>;
+
+    ~ProgressEngine();
 
 private:
     explicit ProgressEngine(doca_pe * initialProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
