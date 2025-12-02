@@ -12,18 +12,17 @@ std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(RdmaConnectionRole conne
         return { nullptr, errors::New("device is null") };
     }
 
-    // Create Connection Manager
-    auto [connManager, err] = RdmaConnectionManager::Create(connectionRole);
-    if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RDMA Connection Manager") };
-    }
-
     // Create RDMA engine
-    auto [rdmaEngine, err] = RdmaEngine::Create(connectionRole, connManager, device);
+    auto [rdmaEngine, err] = RdmaEngine::Create(device)
+                                 .SetTransportType(TransportType::rc)
+                                 .SetGidIndex(0)
+                                 .SetPermissions(doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead |
+                                                 doca::AccessFlags::rdmaWrite)
+                                 .SetMaxNumConnections(16)
+                                 .Build();
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to create RDMA Engine") };
     }
-    connManager->AttachToRdmaEngine(rdmaEngine);
 
     auto rdmaExecutor = std::make_shared<RdmaExecutor>(rdmaEngine, device);
 

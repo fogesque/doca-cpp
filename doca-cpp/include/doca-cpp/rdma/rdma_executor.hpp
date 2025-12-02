@@ -13,8 +13,8 @@
 #include <thread>
 
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
-#include "doca-cpp/rdma/rdma_engine.hpp"
 
 // RDMA execution model:
 // Server is RDMA Responder and has one buffer

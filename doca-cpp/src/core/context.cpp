@@ -101,6 +101,18 @@ DOCA_CPP_UNSAFE error doca::Context::SetUserData(const Data & data)
     return nullptr;
 }
 
+error doca::Context::SetContextStateChangedCallback(ContextStateChangedCallback callback)
+{
+    if (!this->ctx) {
+        return errors::New("context is null");
+    }
+    auto err = FromDocaError(doca_ctx_set_state_changed_cb(ctx, callback));
+    if (err) {
+        return errors::Wrap(err, "failed to set context state changed callback");
+    }
+    return nullptr;
+}
+
 void doca::Context::Deleter::Delete(doca_ctx * ctx)
 {
     if (ctx) {
