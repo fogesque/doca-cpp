@@ -14,33 +14,12 @@
 #include "doca-cpp/core/buffer.hpp"
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
+#include "doca-cpp/rdma/internal/rdma_connection.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
-#include "doca-cpp/rdma/rdma_connection.hpp"
-#include "doca-cpp/rdma/rdma_engine.hpp"
 
 namespace doca::rdma
 {
-
-struct TaskDeleter {
-    void operator()(doca_task * task) const;
-};
-
-// ----------------------------------------------------------------------------
-// Task
-// ----------------------------------------------------------------------------
-class Task
-{
-public:
-    Task() = delete;
-    explicit Task(doca_task * initialTask);
-    DOCA_CPP_UNSAFE doca_task * GetNative() const;
-    void Reset();
-
-private:
-    std::shared_ptr<doca_task> task = nullptr;
-};
-
-using TaskPtr = std::shared_ptr<Task>;
 
 // ----------------------------------------------------------------------------
 // RdmaTaskInterface

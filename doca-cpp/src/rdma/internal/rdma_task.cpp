@@ -1,4 +1,4 @@
-#include "doca-cpp/rdma/rdma_task.hpp"
+#include "doca-cpp/rdma/internal/rdma_task.hpp"
 
 void doca::rdma::TaskDeleter::operator()(doca_task * task) const
 {

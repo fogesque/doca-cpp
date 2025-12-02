@@ -14,7 +14,7 @@
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
-#include "doca-cpp/rdma/rdma_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
 
 namespace doca::rdma
 {
@@ -30,6 +30,9 @@ enum class RdmaConnectionRole {
     server,
     client,
 };
+
+// TODO: change to UUID
+using RdmaConnectionId = std::uint32_t;
 
 // ----------------------------------------------------------------------------
 // RdmaAddress
@@ -92,6 +95,9 @@ public:
     void SetState(State newState);
     RdmaConnection::State GetState() const;
 
+    void SetId(RdmaConnectionId connId);
+    RdmaConnectionId GetId() const;
+
     bool IsAccepted() const;
     void SetAccepted();
 
@@ -106,6 +112,8 @@ private:
     doca_rdma_connection * rdmaConnection = nullptr;
 
     RdmaConnection::State connectionState = RdmaConnection::State::idle;
+
+    RdmaConnectionId connectionId = 0;
 
     bool accepted = false;
 };
