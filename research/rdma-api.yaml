@@ -1,0 +1,16 @@
+rdma-spec-version: "0.0.1"
+
+endpoint:
+    path: /read-info
+    type: read # send | receive | write | read
+    buffer:
+      size: 4096 # bytes - 4KB
+
+
+endpoint:
+    path: /write-signal-ch0
+    type: write # send | receive | write | read
+    buffer:
+      size: 4194304 # bytes - 4MB
+
+
