@@ -1,8 +1,42 @@
-rdma-spec-version: "0.0.1"
+# RDMA Client-Server Specification Prototype
+
+# Description:
+# Each endpoint represents what buffers must be created 
+# on both Client and Server sides to make RDMA operation
+# run by Client request.
+# RDMA operations supported: Send, Receive, Write, Read
+
+# Endpoint represents an information of which RDMA operation
+# will be registered. Server submits Receive task to get Request,
+# Client submits Send task to send Request.
+
+# Request includes Endpoint information which will be parsed by
+# Server. So, in these terms Endpoint is message structure that 
+# defines what RDMA operation to perform.
+
+# Endpoint Fileds Description:
+
+# Endpoint Path: 
+# The path is unique identificator to concrete resource (RDMA buffer)
+# and is like URI. There can be several endpoints with the same path
+# to perform different operations with same buffer between 
+# Client and Server
+
+# Endpoint Type:
+# Endpoint type represent which operation
+# SEND:     Client send a message to remote Server
+# RECEIVE:  Client requests a message from remote Server
+# WRITE:    Client writes to remote Server buffer
+# READ:     Client reads from remote Server buffer
+
+# Endpoint Buffer:
+# Section that provides RDMA buffer informaton, such as its size in bytes.
+
+version: "0.0.1"
 
 endpoint:
-  path: /read-info
-  type: read # send | receive | write | read
+  path: /get-info
+  type: receive # send | receive | write | read
   buffer:
     size: 4096 # bytes - 4KB
 
