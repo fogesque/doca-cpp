@@ -6,6 +6,7 @@
 #include <memory>
 #include <tuple>
 
+#include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
 
@@ -15,7 +16,7 @@ namespace doca
 // Forward declarations
 class Context;
 class ProgressEngine;
-class Task;
+class TaskInterface;
 
 enum class MaxTasksInBatch {
     tasks16 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_16,
@@ -47,28 +48,23 @@ enum class ProgressEngineEventMode {
 };
 
 // ----------------------------------------------------------------------------
-// Task
+// TaskInterface
 // ----------------------------------------------------------------------------
-class Task
+class TaskInterface
 {
 public:
-    virtual ~Task();
+    virtual ~TaskInterface() = default;
 
-    virtual error Submit();
-    virtual error SubmitWithFlag(TaskSubmitFlags flag);
-    virtual error TrySubmit();
-    virtual void Free();
-    virtual error GetError();
-    virtual Context & GetContext();
-    DOCA_CPP_UNSAFE virtual doca_task * GetNative();
-
-private:
-    explicit Task(doca_task * initialTask);
-
-    doca_task * task = nullptr;
+    // TODO: implement commented out
+    virtual error Submit() = 0;
+    // virtual error SubmitWithFlag(TaskSubmitFlags flag) = 0;
+    // virtual error TrySubmit() = 0;
+    virtual void Free() = 0;
+    // virtual error GetError() = 0;
+    // virtual Context & GetContext() = 0;
 };
 
-using TaskPtr = std::shared_ptr<Task>;
+using TaskInterfacePtr = std::shared_ptr<TaskInterface>;
 
 // ----------------------------------------------------------------------------
 // ProgressEngine
