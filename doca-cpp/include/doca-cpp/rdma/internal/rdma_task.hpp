@@ -26,6 +26,13 @@ namespace doca::rdma
 class RdmaTaskInterface : public doca::TaskInterface
 {
 public:
+    enum class State {
+        idle,
+        submitted,
+        completed,
+        error,
+    };
+
     RdmaTaskInterface() = default;
 
     virtual ~RdmaTaskInterface() = default;
