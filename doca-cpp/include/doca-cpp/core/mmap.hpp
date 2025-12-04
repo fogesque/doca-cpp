@@ -27,7 +27,7 @@ public:
 
         Builder & AddDevice(DevicePtr device);
         Builder & SetPermissions(AccessFlags permissions);
-        Builder & SetMemoryRange(std::span<std::byte> buffer);
+        Builder & SetMemoryRange(std::span<std::byte> & buffer);
         Builder & SetMaxNumDevices(uint32_t maxDevices);
         Builder & SetUserData(const Data & data);
         std::tuple<MemoryMapPtr, error> Start();

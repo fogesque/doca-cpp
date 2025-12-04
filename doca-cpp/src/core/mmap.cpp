@@ -66,7 +66,7 @@ MemoryMap::Builder & MemoryMap::Builder::SetPermissions(AccessFlags permissions)
     return *this;
 }
 
-MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(std::span<std::byte> buffer)
+MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(std::span<std::byte> & buffer)
 {
     if (this->mmap && !this->buildErr) {
         auto dataPtr = static_cast<void *>(buffer.data());
