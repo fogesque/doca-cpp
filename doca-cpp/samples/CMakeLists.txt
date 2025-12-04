@@ -26,26 +26,3 @@ target_include_directories(${TARGET_NAME}
 )
 
 install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/samples)
-
-
-# ======================================================================
-# Sample: rdma_sender
-# ======================================================================
-set(TARGET_NAME ${TARGET_PREFIX}rdma_sender)
-
-add_executable(${TARGET_NAME} ${CMAKE_CURRENT_LIST_DIR}/rdma_sender.cpp)
-
-target_link_libraries(${TARGET_NAME}
-    PRIVATE
-        doca-cpp
-        errors::errors
-)
-
-target_include_directories(${TARGET_NAME}
-    PRIVATE 
-        ${CMAKE_CURRENT_LIST_DIR}
-        ${CMAKE_SOURCE_DIR}/doca-cpp/include
-        ${DOCA_INCLUDE_DIRS} 
-)
-
-install(TARGETS ${TARGET_NAME} DESTINATION ${CMAKE_BINARY_DIR}/bin/samples)
