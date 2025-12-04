@@ -36,14 +36,25 @@ version: "0.0.1"
 
 endpoint:
   path: /get-info
-  type: receive # send | receive | write | read
+  type: receive
   buffer:
     size: 4096 # bytes - 4KB
 
-
 endpoint:
   path: /write-signal-ch0
-  type: write # send | receive | write | read
+  type: write
+  buffer:
+    size: 4194304 # bytes - 4MB
+
+endpoint:
+  path: /post-info
+  type: send
+  buffer:
+    size: 4096 # bytes - 4KB
+
+endpoint:
+  path: /read-signal-ch0
+  type: read
   buffer:
     size: 4194304 # bytes - 4MB
 
