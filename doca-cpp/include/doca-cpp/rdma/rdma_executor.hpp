@@ -17,6 +17,7 @@
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/rdma/internal/rdma_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_task.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
 // RDMA execution model:
@@ -60,14 +61,15 @@ class RdmaExecutor;
 // ----------------------------------------------------------------------------
 struct OperationRequest {
     enum class Type {
-        Send,
-        Receive,
-        Read,
-        Write,
+        send,
+        receive,
+        read,
+        write,
     };
 
     Type type;
     RdmaBufferPtr buffer = nullptr;
+    std::size_t bytesAffected = 0;
     std::shared_ptr<std::promise<error>> promise = nullptr;
 };
 
@@ -99,6 +101,13 @@ public:
 
     error SubmitOperation(OperationRequest request);
 
+    // This functions must be considered as private. Due to DOCA fucking callbacks
+    // limitations, they are public for now.
+    void AddRequestedConnection(RdmaConnectionPtr connection);
+    void AddActiveConnection(RdmaConnectionId connectionId);
+    void RemoveActiveConnection(RdmaConnectionId connectionId);
+    RdmaConnectionId GetNextConnectionId();
+
     struct Statistics {
         std::atomic<uint64_t> sendOperations{ 0 };
         std::atomic<uint64_t> receiveOperations{ 0 };
@@ -120,16 +129,20 @@ private:
 
     void workerLoop();
 
-    error executeOperation(const OperationRequest & request);
+    error executeOperation(OperationRequest & request);
 
-    error executeSend(const OperationRequest & request);
-    error executeReceive(const OperationRequest & request);
-    error executeRead(const OperationRequest & request);
-    error executeWrite(const OperationRequest & request);
+    error executeSend(OperationRequest & request);
+    error executeReceive(OperationRequest & request);
+    error executeRead(OperationRequest & request);
+    error executeWrite(OperationRequest & request);
 
     bool timeoutExpired(const std::chrono::steady_clock::time_point & startTime,
                         std::chrono::milliseconds timeout) const;
     error waitForContextState(doca::Context::State desiredState, std::chrono::milliseconds waitTimeout = 0ms) const;
+    error waitForTaskState(RdmaTaskInterface::State desiredState, RdmaTaskInterface::State & changingState,
+                           std::chrono::milliseconds waitTimeout = 0ms);
+    error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
+                                 std::chrono::milliseconds waitTimeout = 0ms);
 
     error setupConnection(RdmaConnectionRole role);
 
@@ -145,7 +158,7 @@ private:
     RdmaEnginePtr rdmaEngine = nullptr;
     RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
     std::map<RdmaConnectionId, RdmaConnectionPtr> activeConnections;
-    std::vector<RdmaConnectionId> requestedConnections;
+    std::map<RdmaConnectionId, RdmaConnectionPtr> requestedConnections;
 
     doca::ContextPtr rdmaContext = nullptr;
     doca::ProgressEnginePtr progressEngine = nullptr;

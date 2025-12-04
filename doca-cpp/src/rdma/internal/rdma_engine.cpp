@@ -1,7 +1,5 @@
 #include "doca-cpp/rdma/internal/rdma_engine.hpp"
 
-#include "rdma_engine.hpp"
-
 using doca::DevicePtr;
 using doca::rdma::RdmaEngine;
 using doca::rdma::RdmaEnginePtr;
@@ -9,7 +7,6 @@ using doca::rdma::RdmaReadTaskPtr;
 using doca::rdma::RdmaReceiveTaskPtr;
 using doca::rdma::RdmaSendTaskPtr;
 using doca::rdma::RdmaWriteTaskPtr;
-using doca::rdma::TaskPtr;
 
 // TODO: check what num_tasks actually means in tasks set_conf() functions and make it configurable
 namespace constants
