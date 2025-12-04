@@ -92,6 +92,8 @@ public:
 
     DOCA_CPP_UNSAFE doca_rdma_connection * GetNative() const;
 
+    error SetUserData(doca::Data & userData);
+
     void SetState(State newState);
     RdmaConnection::State GetState() const;
 
@@ -101,11 +103,14 @@ public:
     bool IsAccepted() const;
     void SetAccepted();
 
+    error Accept();
+    error Reject();
+
     // Move-only type
     RdmaConnection(const RdmaConnection &) = delete;
     RdmaConnection & operator=(const RdmaConnection &) = delete;
-    RdmaConnection(RdmaConnection && other) noexcept;
-    RdmaConnection & operator=(RdmaConnection && other) noexcept;
+    RdmaConnection(RdmaConnection && other) noexcept = default;
+    RdmaConnection & operator=(RdmaConnection && other) noexcept = default;
 
 private:
     explicit RdmaConnection(doca_rdma_connection * nativeConnection);

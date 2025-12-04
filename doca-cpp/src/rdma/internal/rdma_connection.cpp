@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/internal/rdma_connection.hpp"
 
+#include "rdma_connection.hpp"
+
 using doca::rdma::RdmaAddress;
 using doca::rdma::RdmaAddressPtr;
 using doca::rdma::RdmaConnection;
@@ -17,7 +19,7 @@ explicit RdmaAddress::RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPt
 {
 }
 
-doca::rdma::RdmaAddress::~RdmaAddress()
+RdmaAddress::~RdmaAddress()
 {
     if (this->rdmaAddress && this->deleter) {
         this->deleter->Delete(this->rdmaAddress);
@@ -68,6 +70,20 @@ DOCA_CPP_UNSAFE doca_rdma_connection * RdmaConnection::GetNative() const
 
 RdmaConnection::RdmaConnection(doca_rdma_connection * nativeConnection) : rdmaConnection(nativeConnection) {}
 
+error RdmaConnection::SetUserData(doca::Data & userData)
+{
+    if (this->rdmaConnection == nullptr) {
+        return errors::New("Rdma connection is null");
+    }
+
+    auto err = FromDocaError(doca_rdma_connection_set_user_data(this->rdmaConnection, userData.ToNative()));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "failed to set user data to RDMA connection") };
+    }
+
+    return nullptr;
+}
+
 void RdmaConnection::SetState(State newState)
 {
     this->connectionState = newState;
@@ -78,12 +94,50 @@ RdmaConnection::State RdmaConnection::GetState() const
     return this->connectionState;
 }
 
-bool doca::rdma::RdmaConnection::IsAccepted() const
+void RdmaConnection::SetId(RdmaConnectionId connId)
+{
+    this->connectionId = connId;
+}
+
+doca::rdma::RdmaConnectionId RdmaConnection::GetId() const
+{
+    return this->connectionId;
+}
+
+bool RdmaConnection::IsAccepted() const
 {
     return this->accepted;
 }
 
-void doca::rdma::RdmaConnection::SetAccepted()
+void RdmaConnection::SetAccepted()
 {
     this->accepted = true;
+}
+
+error doca::rdma::RdmaConnection::Accept()
+{
+    if (this->rdmaConnection == nullptr) {
+        return errors::New("Rdma connection is null");
+    }
+
+    auto err = FromDocaError(doca_rdma_connection_accept(this->rdmaConnection, nullptr, 0));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "failed to accept RDMA connection") };
+    }
+
+    return nullptr;
+}
+
+error doca::rdma::RdmaConnection::Reject()
+{
+    if (this->rdmaConnection == nullptr) {
+        return errors::New("Rdma connection is null");
+    }
+
+    auto err = FromDocaError(doca_rdma_connection_reject(this->rdmaConnection));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "failed to reject RDMA connection") };
+    }
+
+    return nullptr;
 }
