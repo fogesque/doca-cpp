@@ -24,7 +24,7 @@
 
 # Endpoint Type:
 # Endpoint type represent which operation
-# SEND:     Client send a message to remote Server
+# SEND:     Client sends a message to remote Server
 # RECEIVE:  Client requests a message from remote Server
 # WRITE:    Client writes to remote Server buffer
 # READ:     Client reads from remote Server buffer
@@ -34,28 +34,25 @@
 
 version: "0.0.1"
 
-endpoint:
-  path: /get-info
-  type: receive
-  buffer:
-    size: 4096 # bytes - 4KB
+endpoints:
+  - path: /get-info
+    type: receive
+    buffer:
+      size: 4096 # bytes - 4KB
 
-endpoint:
-  path: /write-signal-ch0
-  type: write
-  buffer:
+  - path: /write-signal-ch0
+    type: write
+    buffer:
     size: 4194304 # bytes - 4MB
 
-endpoint:
-  path: /post-info
-  type: send
-  buffer:
+  - path: /post-info
+    type: send
+    buffer:
     size: 4096 # bytes - 4KB
 
-endpoint:
-  path: /read-signal-ch0
-  type: read
-  buffer:
+  - path: /read-signal-ch0
+    type: read
+    buffer:
     size: 4194304 # bytes - 4MB
 
 
