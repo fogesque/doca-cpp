@@ -13,46 +13,29 @@
 
 #include "doca-cpp/core/buffer.hpp"
 #include "doca-cpp/core/error.hpp"
+#include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/core/types.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
-#include "doca-cpp/rdma/rdma_connection.hpp"
-#include "doca-cpp/rdma/rdma_engine.hpp"
 
 namespace doca::rdma
 {
 
-struct TaskDeleter {
-    void operator()(doca_task * task) const;
-};
-
-// ----------------------------------------------------------------------------
-// Task
-// ----------------------------------------------------------------------------
-class Task
-{
-public:
-    Task() = delete;
-    explicit Task(doca_task * initialTask);
-    DOCA_CPP_UNSAFE doca_task * GetNative() const;
-    void Reset();
-
-private:
-    std::shared_ptr<doca_task> task = nullptr;
-};
-
-using TaskPtr = std::shared_ptr<Task>;
-
 // ----------------------------------------------------------------------------
 // RdmaTaskInterface
 // ----------------------------------------------------------------------------
-class RdmaTaskInterface
+class RdmaTaskInterface : public doca::TaskInterface
 {
 public:
+    enum class State {
+        idle,
+        submitted,
+        completed,
+        error,
+    };
+
     RdmaTaskInterface() = default;
 
     virtual ~RdmaTaskInterface() = default;
-
-    virtual TaskPtr AsTask() = 0;
 
     virtual error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) = 0;
 
@@ -67,30 +50,24 @@ using RdmaTaskInterfacePtr = std::shared_ptr<RdmaTaskInterface>;
 class RdmaSendTask : public RdmaTaskInterface
 {
 public:
-    struct Config {
-        RdmaEnginePtr rdmaEngine = nullptr;
-        RdmaConnectionPtr rdmaConnection = nullptr;
-        BufferPtr buffer = nullptr;
-    };
-
-    static std::tuple<RdmaSendTaskPtr, error> Create(Config & config);
+    static std::tuple<RdmaSendTaskPtr, error> Create(doca_rdma_task_send * initialTask);
 
     RdmaSendTask() = delete;
 
-    ~RdmaSendTask() override = default;
-
-    TaskPtr AsTask() override;
+    ~RdmaSendTask() override;
 
     error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
     std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
+    error Submit() override;
+
+    void Free() override;
+
 private:
-    explicit RdmaSendTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
+    explicit RdmaSendTask(doca_rdma_task_send * initialTask);
 
-    std::shared_ptr<doca_rdma_task_send> task = nullptr;
-
-    RdmaEnginePtr rdmaEngine = nullptr;
+    doca_rdma_task_send * task = nullptr;
 };
 
 using RdmaSendTaskPtr = std::shared_ptr<RdmaSendTask>;
@@ -101,29 +78,24 @@ using RdmaSendTaskPtr = std::shared_ptr<RdmaSendTask>;
 class RdmaReceiveTask : public RdmaTaskInterface
 {
 public:
-    struct Config {
-        RdmaEnginePtr rdmaEngine = nullptr;
-        BufferPtr buffer = nullptr;
-    };
-
-    static std::tuple<RdmaReceiveTaskPtr, error> Create(Config & config);
+    static std::tuple<RdmaReceiveTaskPtr, error> Create(doca_rdma_task_receive * initialTask);
 
     RdmaReceiveTask() = delete;
 
-    ~RdmaReceiveTask() override = default;
-
-    TaskPtr AsTask() override;
+    ~RdmaReceiveTask() override;
 
     error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
     std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
+    error Submit() override;
+
+    void Free() override;
+
 private:
-    explicit RdmaReceiveTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
+    explicit RdmaReceiveTask(doca_rdma_task_send * initialTask);
 
-    std::shared_ptr<doca_rdma_task_receive> task = nullptr;
-
-    RdmaEnginePtr rdmaEngine = nullptr;
+    doca_rdma_task_receive * task = nullptr;
 };
 
 using RdmaReceiveTaskPtr = std::shared_ptr<RdmaReceiveTask>;
@@ -134,31 +106,24 @@ using RdmaReceiveTaskPtr = std::shared_ptr<RdmaReceiveTask>;
 class RdmaWriteTask : public RdmaTaskInterface
 {
 public:
-    struct Config {
-        RdmaEnginePtr rdmaEngine = nullptr;
-        RdmaConnectionPtr rdmaConnection = nullptr;
-        BufferPtr sourceBuffer = nullptr;
-        BufferPtr destinationBuffer = nullptr;
-    };
-
-    static std::tuple<RdmaWriteTaskPtr, error> Create(Config & config);
+    static std::tuple<RdmaWriteTaskPtr, error> Create(doca_rdma_task_write * initialTask);
 
     RdmaWriteTask() = delete;
 
-    ~RdmaWriteTask() override = default;
-
-    TaskPtr AsTask() override;
+    ~RdmaWriteTask() override;
 
     error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
     std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
+    error Submit() override;
+
+    void Free() override;
+
 private:
-    explicit RdmaWriteTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
+    explicit RdmaWriteTask(doca_rdma_task_send * initialTask);
 
-    std::shared_ptr<doca_rdma_task_write> task = nullptr;
-
-    RdmaEnginePtr rdmaEngine = nullptr;
+    doca_rdma_task_write * task = nullptr;
 };
 
 using RdmaWriteTaskPtr = std::shared_ptr<RdmaWriteTask>;
@@ -169,31 +134,24 @@ using RdmaWriteTaskPtr = std::shared_ptr<RdmaWriteTask>;
 class RdmaReadTask : public RdmaTaskInterface
 {
 public:
-    struct Config {
-        RdmaEnginePtr rdmaEngine = nullptr;
-        RdmaConnectionPtr rdmaConnection = nullptr;
-        BufferPtr sourceBuffer = nullptr;
-        BufferPtr destinationBuffer = nullptr;
-    };
-
-    static std::tuple<RdmaReadTaskPtr, error> Create(Config & config);
+    static std::tuple<RdmaReadTaskPtr, error> Create(doca_rdma_task_read * initialTask);
 
     RdmaReadTask() = delete;
 
-    ~RdmaReadTask() override = default;
-
-    TaskPtr AsTask() override;
+    ~RdmaReadTask() override;
 
     error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
     std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
 
+    error Submit() override;
+
+    void Free() override;
+
 private:
-    explicit RdmaReadTask(RdmaEnginePtr initialRdmaEngine, doca_rdma_task_send * initialTask);
+    explicit RdmaReadTask(doca_rdma_task_send * initialTask);
 
-    std::shared_ptr<doca_rdma_task_read> task = nullptr;
-
-    RdmaEnginePtr rdmaEngine = nullptr;
+    doca_rdma_task_read * task = nullptr;
 };
 
 using RdmaReadTaskPtr = std::shared_ptr<RdmaReadTask>;

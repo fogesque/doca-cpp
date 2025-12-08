@@ -32,6 +32,16 @@ class RdmaBuffer
 public:
     RdmaBuffer() = default;
 
+    static std::tuple<RdmaBufferPtr, error> FromMemoryRange(MemoryRangePtr memoryRange)
+    {
+        auto buffer = std::make_shared<RdmaBuffer>();
+        auto err = buffer->RegisterMemoryRange(memoryRange);
+        if (err) {
+            return { nullptr, errors::Wrap(err, "failed to register memory range to buffer") };
+        }
+        return { buffer, nullptr };
+    }
+
     error RegisterMemoryRange(MemoryRangePtr memoryRange)
     {
         if (this->memoryRange != nullptr) {

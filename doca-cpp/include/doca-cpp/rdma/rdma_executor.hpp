@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <errors/errors.hpp>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <print>
@@ -12,9 +13,12 @@
 #include <span>
 #include <thread>
 
+#include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/core/progress_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_task.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
-#include "doca-cpp/rdma/rdma_engine.hpp"
 
 // RDMA execution model:
 // Server is RDMA Responder and has one buffer
@@ -42,6 +46,8 @@
 // In terms of Executor, operation submitting allowed for client side only. Server is running and waiting for incoming
 // RequestType via Receive operation. After that, server processes the request accordingly.
 
+using namespace std::chrono_literals;
+
 namespace doca::rdma
 {
 
@@ -55,16 +61,22 @@ class RdmaExecutor;
 // ----------------------------------------------------------------------------
 struct OperationRequest {
     enum class Type {
-        Send,
-        Receive,
-        Read,
-        Write,
+        send,
+        receive,
+        read,
+        write,
     };
 
     Type type;
     RdmaBufferPtr buffer = nullptr;
+    std::size_t bytesAffected = 0;
     std::shared_ptr<std::promise<error>> promise = nullptr;
 };
+
+namespace ErrorType
+{
+inline auto TimeoutExpired = errors::New("Timeout expired");
+}  // namespace ErrorType
 
 // ----------------------------------------------------------------------------
 // RdmaExecutor
@@ -74,7 +86,7 @@ class RdmaExecutor
 public:
     const std::size_t TasksQueueSizeThreshold = 20;
 
-    static std::tuple<RdmaExecutorPtr, error> Create(RdmaConnectionRole connectionRole, doca::DevicePtr device);
+    static std::tuple<RdmaExecutorPtr, error> Create(RdmaConnectionRole initialRole, doca::DevicePtr initialDevice);
 
     error Start();
 
@@ -89,6 +101,13 @@ public:
 
     error SubmitOperation(OperationRequest request);
 
+    // This functions must be considered as private. Due to DOCA fucking callbacks
+    // limitations, they are public for now.
+    void AddRequestedConnection(RdmaConnectionPtr connection);
+    void AddActiveConnection(RdmaConnectionId connectionId);
+    void RemoveActiveConnection(RdmaConnectionId connectionId);
+    RdmaConnectionId GetNextConnectionId();
+
     struct Statistics {
         std::atomic<uint64_t> sendOperations{ 0 };
         std::atomic<uint64_t> receiveOperations{ 0 };
@@ -100,18 +119,32 @@ public:
     const Statistics & GetStatistics() const;
 
 private:
-    RdmaExecutor(RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice);
+    struct Config {
+        RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
+        RdmaEnginePtr initialRdmaEngine = nullptr;
+        doca::DevicePtr initialDevice = nullptr;
+    };
 
-    // TODO: architecture change needed
-    void ServerWorkerLoop();
-    void ClientWorkerLoop();
+    explicit RdmaExecutor(const Config & initialConfig);
 
-    error ExecuteOperation(const OperationRequest & request);
+    void workerLoop();
 
-    error ExecuteSend(const OperationRequest & request);
-    error ExecuteReceive(const OperationRequest & request);
-    error ExecuteRead(const OperationRequest & request);
-    error ExecuteWrite(const OperationRequest & request);
+    error executeOperation(OperationRequest & request);
+
+    error executeSend(OperationRequest & request);
+    error executeReceive(OperationRequest & request);
+    error executeRead(OperationRequest & request);
+    error executeWrite(OperationRequest & request);
+
+    bool timeoutExpired(const std::chrono::steady_clock::time_point & startTime,
+                        std::chrono::milliseconds timeout) const;
+    error waitForContextState(doca::Context::State desiredState, std::chrono::milliseconds waitTimeout = 0ms) const;
+    error waitForTaskState(RdmaTaskInterface::State desiredState, RdmaTaskInterface::State & changingState,
+                           std::chrono::milliseconds waitTimeout = 0ms);
+    error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
+                                 std::chrono::milliseconds waitTimeout = 0ms);
+
+    error setupConnection(RdmaConnectionRole role);
 
     std::atomic<bool> running;
     std::unique_ptr<std::thread> workerThread = nullptr;
@@ -123,6 +156,16 @@ private:
     doca::DevicePtr device = nullptr;
 
     RdmaEnginePtr rdmaEngine = nullptr;
+    RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
+    std::map<RdmaConnectionId, RdmaConnectionPtr> activeConnections;
+    std::map<RdmaConnectionId, RdmaConnectionPtr> requestedConnections;
+
+    doca::ContextPtr rdmaContext = nullptr;
+    doca::ProgressEnginePtr progressEngine = nullptr;
+    doca::BufferInventoryPtr bufferInventory = nullptr;
+
+    // TODO: add ID setting algorithm
+    RdmaConnectionId connectionIdCounter = 0;
 };
 
 using RdmaExecutorPtr = std::shared_ptr<RdmaExecutor>;

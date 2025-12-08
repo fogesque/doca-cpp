@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef RDMA_ENGINE_OLD
+
 #include <doca_rdma.h>
 
 #include <chrono>
@@ -149,3 +151,5 @@ void WriteTaskErrorCallback(struct doca_rdma_task_write * task, union doca_data 
 }  // namespace callbacks
 
 }  // namespace doca::rdma
+
+#endif

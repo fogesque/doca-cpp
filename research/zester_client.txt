@@ -11,7 +11,7 @@ struct ALL {
 
     PE
 
-    RDMA
+    RDMA_INSTANCE
     RDMA_CTX
     RDMA_CTX_STATE
 
@@ -192,12 +192,12 @@ int main()
     // Create RDMA engine
     // ----------------------------------------------------------------
 
-    RDMA = doca_rdma_create(DEVICE);
-    RDMA_CTX = doca_rdma_as_ctx(RDMA);
+    RDMA_INSTANCE = doca_rdma_create(DEVICE);
+    RDMA_CTX = doca_rdma_as_ctx(RDMA_INSTANCE);
 
-    doca_rdma_set_permissions(RDMA, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE);
-    doca_rdma_set_max_num_connections(RDMA, 1);
-    doca_rdma_set_transport_type(RDMA, DOCA_RDMA_TRANSPORT_TYPE_RC);
+    doca_rdma_set_permissions(RDMA_INSTANCE, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE);
+    doca_rdma_set_max_num_connections(RDMA_INSTANCE, 1);
+    doca_rdma_set_transport_type(RDMA_INSTANCE, DOCA_RDMA_TRANSPORT_TYPE_RC);
 
     // ----------------------------------------------------------------
     // Connect RDMA Context to Progress Engine
@@ -223,11 +223,11 @@ int main()
     // ----------------------------------------------------------------
 
     const uint32_t tasks_number = 1;
-    doca_rdma_task_receive_set_conf(RDMA, callbacks::rdma_task_receive_completion_callback,
+    doca_rdma_task_receive_set_conf(RDMA_INSTANCE, callbacks::rdma_task_receive_completion_callback,
                                           callbacks::rdma_task_receive_error_callback, tasks_number);
-    doca_rdma_task_write_set_conf(RDMA, callbacks::rdma_task_write_completion_callback,
+    doca_rdma_task_write_set_conf(RDMA_INSTANCE, callbacks::rdma_task_write_completion_callback,
                                         callbacks::rdma_task_write_error_callback, tasks_number);
-    doca_rdma_task_send_set_conf(RDMA, callbacks::rdma_task_send_completion_callback,
+    doca_rdma_task_send_set_conf(RDMA_INSTANCE, callbacks::rdma_task_send_completion_callback,
                                        callbacks::rdma_task_send_error_callback, tasks_number);
 
     // ----------------------------------------------------------------
@@ -252,7 +252,7 @@ int main()
     // ----------------------------------------------------------------
 
     doca_rdma_set_connection_state_callbacks(
-        RDMA, callbacks::rdma_connection_request_callback, callbacks::rdma_connection_established_callback,
+        RDMA_INSTANCE, callbacks::rdma_connection_request_callback, callbacks::rdma_connection_established_callback,
         callbacks::rdma_connection_failure_callback, callbacks::rdma_connection_disconnection_callback);
 
     // ----------------------------------------------------------------
@@ -260,7 +260,7 @@ int main()
     // ----------------------------------------------------------------
 
     SERVER_ADDR = doca_rdma_addr_create(DOCA_RDMA_ADDR_TYPE_IPv4, "192.168.88.252", 12345);
-    doca_rdma_connect_to_addr(RDMA, SERVER_ADDR, ALL);
+    doca_rdma_connect_to_addr(RDMA_INSTANCE, SERVER_ADDR, ALL);
 
     bool connection_accepted = false;
     uint32_t wait_count = 0;
@@ -274,7 +274,7 @@ int main()
         if (wait_count > 5) {
 
             SERVER_ADDR = doca_rdma_addr_create(DOCA_RDMA_ADDR_TYPE_IPv4, "192.168.88.252", 12345);
-            doca_rdma_connect_to_addr(RDMA, SERVER_ADDR, ALL);
+            doca_rdma_connect_to_addr(RDMA_INSTANCE, SERVER_ADDR, ALL);
             wait_count = 0;
 
         }
@@ -301,7 +301,7 @@ int main()
 
     REMOTE_DESC_BUF = doca_buf_inventory_buf_get_by_addr(LOCAL_BUF_INVENTORY, REMOTE_DESC_MMAP, REMOTE_DESC_MEMRANGE, REMOTE_DESC_MEMRANGE_SIZE);
 
-    TASK_RECEIVE_REMOTE_DESC = doca_rdma_task_receive_allocate_init(RDMA, REMOTE_DESC_BUF, ALL);
+    TASK_RECEIVE_REMOTE_DESC = doca_rdma_task_receive_allocate_init(RDMA_INSTANCE, REMOTE_DESC_BUF, ALL);
 
     doca_task_submit(doca_rdma_task_receive_as_task(TASK_RECEIVE_REMOTE_DESC));
     
@@ -353,7 +353,7 @@ int main()
     
 
     // Prepare and submit write task
-    WRITE_TASK = doca_rdma_task_write_allocate_init(RDMA, RDMA_CONNECTION, SOURCE_BUFFER, DEST_BUFFER, ALL);
+    WRITE_TASK = doca_rdma_task_write_allocate_init(RDMA_INSTANCE, RDMA_CONNECTION, SOURCE_BUFFER, DEST_BUFFER, ALL);
     
     doca_task_submit(doca_rdma_task_write_as_task(WRITE_TASK));
     
@@ -377,7 +377,7 @@ int main()
 
     struct doca_rdma_task_send * TASK_SEND_ACK = nullptr;
     struct doca_buf * ack_dest_buf = nullptr;
-    TASK_SEND_ACK = doca_rdma_task_send_allocate_init(RDMA, RDMA_CONNECTION, buf_nullptr, ALL);
+    TASK_SEND_ACK = doca_rdma_task_send_allocate_init(RDMA_INSTANCE, RDMA_CONNECTION, buf_nullptr, ALL);
     
     doca_task_submit(doca_rdma_task_send_as_task(TASK_SEND_ACK));
 

@@ -1,17 +1,28 @@
 #include "doca-cpp/core/context.hpp"
 
-#include "doca-cpp/core/progress_engine.hpp"
+#include "context.hpp"
 
 // ----------------------------------------------------------------------------
 // Context
 // ----------------------------------------------------------------------------
 
-doca::Context::Context(doca_ctx * context) : ctx(context) {}
+doca::Context::Context(doca_ctx * context, DeleterPtr deleter) : ctx(context), deleter(deleter) {}
 
 doca::Context::~Context()
 {
-    std::ignore = this->FlushTasks();
-    std::ignore = this->Stop();
+    if (this->deleter) {
+        this->deleter->Delete(this->ctx);
+    }
+}
+
+doca::ContextPtr doca::Context::CreateFromNative(doca_ctx * plainCtx)
+{
+    return std::make_shared<doca::Context>(plainCtx, std::make_shared<Deleter>());
+}
+
+doca::ContextPtr doca::Context::CreateReferenceFromNative(doca_ctx * plainCtx)
+{
+    return std::make_shared<doca::Context>(plainCtx);
 }
 
 error doca::Context::Start()
@@ -88,4 +99,24 @@ DOCA_CPP_UNSAFE error doca::Context::SetUserData(const Data & data)
         return errors::Wrap(err, "failed to set user data");
     }
     return nullptr;
+}
+
+error doca::Context::SetContextStateChangedCallback(ContextStateChangedCallback callback)
+{
+    if (!this->ctx) {
+        return errors::New("context is null");
+    }
+    auto err = FromDocaError(doca_ctx_set_state_changed_cb(ctx, callback));
+    if (err) {
+        return errors::Wrap(err, "failed to set context state changed callback");
+    }
+    return nullptr;
+}
+
+void doca::Context::Deleter::Delete(doca_ctx * ctx)
+{
+    if (ctx) {
+        doca_ctx_flush_tasks(ctx);
+        std::ignore = doca_ctx_stop(ctx);
+    }
 }
