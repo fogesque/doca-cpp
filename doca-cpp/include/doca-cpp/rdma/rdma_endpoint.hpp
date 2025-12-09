@@ -40,7 +40,7 @@ using RdmaEndpointId = std::string;
 using RdmaEndpointPath = std::string;
 
 enum class RdmaEndpointType {
-    send,
+    send = 0x01,
     receive,
     write,
     read,
@@ -48,6 +48,33 @@ enum class RdmaEndpointType {
 
 using RdmaEndpointBuffer = RdmaBuffer;
 using RdmaEndpointBufferPtr = RdmaBufferPtr;
+
+/**
+ * @brief RDMA Endpoint Message Format
+ *
+ * Binary message structure for RDMA endpoint communication:
+ *
+ * ┌─────────────────────────────────────────────────────────┐
+ * │ Field              │ Size    │ Description              │
+ * ├─────────────────────────────────────────────────────────┤
+ * │ Path Length        │ 2 bytes │ Length of path string    │
+ * │ Path String        │ Variable│ Null-terminated path     │
+ * │ Operation Opcode   │ 2 bytes │ RdmaEndpointType enum    │
+ * └─────────────────────────────────────────────────────────┘
+ *
+ * Layout in memory:
+ *
+ *  Offset  Size  Field
+ *  ──────  ────  ─────────────────────
+ *  0       2     Path Length (uint16_t)
+ *  2       N     Path String (char[])
+ *  2+N     2     Operation Opcode (uint16_t)
+ *
+ * Example: Path="/rdma/ep1", OpCode=SEND
+ *
+ *  [0x00 0x09] [/r d m a / e p 1] [0x00 0x02]
+ *   len=9       9 bytes path        opcode
+ */
 
 // RdmaServiceInterface
 

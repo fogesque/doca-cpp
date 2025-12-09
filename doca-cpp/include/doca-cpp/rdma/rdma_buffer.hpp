@@ -9,6 +9,8 @@
 #include <tuple>
 #include <vector>
 
+#include "doca-cpp/core/mmap.hpp"
+
 namespace doca::rdma
 {
 
@@ -90,6 +92,8 @@ private:
     MemoryRangePtr memoryRange = nullptr;
     std::atomic<bool> memoryLocked{ false };
     std::mutex memoryMutex;
+
+    MemoryMapPtr memoeryMap = nullptr;
 };
 
 using RdmaBufferPtr = std::shared_ptr<RdmaBuffer>;

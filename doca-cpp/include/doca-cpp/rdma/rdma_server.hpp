@@ -1,22 +1,14 @@
 #pragma once
 
 #include <errors/errors.hpp>
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
 
 #include "doca-cpp/core/device.hpp"
-#include "doca-cpp/rdma/rdma_connection.hpp"
-#include "doca-cpp/rdma/rdma_peer.hpp"
-
-/*
-   TODO: Arhitecture issues:
-   RdmaServer must be a facade for user to run rdma operations after connection is established
-   All operations that initialize DOCA RDMA resources must be hidden inside RdmaServer implementation
-   Now it is handled by RdmaExecutor inside RdmaPeer, but it is too complex now as it has RdmaEngine
-   which manages all RDMA resources and also runs RDMA in other thread.
-   We need to simplify it in the future.
-*/
+#include "doca-cpp/rdma/rdma_buffer.hpp"
+#include "doca-cpp/rdma/rdma_endpoint.hpp"
 
 namespace doca::rdma
 {
@@ -27,15 +19,12 @@ class RdmaServer;
 // ----------------------------------------------------------------------------
 // RdmaServer
 // ----------------------------------------------------------------------------
-class RdmaServer : public RdmaPeer
+class RdmaServer
 {
 public:
     error Serve();
 
-    struct Config {
-        RdmaConnectionType connType = RdmaConnectionType::connManagerIpv4;
-        uint16_t port = 4791;
-    };
+    void RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
 
     class Builder
     {
@@ -44,7 +33,6 @@ public:
         Builder() = default;
 
         Builder & SetDevice(doca::DevicePtr device);
-        Builder & SetConnectionType(RdmaConnectionType type);
         Builder & SetListenPort(uint16_t port);
 
         std::tuple<RdmaServerPtr, error> Build();
@@ -58,7 +46,7 @@ public:
 
         error buildErr = nullptr;
         doca::DevicePtr device = nullptr;
-        RdmaServer::Config serverConfig = {};
+        uint16_t port = 0;
     };
 
     static Builder Create();
@@ -66,17 +54,18 @@ public:
     // Move-only type
     RdmaServer(const RdmaServer &) = delete;
     RdmaServer & operator=(const RdmaServer &) = delete;
-    RdmaServer(RdmaServer && other) noexcept;              // TODO: implement
-    RdmaServer & operator=(RdmaServer && other) noexcept;  // TODO: implement
+    RdmaServer(RdmaServer && other) noexcept = default;
+    RdmaServer & operator=(RdmaServer && other) noexcept = default;
 
 private:
-    explicit RdmaServer(doca::DevicePtr initialDevice, RdmaServer::Config initialConfig);
+    explicit RdmaServer(doca::DevicePtr initialDevice, uint16_t port);
+
+    std::map<RdmaEndpointId, RdmaEndpointPtr> endpoints;
 
     doca::DevicePtr device = nullptr;
+    uint16_t port = 12345;
 
-    RdmaServer::Config config = {};
-
-    RdmaConnectionManagerPtr connManager = nullptr;
+    RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
 };
 
 using RdmaServerPtr = std::shared_ptr<RdmaServer>;
