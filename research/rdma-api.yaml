@@ -43,16 +43,16 @@ endpoints:
   - path: /write-signal-ch0
     type: write
     buffer:
-    size: 4194304 # bytes - 4MB
+      size: 4194304 # bytes - 4MB
 
   - path: /post-info
     type: send
     buffer:
-    size: 4096 # bytes - 4KB
+      size: 4096 # bytes - 4KB
 
   - path: /read-signal-ch0
     type: read
     buffer:
-    size: 4194304 # bytes - 4MB
+      size: 4194304 # bytes - 4MB
 
 
