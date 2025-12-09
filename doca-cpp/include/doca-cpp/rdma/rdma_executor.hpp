@@ -18,6 +18,7 @@
 #include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/rdma/internal/rdma_engine.hpp"
 #include "doca-cpp/rdma/internal/rdma_task.hpp"
+#include "doca-cpp/rdma/rdma_awaitable.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
 // RDMA execution model:
@@ -70,8 +71,16 @@ struct OperationRequest {
     Type type;
     RdmaBufferPtr buffer = nullptr;
     std::size_t bytesAffected = 0;
-    std::shared_ptr<std::promise<error>> promise = nullptr;
+
+    OperationRequestPromise promise = nullptr;
+
+    RdmaConnectionPtr connection = nullptr;
 };
+
+using OperationResponce = std::pair<RdmaBufferPtr, error>;
+
+// Promise will contain operation error and copy of pointer to buffer
+using OperationRequestPromise = std::shared_ptr<std::promise<OperationResponce>>;
 
 namespace ErrorType
 {
@@ -99,14 +108,13 @@ public:
     RdmaExecutor(RdmaExecutor &&) = delete;
     RdmaExecutor & operator=(RdmaExecutor &&) = delete;
 
-    error SubmitOperation(OperationRequest request);
+    std::tuple<RdmaAwaitable, error> SubmitOperation(OperationRequest request);
 
     // This functions must be considered as private. Due to DOCA fucking callbacks
     // limitations, they are public for now.
     void AddRequestedConnection(RdmaConnectionPtr connection);
-    void AddActiveConnection(RdmaConnectionId connectionId);
+    void AddActiveConnection(RdmaConnectionPtr connection);
     void RemoveActiveConnection(RdmaConnectionId connectionId);
-    RdmaConnectionId GetNextConnectionId();
 
     struct Statistics {
         std::atomic<uint64_t> sendOperations{ 0 };
@@ -129,12 +137,12 @@ private:
 
     void workerLoop();
 
-    error executeOperation(OperationRequest & request);
+    OperationResponce executeOperation(OperationRequest & request);
 
-    error executeSend(OperationRequest & request);
-    error executeReceive(OperationRequest & request);
-    error executeRead(OperationRequest & request);
-    error executeWrite(OperationRequest & request);
+    OperationResponce executeSend(OperationRequest & request);
+    OperationResponce executeReceive(OperationRequest & request);
+    OperationResponce executeRead(OperationRequest & request);
+    OperationResponce executeWrite(OperationRequest & request);
 
     bool timeoutExpired(const std::chrono::steady_clock::time_point & startTime,
                         std::chrono::milliseconds timeout) const;
@@ -163,9 +171,6 @@ private:
     doca::ContextPtr rdmaContext = nullptr;
     doca::ProgressEnginePtr progressEngine = nullptr;
     doca::BufferInventoryPtr bufferInventory = nullptr;
-
-    // TODO: add ID setting algorithm
-    RdmaConnectionId connectionIdCounter = 0;
 };
 
 using RdmaExecutorPtr = std::shared_ptr<RdmaExecutor>;

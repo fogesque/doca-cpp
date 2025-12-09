@@ -1,15 +1,9 @@
 #pragma once
 
-#include <chrono>
-#include <cstddef>
-#include <cstring>
 #include <errors/errors.hpp>
 #include <future>
 #include <memory>
-#include <print>
-#include <span>
 #include <string>
-#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -18,17 +12,19 @@
 namespace doca::rdma
 {
 
+using OperationResponce = std::pair<RdmaBufferPtr, error>;
+
 class RdmaAwaitable
 {
 public:
-    error Await()
+    OperationResponce Await()
     {
         return this->taskFuture.get();
     }
 
     RdmaAwaitable() = default;
 
-    RdmaAwaitable(std::future<error> & initialTaskFuture) : taskFuture(std::move(initialTaskFuture)) {};
+    RdmaAwaitable(std::future<OperationResponce> & initialTaskFuture) : taskFuture(std::move(initialTaskFuture)) {};
 
     RdmaAwaitable(RdmaAwaitable && other) noexcept = default;
     RdmaAwaitable & operator=(RdmaAwaitable && other) noexcept = default;
@@ -39,7 +35,7 @@ public:
     ~RdmaAwaitable() = default;
 
 private:
-    std::future<error> taskFuture;
+    std::future<OperationResponce> taskFuture;
 };
 
 }  // namespace doca::rdma

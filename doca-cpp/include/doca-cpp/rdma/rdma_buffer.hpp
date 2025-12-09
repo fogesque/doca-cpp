@@ -90,10 +90,14 @@ public:
 
 private:
     MemoryRangePtr memoryRange = nullptr;
+
     std::atomic<bool> memoryLocked{ false };
     std::mutex memoryMutex;
 
-    MemoryMapPtr memoeryMap = nullptr;
+    MemoryMapPtr memoryMap = nullptr;
+
+    MemoryRangePtr memoryRangeDescriptor = nullptr;
+    MemoryMapPtr descriptorMemoryMap = nullptr;
 };
 
 using RdmaBufferPtr = std::shared_ptr<RdmaBuffer>;
