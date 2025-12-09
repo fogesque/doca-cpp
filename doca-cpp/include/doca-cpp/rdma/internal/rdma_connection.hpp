@@ -97,8 +97,8 @@ public:
     void SetState(State newState);
     RdmaConnection::State GetState() const;
 
-    void SetId(RdmaConnectionId connId);
-    RdmaConnectionId GetId() const;
+    // void SetId(RdmaConnectionId connId);
+    std::tuple<RdmaConnectionId, error> GetId() const;
 
     bool IsAccepted() const;
     void SetAccepted();
@@ -118,7 +118,7 @@ private:
 
     RdmaConnection::State connectionState = RdmaConnection::State::idle;
 
-    RdmaConnectionId connectionId = 0;
+    // RdmaConnectionId connectionId = 0;
 
     bool accepted = false;
 };

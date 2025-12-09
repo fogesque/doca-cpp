@@ -94,14 +94,24 @@ RdmaConnection::State RdmaConnection::GetState() const
     return this->connectionState;
 }
 
-void RdmaConnection::SetId(RdmaConnectionId connId)
-{
-    this->connectionId = connId;
-}
+// void RdmaConnection::SetId(RdmaConnectionId connId)
+// {
+//     this->connectionId = connId;
+// }
 
-doca::rdma::RdmaConnectionId RdmaConnection::GetId() const
+std::tuple<doca::rdma::RdmaConnectionId, error> RdmaConnection::GetId() const
 {
-    return this->connectionId;
+    if (this->rdmaConnection == nullptr) {
+        return { 0, errors::New("Rdma connection is null") };
+    }
+
+    uint32_t connectionId = 0;
+    auto err = FromDocaError(doca_rdma_connection_get_id(this->rdmaConnection, &connectionId));
+    if (err) {
+        return { 0, errors::Wrap(err, "failed to get RDMA connection ID") };
+    }
+
+    return { connectionId, nullptr };
 }
 
 bool RdmaConnection::IsAccepted() const
