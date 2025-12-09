@@ -9,6 +9,7 @@
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
+#include "doca-cpp/rdma/rdma_executor.hpp"
 
 namespace doca::rdma
 {
@@ -66,6 +67,13 @@ private:
     uint16_t port = 12345;
 
     RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
+
+    error handleSendRequest(const RdmaEndpointId & endpointId);
+    error handleReceiveRequest(const RdmaEndpointId & endpointId);
+    error handleWriteRequest(const RdmaEndpointId & endpointId);
+    error handleReadRequest(const RdmaEndpointId & endpointId);
+
+    RdmaExecutorPtr executor = nullptr;
 };
 
 using RdmaServerPtr = std::shared_ptr<RdmaServer>;

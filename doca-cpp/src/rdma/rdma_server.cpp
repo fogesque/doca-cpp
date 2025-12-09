@@ -48,11 +48,23 @@ explicit RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : 
 
 error RdmaServer::Serve()
 {
+    // Check if there are registered endpoints
     if (this->endpoints.empty()) {
         return errors::New("Failed to serve: no endpoints to process");
     }
 
-    // 1. Start Executor
+    // Create Executor
+    auto [executor, err] = RdmaExecutor::Create(RdmaConnectionRole::server, this->device);
+    if (err) {
+        return errors::Wrap(err, "Failed to create RDMA executor");
+    }
+    this->executor = executor;
+
+    // Start Executor
+    err = this->executor->Start();
+    if (err) {
+        return errors::Wrap(err, "Failed to start RDMA executor");
+    }
 
     // 2. Prepare Buffer for EndpointMessage (aka RdmaRequest payload)
 
