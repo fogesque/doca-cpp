@@ -318,3 +318,33 @@ void doca::DeviceList::Deleter::Delete(doca_devinfo ** devList)
         doca_devinfo_destroy_list(devList);
     }
 }
+
+std::tuple<doca::DevicePtr, error> doca::OpenIbDevice(const std::string & ibDeviceName)
+{
+    // Get devices list
+    auto [devices, err] = doca::DeviceList::Create();
+    if (err) {
+        return { nullptr, errors::New("Failed to create device list") };
+    }
+
+    // Query device IB name
+    for (auto devIter = devices->Begin(); devIter != devices->End(); ++devIter) {
+        const auto & devInfo = *devIter;
+
+        auto [ibdevName, err] = devInfo.GetIbdevName();
+        if (err) {
+            return { nullptr, errors::Wrap(err, "Failed to get device InfiniBand name") };
+        }
+
+        // Open requested device
+        if (ibdevName == ibDeviceName) {
+            auto [device, err] = doca::Device::Open(devInfo);
+            if (err) {
+                return { nullptr, errors::Wrap(err, "Failed to open InfiniBand device") };
+            }
+            return { device, nullptr };
+        }
+    }
+
+    return { nullptr, errors::New("Failed to open InfiniBand device: no device found with given name") };
+}

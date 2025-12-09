@@ -161,4 +161,6 @@ private:
 
 using DevicePtr = std::shared_ptr<Device>;
 
+std::tuple<doca::DevicePtr, error> OpenIbDevice(const std::string & ibDeviceName);
+
 }  // namespace doca
