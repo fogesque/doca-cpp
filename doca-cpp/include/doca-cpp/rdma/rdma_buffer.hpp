@@ -14,7 +14,7 @@
 namespace doca::rdma
 {
 
-using MemoryRange = std::span<std::byte>;
+using MemoryRange = std::vector<std::uint8_t>;
 using MemoryRangePtr = std::shared_ptr<MemoryRange>;
 
 namespace ErrorTypes
@@ -53,6 +53,35 @@ public:
         return nullptr;
     };
 
+    error MapMemory(doca::DevicePtr device, doca::AccessFlags permissions)
+    {
+        auto & memorySpan = *this->memoryRange;
+        auto [mmap, err] =
+            doca::MemoryMap::Create().AddDevice(device).SetMemoryRange(memorySpan).SetPermissions(permissions).Start();
+        if (err) {
+            return errors::Wrap(err, "Failed to create memory map");
+        }
+        this->memoryMap = mmap;
+        return nullptr;
+    }
+
+    std::tuple<RdmaBufferPtr, error> ExportMemoryDescriptor(doca::DevicePtr device)
+    {
+        auto [descriptorSpan, err] = this->memoryMap->ExportRdma();
+        if (err) {
+            return { nullptr, errors::Wrap(err, "Failed to export memory descriptor") };
+        }
+
+        auto descriptorData = std::make_shared<MemoryRange>(descriptorSpan.size());
+        std::ignore = std::copy(descriptorSpan.begin(), descriptorSpan.end(), descriptorData->begin());
+
+        auto descriptorBuffer = std::make_shared<RdmaBuffer>();
+        descriptorBuffer->RegisterMemoryRange(descriptorData);
+        descriptorBuffer->MapMemory(device, doca::AccessFlags::localReadWrite);
+
+        return { descriptorBuffer, nullptr };
+    }
+
     std::tuple<MemoryRangePtr, error> GetMemoryRange()
     {
         if (this->memoryRange == nullptr) {
@@ -85,7 +114,7 @@ public:
         if (this->memoryRange == nullptr) {
             return 0;
         }
-        return this->memoryRange->size_bytes();
+        return this->memoryRange->size();
     }
 
 private:
