@@ -72,15 +72,17 @@ struct OperationRequest {
     RdmaBufferPtr buffer = nullptr;
     std::size_t bytesAffected = 0;
 
-    OperationRequestPromise promise = nullptr;
-
-    RdmaConnectionPtr connection = nullptr;
+    OperationRequestPromise responcePromise = nullptr;
+    OperationConnectionPromise connectionPromise = nullptr;
 };
 
 using OperationResponce = std::pair<RdmaBufferPtr, error>;
 
 // Promise will contain operation error and copy of pointer to buffer
 using OperationRequestPromise = std::shared_ptr<std::promise<OperationResponce>>;
+
+// Promise will contain connection if operation type is Receive. Caused by DOCA design
+using OperationConnectionPromise = std::shared_ptr<std::promise<RdmaConnectionPtr>>;
 
 namespace ErrorType
 {
@@ -100,7 +102,6 @@ public:
     error Start();
 
     RdmaExecutor() = delete;
-    RdmaExecutor(RdmaConnectionRole connectionRole, RdmaEnginePtr initialRdmaEngine, doca::DevicePtr initialDevice);
     ~RdmaExecutor();
 
     RdmaExecutor(const RdmaExecutor &) = delete;

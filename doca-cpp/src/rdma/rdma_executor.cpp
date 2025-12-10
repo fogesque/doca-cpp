@@ -252,18 +252,18 @@ error doca::rdma::RdmaExecutor::Start()
 
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
 {
-    auto operationFuture = request.promise->get_future();
+    auto operationFuture = request.responcePromise->get_future();
     auto awaitable = RdmaAwaitable(operationFuture);
     {
         std::scoped_lock lock(this->queueMutex);
         if (!this->running) {
             auto err = errors::New("Executor is shut down");
-            request.promise->set_value({ nullptr, err });
+            request.responcePromise->set_value({ nullptr, err });
             return { std::move(awaitable), err };
         }
         if (this->operationQueue.size() >= this->TasksQueueSizeThreshold) {
             auto err = errors::New("Operations queue reached its size limit");
-            request.promise->set_value({ nullptr, err });
+            request.responcePromise->set_value({ nullptr, err });
             return { std::move(awaitable), err };
         }
         this->operationQueue.push(std::move(request));
@@ -321,7 +321,7 @@ void RdmaExecutor::workerLoop()
             this->operationQueue.pop();
         }
         auto responce = this->executeOperation(request);
-        request.promise->set_value(responce);
+        request.responcePromise->set_value(responce);
     }
 }
 
@@ -349,7 +349,8 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     // 4. Submit RdmaSendTask to RdmaEngine
     // 5. Wait for task completion (will be done after callback)
 
-    auto [connectionId, connErr] = request.connection->GetId();
+    // TODO: Design issues: fix author's brain please
+    auto [connectionId, connErr] = request.connectionPromise->get_future().get()->GetId();
     if (connErr) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(connErr, "Failed to get connection ID") };
@@ -373,13 +374,12 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
     }
-    auto & memorySpan = *memoryRange;
 
     // Create MemoryMap for the buffer
     auto [memoryMap, mapErr] = doca::MemoryMap::Create()
                                    .AddDevice(this->device)
                                    .SetPermissions(doca::AccessFlags::localReadWrite)
-                                   .SetMemoryRange(memorySpan)
+                                   .SetMemoryRange(*memoryRange)
                                    .Start();
     if (mapErr) {
         this->stats.failedOperations++;
@@ -387,6 +387,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     }
 
     // Get doca::Buffer from BufferInventory
+    auto memorySpan = std::span<std::uint8_t>(memoryRange->data(), memoryRange->size());
     auto [buffer, bufErr] = this->bufferInventory->AllocBuffer(memoryMap, memorySpan);
     if (bufErr) {
         this->stats.failedOperations++;
