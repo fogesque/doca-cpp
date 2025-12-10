@@ -22,6 +22,11 @@ public:
         return this->taskFuture.get();
     }
 
+    RdmaConnectionPtr GetConnection()
+    {
+        return this->connectionFuture.get();
+    }
+
     RdmaAwaitable() = default;
 
     RdmaAwaitable(std::future<OperationResponce> & initialTaskFuture) : taskFuture(std::move(initialTaskFuture)) {};
@@ -36,6 +41,7 @@ public:
 
 private:
     std::future<OperationResponce> taskFuture;
+    std::future<RdmaConnectionPtr> connectionFuture;
 };
 
 }  // namespace doca::rdma
