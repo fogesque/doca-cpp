@@ -68,12 +68,21 @@ private:
 
     RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
 
-    error handleSendRequest(const RdmaEndpointId & endpointId);
-    error handleReceiveRequest(const RdmaEndpointId & endpointId);
-    error handleWriteRequest(const RdmaEndpointId & endpointId);
-    error handleReadRequest(const RdmaEndpointId & endpointId);
+    std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestData(const MemoryRangePtr requestMemoreRange);
+
+    std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
+
+    std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId);
+    std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId,
+                                                          RdmaConnectionPtr connection);
+    std::tuple<RdmaBufferPtr, error> handleWriteRequest(const RdmaEndpointId & endpointId,
+                                                        RdmaConnectionPtr connection);
+    std::tuple<RdmaBufferPtr, error> handleReadRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
 
     RdmaExecutorPtr executor = nullptr;
+
+    // TODO: Add graceful shutdown support
+    std::atomic_bool continueServing = true;
 };
 
 using RdmaServerPtr = std::shared_ptr<RdmaServer>;
