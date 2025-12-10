@@ -268,7 +268,7 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, voi
     return { managedBuffer, nullptr };
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, std::span<std::byte> data)
+std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data)
 {
     if (!this->inventory) {
         return { nullptr, errors::New("inventory is null") };

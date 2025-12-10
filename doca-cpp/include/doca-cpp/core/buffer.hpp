@@ -107,7 +107,7 @@ public:
     static Builder Create(size_t numElements);
 
     std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, void * address, size_t length);
-    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, std::span<std::byte> data);
+    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data);
 
     error Stop();
     doca_buf_inventory * GetNative() const;

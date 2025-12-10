@@ -4,8 +4,8 @@
 
 #include <cstddef>
 #include <memory>
-#include <span>
 #include <tuple>
+#include <vector>
 
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/error.hpp"
@@ -27,7 +27,7 @@ public:
 
         Builder & AddDevice(DevicePtr device);
         Builder & SetPermissions(AccessFlags permissions);
-        Builder & SetMemoryRange(std::span<std::byte> & buffer);
+        Builder & SetMemoryRange(std::vector<std::uint8_t> & buffer);
         Builder & SetMaxNumDevices(uint32_t maxDevices);
         Builder & SetUserData(const Data & data);
         std::tuple<MemoryMapPtr, error> Start();
@@ -48,7 +48,7 @@ public:
     };
 
     static Builder Create();
-    static Builder CreateFromExport(std::span<std::byte> exportDesc, DevicePtr device);
+    static Builder CreateFromExport(std::span<std::uint8_t> & exportDesc, DevicePtr device);
 
     // Move-only type
     MemoryMap(const MemoryMap &) = delete;
@@ -58,8 +58,8 @@ public:
 
     error Stop();
     error RemoveDevice();
-    std::tuple<std::span<const std::byte>, error> ExportPci() const;
-    std::tuple<std::span<const std::byte>, error> ExportRdma() const;
+    std::tuple<std::span<const std::uint8_t>, error> ExportPci() const;
+    std::tuple<std::span<const std::uint8_t>, error> ExportRdma() const;
 
     DOCA_CPP_UNSAFE doca_mmap * GetNative() const;
 

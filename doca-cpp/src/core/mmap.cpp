@@ -66,7 +66,7 @@ MemoryMap::Builder & MemoryMap::Builder::SetPermissions(AccessFlags permissions)
     return *this;
 }
 
-MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(std::span<std::byte> & buffer)
+MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(std::vector<std::uint8_t> & buffer)
 {
     if (this->mmap && !this->buildErr) {
         auto dataPtr = static_cast<void *>(buffer.data());
@@ -145,7 +145,7 @@ MemoryMap::Builder MemoryMap::Create()
     return Builder(mmap);
 }
 
-MemoryMap::Builder MemoryMap::CreateFromExport(std::span<std::byte> exportDesc, DevicePtr dev)
+MemoryMap::Builder MemoryMap::CreateFromExport(std::span<std::uint8_t> & exportDesc, DevicePtr dev)
 {
     doca_mmap * mmap = nullptr;
     doca_data * userData = nullptr;
@@ -204,7 +204,7 @@ error MemoryMap::RemoveDevice()
     return nullptr;
 }
 
-std::tuple<std::span<const std::byte>, error> MemoryMap::ExportPci() const
+std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportPci() const
 {
     if (!this->device) {
         return { {}, errors::New("no device associated with mmap") };
@@ -222,10 +222,12 @@ std::tuple<std::span<const std::byte>, error> MemoryMap::ExportPci() const
         return { {}, errors::Wrap(err, "failed to export mmap for PCI") };
     }
 
-    return { std::span<const std::byte>(static_cast<const std::byte *>(exportDesc), exportDescLen), nullptr };
+    auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
+    auto exportDescSpan = std::span<const std::uint8_t>(exportDescPtr, exportDescLen);
+    return { exportDescSpan, nullptr };
 }
 
-std::tuple<std::span<const std::byte>, error> MemoryMap::ExportRdma() const
+std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
 {
     if (!this->device) {
         return { {}, errors::New("no device associated with mmap") };
@@ -243,7 +245,9 @@ std::tuple<std::span<const std::byte>, error> MemoryMap::ExportRdma() const
         return { {}, errors::Wrap(err, "failed to export mmap for RDMA") };
     }
 
-    return { std::span<const std::byte>(static_cast<const std::byte *>(exportDesc), exportDescLen), nullptr };
+    auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
+    auto exportDescSpan = std::span<const std::uint8_t>(exportDescPtr, exportDescLen);
+    return { exportDescSpan, nullptr };
 }
 
 doca_mmap * MemoryMap::GetNative() const
