@@ -99,7 +99,8 @@ error RdmaServer::Serve()
         // Submit Receive task for RDMA request
         auto receiveOperationRequest = OperationRequest{
             .type = OperationRequest::Type::receive,
-            .buffer = requestRdmaBuffer,
+            .sourceBuffer = nullptr,
+            .destinationBuffer = requestRdmaBuffer,
             .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
             .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
         };
@@ -258,7 +259,8 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleSendRequest(const
     // Since client requested Send, server must submit Receive task
     auto receiveOperation = OperationRequest{
         .type = OperationRequest::Type::receive,
-        .buffer = endpointBuffer,
+        .sourceBuffer = nullptr,
+        .destinationBuffer = endpointBuffer,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = nullptr,
     };
@@ -280,7 +282,8 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReceiveRequest(co
     // Since client requested Receive, server must submit Send task
     auto sendOperation = OperationRequest{
         .type = OperationRequest::Type::send,
-        .buffer = endpointBuffer,
+        .sourceBuffer = endpointBuffer,
+        .destinationBuffer = nullptr,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
@@ -313,7 +316,8 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleWriteRequest(cons
     // Send operation for sending descriptor
     auto sendOperation = OperationRequest{
         .type = OperationRequest::Type::send,
-        .buffer = bufferDescriptor,
+        .sourceBuffer = bufferDescriptor,
+        .destinationBuffer = nullptr,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
@@ -322,21 +326,22 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleWriteRequest(cons
 
     auto [awaitable, err] = this->executor->SubmitOperation(sendOperation);
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to execute operation") };
+        return { nullptr, errors::Wrap(err, "Failed to submit operation") };
     }
 
-    auto [sendBuffer, sendErr] = awaitable.Await();
+    auto [_, sendErr] = awaitable.Await();
     if (sendErr) {
-        return { nullptr, errors::Wrap(err, "Failed send exported descriptor") };
+        return { nullptr, errors::Wrap(err, "Failed to send exported descriptor") };
     }
 
     // After sending descriptor, submit Receive task to get completion acknowledge
     // FIXME: switch empty message to immediate value
     auto receiveOperation = OperationRequest{
         .type = OperationRequest::Type::receive,
-        .buffer = nullptr,  // empty message
+        .sourceBuffer = nullptr,
+        .destinationBuffer = nullptr,  // empty message
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
-        .connectionPromise = nullptr,
+        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
     auto [ackAwaitable, ackOpErr] = this->executor->SubmitOperation(receiveOperation);
@@ -371,7 +376,8 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReadRequest(const
     // Send operation for sending descriptor
     auto sendOperation = OperationRequest{
         .type = OperationRequest::Type::send,
-        .buffer = bufferDescriptor,
+        .sourceBuffer = bufferDescriptor,
+        .destinationBuffer = nullptr,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
@@ -392,9 +398,10 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReadRequest(const
     // FIXME: switch empty message to immediate value
     auto receiveOperation = OperationRequest{
         .type = OperationRequest::Type::receive,
-        .buffer = nullptr,  // empty message
+        .sourceBuffer = nullptr,
+        .destinationBuffer = nullptr,  // empty message
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
-        .connectionPromise = nullptr,
+        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
     auto [ackAwaitable, ackOpErr] = this->executor->SubmitOperation(receiveOperation);
