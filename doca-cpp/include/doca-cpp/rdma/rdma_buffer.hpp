@@ -55,6 +55,10 @@ public:
 
     error MapMemory(doca::DevicePtr device, doca::AccessFlags permissions)
     {
+        if (this->memoryMap != nullptr) {
+            return nullptr;  // Already mapped
+        }
+
         auto & memorySpan = *this->memoryRange;
         auto [mmap, err] =
             doca::MemoryMap::Create().AddDevice(device).SetMemoryRange(memorySpan).SetPermissions(permissions).Start();
@@ -62,7 +66,16 @@ public:
             return errors::Wrap(err, "Failed to create memory map");
         }
         this->memoryMap = mmap;
+        this->device = device;
         return nullptr;
+    }
+
+    std::tuple<MemoryMapPtr, error> GetMemoryMap()
+    {
+        if (this->memoryMap == nullptr) {
+            return { nullptr, errors::New("Memory map is null") };
+        }
+        return { this->memoryMap, nullptr };
     }
 
     std::tuple<RdmaBufferPtr, error> ExportMemoryDescriptor(doca::DevicePtr device)
@@ -123,6 +136,7 @@ private:
     std::atomic<bool> memoryLocked{ false };
     std::mutex memoryMutex;
 
+    doca::DevicePtr device = nullptr;
     MemoryMapPtr memoryMap = nullptr;
 
     MemoryRangePtr memoryRangeDescriptor = nullptr;

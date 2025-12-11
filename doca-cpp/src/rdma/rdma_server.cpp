@@ -69,8 +69,11 @@ error RdmaServer::Serve()
         return errors::New("Failed to serve: no endpoints to process");
     }
 
-    // Map all buffers in endpoints
-    // TODO: implement in method
+    // Map all buffers in endpoints before serving
+    auto mapErr = this->mapEndpointsMemory();
+    if (mapErr) {
+        return errors::Wrap(mapErr, "Failed to map endpoints memory");
+    }
 
     // Create Executor
     auto [executor, err] = RdmaExecutor::Create(RdmaConnectionRole::server, this->device);
@@ -170,6 +173,19 @@ void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
 RdmaEndpointId RdmaServer::makeIdForEndpoint(const RdmaEndpointPtr endpoint) const
 {
     return endpoint->Path() + rdma::EndpointTypeToString(endpoint->Type());
+}
+
+error doca::rdma::RdmaServer::mapEndpointsMemory()
+{
+    for (auto & [_, endpoint] : this->endpoints) {
+        auto err =
+            endpoint->Buffer()->MapMemory(this->device, doca::AccessFlags::localReadWrite |
+                                                            doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite);
+        if (err) {
+            return errors::Wrap(err, "Failed to map endpoint's memory");
+        }
+    }
+    return error();
 }
 
 std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromRequestData(

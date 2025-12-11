@@ -158,21 +158,37 @@ int main()
 std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> endpoints::CreateEndpoints(
     doca::DevicePtr device, const std::vector<Config> & configs)
 {
-    std::vector<doca::rdma::RdmaEndpointPtr> endpoints;
+    using doca::rdma::RdmaBufferPtr;
+    using doca::rdma::RdmaEndpointPath;
+    using doca::rdma::RdmaEndpointPtr;
+
+    std::vector<RdmaEndpointPtr> endpoints;
+    std::map<RdmaEndpointPath, RdmaBufferPtr> buffers;
 
     for (const auto & config : configs) {
-        auto data = std::make_shared<std::vector<std::byte>>(config.size);
-        auto memrange = std::make_shared<doca::rdma::MemoryRange>(data->begin(), data->end());
-        auto buffer = std::make_shared<doca::rdma::RdmaBuffer>();
+        RdmaBufferPtr uniqueBuffer = nullptr;
 
-        // Won't return error here
-        std::ignore = buffer->RegisterMemoryRange(memrange);
+        // Same paths refer to one buffer
+        if (!buffers.contains(config.path)) {
+            // So if there is new unique path met, allocate buffer
+            auto data = std::make_shared<std::vector<std::uint8_t>>(config.size);
+            auto memrange = std::make_shared<doca::rdma::MemoryRange>(data->begin(), data->end());
+            auto buffer = std::make_shared<doca::rdma::RdmaBuffer>();
+
+            // Won't return error here
+            std::ignore = buffer->RegisterMemoryRange(memrange);
+
+            buffers[config.path] = buffer;
+        }
+
+        // This will be buffer just created early or from endpoint with same path
+        uniqueBuffer = buffers[config.path];
 
         auto [ep, err] = doca::rdma::RdmaEndpoint::Create()
                              .SetDevice(device)
                              .SetPath(config.path)
                              .SetType(config.type)
-                             .SetBuffer(buffer)
+                             .SetBuffer(uniqueBuffer)
                              .Build();
         if (err) {
             return { {}, err };

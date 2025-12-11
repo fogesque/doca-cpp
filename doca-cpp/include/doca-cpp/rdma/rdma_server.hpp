@@ -68,6 +68,8 @@ private:
 
     RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
 
+    error mapEndpointsMemory();
+
     std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestData(const MemoryRangePtr requestMemoreRange);
 
     std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
