@@ -370,40 +370,26 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
         return { nullptr, errors::New("No active RDMA connection available for send operation") };
     }
 
-    // Lock for operation execution
-    request.buffer->LockMemory();
+    // Source DOCA buffer, may be nullptr for empty message
+    doca::BufferPtr srcBuf = doca::Buffer::CreateRef(nullptr);
 
     // Initialize operation state
     auto taskState = RdmaTaskInterface::State::idle;
 
-    // Get buffer memory range
-    auto [memoryRange, err] = request.buffer->GetMemoryRange();
-    if (err) {
-        this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
-    }
-
-    // Get MemoryMap from buffer
-    auto [memoryMap, mapErr] = request.buffer->GetMemoryMap();
-    if (mapErr) {
-        this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(mapErr, "Failed to get memory map from buffer") };
-    }
-
-    // Get doca::Buffer from BufferInventory
-    // TODO: maybe this also could be done once in executor initialization???
-    auto memorySpan = std::span<std::uint8_t>(memoryRange->data(), memoryRange->size());
-    auto [buffer, bufErr] = this->bufferInventory->AllocBuffer(memoryMap, memorySpan);
-    if (bufErr) {
-        this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from BufferInventory") };
+    if (request.sourceBuffer) {
+        auto [buffer, err] = this->getDocaBuffer(request.sourceBuffer);
+        if (err) {
+            this->stats.failedOperations++;
+            return { nullptr, errors::Wrap(err, "Failed to get get doca buffer") };
+        }
+        srcBuf = buffer;
     }
 
     // Create RdmaSendTask from RdmaEngine
     // Set task user data to current transfer state: it will be changed in the task callbacks
     auto taskUserData = doca::Data(static_cast<void *>(&taskState));
     auto activeConnection = this->activeConnections.at(connectionId);
-    auto [sendTask, taskErr] = this->rdmaEngine->AllocateSendTask(activeConnection, buffer, taskUserData);
+    auto [sendTask, taskErr] = this->rdmaEngine->AllocateSendTask(activeConnection, srcBuf, taskUserData);
     if (taskErr) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA Send Task") };
@@ -411,7 +397,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
 
     // Submit RdmaSendTask to RdmaEngine
     taskState = RdmaTaskInterface::State::submitted;
-    err = sendTask->Submit();
+    auto err = sendTask->Submit();
     if (err) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA Send Task") };
@@ -431,17 +417,14 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     sendTask->Free();
 
     // Decrement buffer reference count in BufferInventory
-    auto [refcount, rcErr] = buffer->DecRefcount();
+    auto [refcount, rcErr] = srcBuf->DecRefcount();
     if (rcErr) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in BufferInventory") };
     }
 
-    // Unlock buffer memory
-    request.buffer->UnlockMemory();
-
     this->stats.sendOperations++;
-    return { request.buffer, nullptr };
+    return { request.sourceBuffer, nullptr };
 }
 
 OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
@@ -454,43 +437,26 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     // 5. Wait for task completion (will be done after callback)
     // 6. Get received bytes count from RdmaReceiveTask
 
-    // Lock for operation execution
-    request.buffer->LockMemory();
+    // Destination DOCA buffer, may be nullptr for empty message
+    doca::BufferPtr destBuf = doca::Buffer::CreateRef(nullptr);
 
     // Initialize operation state
     auto taskState = RdmaTaskInterface::State::idle;
 
-    // Get buffer memory range
-    auto [memoryRange, err] = request.buffer->GetMemoryRange();
-    if (err) {
-        this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
-    }
-    auto & memorySpan = *memoryRange;
-
-    // Create MemoryMap for the buffer
-    auto [memoryMap, mapErr] = doca::MemoryMap::Create()
-                                   .AddDevice(this->device)
-                                   .SetPermissions(doca::AccessFlags::localReadWrite)
-                                   .SetMemoryRange(memorySpan)
-                                   .Start();
-    if (mapErr) {
-        this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(mapErr, "Failed to create MemoryMap for buffer") };
-    }
-
-    // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] =
-        this->bufferInventory->AllocBuffer(memoryMap, static_cast<void *>(memorySpan.data()), memorySpan.size());
-    if (bufErr) {
-        this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from BufferInventory") };
+    // If destination buffer is nullptr, Receive empty message
+    if (request.destinationBuffer) {
+        auto [buffer, err] = this->getDocaBuffer(request.destinationBuffer);
+        if (err) {
+            this->stats.failedOperations++;
+            return { nullptr, errors::Wrap(err, "Failed to get get doca buffer") };
+        }
+        destBuf = buffer;
     }
 
     // Create RdmaReceiveTask from RdmaEngine
     // Set task user data to current transfer state: it will be changed in the task callbacks
     auto taskUserData = doca::Data(static_cast<void *>(&taskState));
-    auto [receiveTask, taskErr] = this->rdmaEngine->AllocateReceiveTask(buffer, taskUserData);
+    auto [receiveTask, taskErr] = this->rdmaEngine->AllocateReceiveTask(destBuf, taskUserData);
     if (taskErr) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA Receive Task") };
@@ -498,7 +464,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
 
     // Submit RdmaReceiveTask to RdmaEngine
     taskState = RdmaTaskInterface::State::submitted;
-    err = receiveTask->Submit();
+    auto err = receiveTask->Submit();
     if (err) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA Receive Task") };
@@ -545,32 +511,174 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     receiveTask->Free();
 
     // Decrement buffer reference count in BufferInventory
-    auto [_, rcErr] = buffer->DecRefcount();
+    auto [_, rcErr] = destBuf->DecRefcount();
     if (rcErr) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in BufferInventory") };
     }
 
-    // Unlock buffer memory
-    request.buffer->UnlockMemory();
-
     request.connectionPromise->set_value(connection);
 
     this->stats.receiveOperations++;
-    return { nullptr, nullptr };
+    return { request.destinationBuffer, nullptr };
 }
 
 OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
 {
-    // TODO: implement execute
+    // TODO: Design issues: fix author's brain please
+    auto [connectionId, connErr] = request.connectionPromise->get_future().get()->GetId();
+    if (connErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(connErr, "Failed to get connection ID") };
+    }
+
+    // Check that connection is active
+    if (!this->activeConnections.contains(connectionId)) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::New("No active RDMA connection available for read operation") };
+    }
+
+    // Initialize operation state
+    auto taskState = RdmaTaskInterface::State::idle;
+
+    // Get DOCA buffer for source RDMA buffer
+    auto [srcBuf, err] = this->getDocaBuffer(request.sourceBuffer);
+    if (err) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+    }
+
+    // Get DOCA buffer for destination RDMA buffer
+    auto [dstBuf, err] = this->getDocaBuffer(request.destinationBuffer);
+    if (err) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+    }
+
+    // Create RdmaSendTask from RdmaEngine
+    // Set task user data to current transfer state: it will be changed in the task callbacks
+    auto taskUserData = doca::Data(static_cast<void *>(&taskState));
+    auto activeConnection = this->activeConnections.at(connectionId);
+    auto [readTask, taskErr] = this->rdmaEngine->AllocateReadTask(activeConnection, srcBuf, dstBuf, taskUserData);
+    if (taskErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA read task") };
+    }
+
+    // Submit RdmaSendTask to RdmaEngine
+    taskState = RdmaTaskInterface::State::submitted;
+    err = readTask->Submit();
+    if (err) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(err, "Failed to submit RDMA read task") };
+    }
+
+    // Wait for task completion
+    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState);
+    if (err) {
+        this->stats.failedOperations++;
+        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA read task completion due to timeout") };
+        }
+        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA read task completion") };
+    }
+
+    // Free RdmaSendTask
+    readTask->Free();
+
+    // Decrement buffers references count in BufferInventory
+    auto [_, srcRcErr] = srcBuf->DecRefcount();
+    if (srcRcErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(srcRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+    }
+    auto [__, dstRcErr] = dstBuf->DecRefcount();
+    if (dstRcErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(dstRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+    }
 
     this->stats.readOperations++;
-    return { nullptr, nullptr };
+    return { request.destinationBuffer, nullptr };
 }
 
 OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
 {
-    // TODO: implement execute
+    // TODO: Design issues: fix author's brain please
+    auto [connectionId, connErr] = request.connectionPromise->get_future().get()->GetId();
+    if (connErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(connErr, "Failed to get connection ID") };
+    }
+
+    // Check that connection is active
+    if (!this->activeConnections.contains(connectionId)) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::New("No active RDMA connection available for write operation") };
+    }
+
+    // Initialize operation state
+    auto taskState = RdmaTaskInterface::State::idle;
+
+    // Get DOCA buffer for source RDMA buffer
+    auto [srcBuf, err] = this->getDocaBuffer(request.sourceBuffer);
+    if (err) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+    }
+
+    // Get DOCA buffer for destination RDMA buffer
+    auto [dstBuf, err] = this->getDocaBuffer(request.destinationBuffer);
+    if (err) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+    }
+
+    // Create task from RdmaEngine
+    // Set task user data to current transfer state: it will be changed in the task callbacks
+    auto taskUserData = doca::Data(static_cast<void *>(&taskState));
+    auto activeConnection = this->activeConnections.at(connectionId);
+    auto [writeTask, taskErr] = this->rdmaEngine->AllocateWriteTask(activeConnection, srcBuf, dstBuf, taskUserData);
+    if (taskErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA write task") };
+    }
+
+    // Submit task to RdmaEngine
+    taskState = RdmaTaskInterface::State::submitted;
+    err = writeTask->Submit();
+    if (err) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(err, "Failed to submit RDMA write task") };
+    }
+
+    // Wait for task completion
+    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState);
+    if (err) {
+        this->stats.failedOperations++;
+        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA write task completion due to timeout") };
+        }
+        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA write task completion") };
+    }
+
+    // Free RdmaSendTask
+    writeTask->Free();
+
+    // Decrement buffers references count in BufferInventory
+    auto [_, srcRcErr] = srcBuf->DecRefcount();
+    if (srcRcErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(srcRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+    }
+    auto [__, dstRcErr] = dstBuf->DecRefcount();
+    if (dstRcErr) {
+        this->stats.failedOperations++;
+        return { nullptr, errors::Wrap(dstRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+    }
+
+    this->stats.readOperations++;
+    return { request.destinationBuffer, nullptr };
 
     this->stats.writeOperations++;
     return { nullptr, nullptr };
@@ -718,6 +826,35 @@ error doca::rdma::RdmaExecutor::setupConnection(RdmaConnectionRole role)
     }
 
     return nullptr;
+}
+
+std::tuple<doca::BufferPtr, error> doca::rdma::RdmaExecutor::getDocaBuffer(RdmaBufferPtr rdmaBuffer)
+{
+    if (rdmaBuffer == nullptr) {
+        return { nullptr, errors::New("RDMA buffer is null") };
+    }
+
+    // Get buffer memory range
+    auto [memoryRange, err] = rdmaBuffer->GetMemoryRange();
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
+    }
+    auto & memorySpan = *memoryRange;
+
+    // Get MemoryMap from buffer
+    auto [memoryMap, mapErr] = rdmaBuffer->GetMemoryMap();
+    if (mapErr) {
+        return { nullptr, errors::Wrap(mapErr, "Failed to get memory map from buffer") };
+    }
+
+    // Get doca::Buffer from BufferInventory
+    auto [buffer, bufErr] =
+        this->bufferInventory->AllocBuffer(memoryMap, static_cast<void *>(memorySpan.data()), memorySpan.size());
+    if (bufErr) {
+        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from BufferInventory") };
+    }
+
+    return { buffer, nullptr };
 }
 
 bool RdmaExecutor::timeoutExpired(const std::chrono::steady_clock::time_point & startTime,

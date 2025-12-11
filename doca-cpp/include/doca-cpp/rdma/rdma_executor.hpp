@@ -69,7 +69,8 @@ struct OperationRequest {
     };
 
     Type type;
-    RdmaBufferPtr buffer = nullptr;
+    RdmaBufferPtr sourceBuffer = nullptr;
+    RdmaBufferPtr destinationBuffer = nullptr;
     std::size_t bytesAffected = 0;
 
     OperationRequestPromise responcePromise = nullptr;
@@ -154,6 +155,8 @@ private:
                                  std::chrono::milliseconds waitTimeout = 0ms);
 
     error setupConnection(RdmaConnectionRole role);
+
+    std::tuple<doca::BufferPtr, error> getDocaBuffer(RdmaBufferPtr rdmaBuffer);
 
     std::atomic<bool> running;
     std::unique_ptr<std::thread> workerThread = nullptr;
