@@ -29,7 +29,9 @@ public:
 
     RdmaAwaitable() = default;
 
-    RdmaAwaitable(std::future<OperationResponce> & initialTaskFuture) : taskFuture(std::move(initialTaskFuture)) {};
+    RdmaAwaitable(std::future<OperationResponce> & initialTaskFuture,
+                  std::future<RdmaConnectionPtr> & initialConnectionFuture)
+        : taskFuture(std::move(initialTaskFuture)), connectionFuture(std::move(initialConnectionFuture)) {};
 
     RdmaAwaitable(RdmaAwaitable && other) noexcept = default;
     RdmaAwaitable & operator=(RdmaAwaitable && other) noexcept = default;
@@ -41,6 +43,8 @@ public:
 
 private:
     std::future<OperationResponce> taskFuture;
+
+    // Connection future is used only in Receive operation recognize peer which requested RDMA operation
     std::future<RdmaConnectionPtr> connectionFuture;
 };
 

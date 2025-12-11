@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/internal/rdma_task.hpp"
 
+#include "rdma_task.hpp"
+
 using doca::rdma::RdmaReadTask;
 using doca::rdma::RdmaReadTaskPtr;
 using doca::rdma::RdmaReceiveTask;
@@ -128,6 +130,18 @@ std::tuple<doca::BufferPtr, error> RdmaReceiveTask::GetBuffer(RdmaBufferType typ
 
     auto buffer = std::make_shared<doca::Buffer>(nativeBufferPtr);
     return { buffer, nullptr };
+}
+
+std::tuple<doca::rdma::RdmaConnectionPtr, error> RdmaReceiveTask::GetTaskConnection()
+{
+    if (this->task == nullptr) {
+        return { nullptr, errors::New("RdmaReceiveTask is not initialized") };
+    }
+
+    auto nativeConnection = doca_rdma_task_receive_get_result_rdma_connection(this->task);
+    auto connection = doca::rdma::RdmaConnection::Create(const_cast<doca_rdma_connection *>(nativeConnection));
+
+    return { connection, nullptr };
 }
 
 error doca::rdma::RdmaReceiveTask::Submit()

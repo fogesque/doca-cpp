@@ -15,6 +15,7 @@
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/core/types.hpp"
+#include "doca-cpp/rdma/internal/rdma_connection.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
 namespace doca::rdma
@@ -87,6 +88,8 @@ public:
     error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
 
     std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
+
+    std::tuple<RdmaConnectionPtr, error> GetTaskConnection();
 
     error Submit() override;
 
