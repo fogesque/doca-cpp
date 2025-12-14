@@ -1,0 +1,407 @@
+
+struct ALL {
+    DEVICE
+
+    LOCAL_MEMRANGE
+    LOCAL_MEMRANGE_SIZE
+    LOCAL_MMAP
+
+    SOURCE_BUFFER
+    DEST_BUFFER
+
+    PE
+
+    RDMA_INSTANCE
+    RDMA_CTX
+    RDMA_CTX_STATE
+
+    LOCAL_BUF_INVENTORY
+
+    SERVER_ADDR
+    RDMA_CONNECTION
+    RDMA_CONNECTION_STATE
+
+    REMOTE_DESC_MEMRANGE
+    REMOTE_DESC_MEMRANGE_SIZE
+    REMOTE_DESC_MMAP
+
+    REMOTE_MMAP
+    REMOTE_MMAP_MEMERANGE
+    REMOTE_MMAP_MEMERANGE_SIZE
+
+    OPERATION_STATE
+};
+
+namespace callbacks
+{
+
+void rdma_ctx_state_changed_callback(const union doca_data user_data, struct doca_ctx * ctx,
+                                     enum doca_ctx_states prev_state, enum doca_ctx_states next_state)
+{
+    RDMA_CTX_STATE = next_state;
+}
+
+void rdma_connection_request_callback(struct doca_rdma_connection * rdma_connection, union doca_data ctx_user_data)
+{
+    RDMA_CONNECTION = rdma_connection;
+    RDMA_CONNECTION_STATE = REQUESTED;
+}
+
+void rdma_connection_established_callback(struct doca_rdma_connection * rdma_connection,
+                                          union doca_data connection_user_data, union doca_data ctx_user_data)
+{
+    RDMA_CONNECTION = rdma_connection;
+    RDMA_CONNECTION_STATE = ESTABLISHED;
+}
+
+void rdma_connection_failure_callback(struct doca_rdma_connection * rdma_connection,
+                                      union doca_data connection_user_data, union doca_data ctx_user_data)
+{
+    RDMA_CONNECTION_STATE = FAILURE;
+}
+
+void rdma_connection_disconnection_callback(struct doca_rdma_connection * rdma_connection,
+                                            union doca_data connection_user_data, union doca_data ctx_user_data)
+{
+    RDMA_CONNECTION_STATE = DISCONNECT;
+}
+
+void rdma_task_receive_completion_callback(struct doca_rdma_task_receive * task, union doca_data task_user_data,
+                                           union doca_data ctx_user_data)
+{
+    OPERATION_STATE = RECEIVED_DESCRIPTOR;
+}
+
+void rdma_task_receive_error_callback(struct doca_rdma_task_receive * task, union doca_data task_user_data,
+                                      union doca_data ctx_user_data)
+{
+    OPERATION_STATE = ERROR_OCCURED;
+}
+
+void rdma_task_write_completion_callback(struct doca_rdma_task_write * task, union doca_data task_user_data,
+                                         union doca_data ctx_user_data)
+{
+    OPERATION_STATE = WRITE_DATA_COMPLETED;
+}
+
+void rdma_task_write_error_callback(struct doca_rdma_task_write * task, union doca_data task_user_data,
+                                    union doca_data ctx_user_data)
+{
+    OPERATION_STATE = ERROR_OCCURED;
+}
+
+void rdma_task_send_completion_callback(struct doca_rdma_task_send * task, union doca_data task_user_data,
+                                        union doca_data ctx_user_data)
+{
+    OPERATION_STATE = SENT_COMPLETION;
+}
+
+void rdma_task_send_error_callback(struct doca_rdma_task_send * task, union doca_data task_user_data,
+                                   union doca_data ctx_user_data)
+{
+    OPERATION_STATE = ERROR_OCCURED;
+}
+
+}  // namespace callbacks
+
+namespace progress_engine
+{
+
+doca_error_t progress(ALL, rdma_write_operation_state desired_state, bool & progressed)
+{
+    progressed = false;
+    doca_pe_progress(PE);
+
+    if (RDMA_CONNECTION_STATE == FAILURE) {
+        progressed = true;
+        return DOCA_ERROR_CONNECTION_ABORTED;
+    }
+
+    if (RDMA_CONNECTION_STATE == DISCONNECT) {
+        doca_rdma_connection_disconnect(RDMA_CONNECTION);
+        progressed = true;
+        return DOCA_ERROR_CONNECTION_RESET;
+    }
+
+    if (OPERATION_STATE == ERROR_OCCURED) {
+        return DOCA_ERROR_IO_FAILED;
+    }
+
+    if (OPERATION_STATE != desired_state) {
+        progressed = false;
+        return DOCA_SUCCESS;
+    }
+
+    progressed = true;
+    return DOCA_SUCCESS;
+};
+
+}  // namespace progress_engine
+
+int main()
+{
+
+
+    // ----------------------------------------------------------------
+    // Create DevInfo list
+    // ----------------------------------------------------------------
+
+    DOCA_DEVINFO_LIST, devices_number = doca_devinfo_create_list();
+
+    // ----------------------------------------------------------------
+    // Find desired device
+    // ----------------------------------------------------------------
+
+    for (int i = 0; i < devices_number; i++) {
+
+        ibdev_name = doca_devinfo_get_ibdev_name(DOCA_DEVINFO_LIST[i]);
+        doca_rdma_cap_task_write_is_supported(DOCA_DEVINFO_LIST[i]);
+
+        if (std::string_view(ibdev_name) == "mlx5_0") {
+            // Create DOCA device
+            DEVICE = doca_dev_open(DOCA_DEVINFO_LIST[i]);
+            break;
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Allocate local memory for RDMA Write
+    // ----------------------------------------------------------------
+
+    LOCAL_MEMRANGE_SIZE = 4096;
+    LOCAL_MEMRANGE = calloc(LOCAL_MEMRANGE_SIZE, sizeof(char));
+
+    // ----------------------------------------------------------------
+    // Create local mmap for RDMA Write
+    // ----------------------------------------------------------------
+
+    LOCAL_MMAP = doca_mmap_create();
+
+    doca_mmap_set_permissions(LOCAL_MMAP, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE);
+    doca_mmap_set_memrange(LOCAL_MMAP, LOCAL_MEMRANGE, LOCAL_MEMRANGE_SIZE);
+    doca_mmap_add_dev(LOCAL_MMAP, DEVICE);
+    doca_mmap_start(LOCAL_MMAP);
+
+    // ----------------------------------------------------------------
+    // Create Progress Engine
+    // ----------------------------------------------------------------
+
+    PE = doca_pe_create();
+
+    // ----------------------------------------------------------------
+    // Create RDMA engine
+    // ----------------------------------------------------------------
+
+    RDMA_INSTANCE = doca_rdma_create(DEVICE);
+    RDMA_CTX = doca_rdma_as_ctx(RDMA_INSTANCE);
+
+    doca_rdma_set_permissions(RDMA_INSTANCE, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE);
+    doca_rdma_set_max_num_connections(RDMA_INSTANCE, 1);
+    doca_rdma_set_transport_type(RDMA_INSTANCE, DOCA_RDMA_TRANSPORT_TYPE_RC);
+
+    // ----------------------------------------------------------------
+    // Connect RDMA Context to Progress Engine
+    // ----------------------------------------------------------------
+
+    doca_pe_connect_ctx(PE, RDMA_CTX);
+
+    // ----------------------------------------------------------------
+    // Set RDMA Context state changed callback
+    // ----------------------------------------------------------------
+
+    doca_ctx_set_state_changed_cb(RDMA_CTX, callbacks::rdma_ctx_state_changed_callback);
+
+    // ----------------------------------------------------------------
+    // Create local buffer inventory
+    // ----------------------------------------------------------------
+
+    LOCAL_BUF_INVENTORY = doca_buf_inventory_create(16);
+    doca_buf_inventory_start(LOCAL_BUF_INVENTORY);
+
+    // ----------------------------------------------------------------
+    // Configure tasks
+    // ----------------------------------------------------------------
+
+    const uint32_t tasks_number = 1;
+    doca_rdma_task_receive_set_conf(RDMA_INSTANCE, callbacks::rdma_task_receive_completion_callback,
+                                          callbacks::rdma_task_receive_error_callback, tasks_number);
+    doca_rdma_task_write_set_conf(RDMA_INSTANCE, callbacks::rdma_task_write_completion_callback,
+                                        callbacks::rdma_task_write_error_callback, tasks_number);
+    doca_rdma_task_send_set_conf(RDMA_INSTANCE, callbacks::rdma_task_send_completion_callback,
+                                       callbacks::rdma_task_send_error_callback, tasks_number);
+
+    // ----------------------------------------------------------------
+    // Set RDMA Context user data
+    // ----------------------------------------------------------------
+
+    doca_ctx_set_user_data(RDMA_CTX, ALL);
+
+    // ----------------------------------------------------------------
+    // Start RDMA Context
+    // ----------------------------------------------------------------
+
+    doca_ctx_start(RDMA_CTX);
+
+    // Wait till RDMA context is running
+    while (RDMA_CTX_STATE != RUNNING) {
+        doca_pe_progress(PE);
+    };
+
+    // ----------------------------------------------------------------
+    // Set RDMA connection state callbacks
+    // ----------------------------------------------------------------
+
+    doca_rdma_set_connection_state_callbacks(
+        RDMA_INSTANCE, callbacks::rdma_connection_request_callback, callbacks::rdma_connection_established_callback,
+        callbacks::rdma_connection_failure_callback, callbacks::rdma_connection_disconnection_callback);
+
+    // ----------------------------------------------------------------
+    // Connect to server RDMA address
+    // ----------------------------------------------------------------
+
+    SERVER_ADDR = doca_rdma_addr_create(DOCA_RDMA_ADDR_TYPE_IPv4, "192.168.88.252", 12345);
+    doca_rdma_connect_to_addr(RDMA_INSTANCE, SERVER_ADDR, ALL);
+
+    bool connection_accepted = false;
+    uint32_t wait_count = 0;
+    while (RDMA_CONNECTION_STATE != ESTABLISHED) {
+
+        wait_count++;
+
+        doca_pe_progress(PE);
+
+        // If we waited 5 sec, try to connect again
+        if (wait_count > 5) {
+
+            SERVER_ADDR = doca_rdma_addr_create(DOCA_RDMA_ADDR_TYPE_IPv4, "192.168.88.252", 12345);
+            doca_rdma_connect_to_addr(RDMA_INSTANCE, SERVER_ADDR, ALL);
+            wait_count = 0;
+
+        }
+    };
+
+
+    // ----------------------------------------------------------------
+    // Create remote descriptor mmap
+    // ----------------------------------------------------------------
+
+    REMOTE_DESC_MEMRANGE_SIZE = 4096;
+    REMOTE_DESC_MEMRANGE = malloc(sizeof(uint8_t) * REMOTE_DESC_MEMRANGE_SIZE);
+
+    REMOTE_DESC_MMAP = doca_mmap_create();
+    doca_mmap_set_permissions(REMOTE_DESC_MMAP, DOCA_ACCESS_FLAG_LOCAL_READ_WRITE);
+    doca_mmap_set_memrange(REMOTE_DESC_MMAP, REMOTE_DESC_MEMRANGE, REMOTE_DESC_MEMRANGE_SIZE);
+    doca_mmap_add_dev(REMOTE_DESC_MMAP, DEVICE);
+    doca_mmap_start(REMOTE_DESC_MMAP);
+
+
+    // ----------------------------------------------------------------
+    // Receive remote descriptor via RDMA Receive Task
+    // ----------------------------------------------------------------
+
+    REMOTE_DESC_BUF = doca_buf_inventory_buf_get_by_addr(LOCAL_BUF_INVENTORY, REMOTE_DESC_MMAP, REMOTE_DESC_MEMRANGE, REMOTE_DESC_MEMRANGE_SIZE);
+
+    TASK_RECEIVE_REMOTE_DESC = doca_rdma_task_receive_allocate_init(RDMA_INSTANCE, REMOTE_DESC_BUF, ALL);
+
+    doca_task_submit(doca_rdma_task_receive_as_task(TASK_RECEIVE_REMOTE_DESC));
+    
+
+    // ----------------------------------------------------------------
+    // Wait for Receive Task is done
+    // ----------------------------------------------------------------
+    
+
+    bool progressed = false;
+    while (!progressed) {
+        
+        progressed = progress_engine::progress(ALL, rdma_write_operation_state::RECEIVED_DESCRIPTOR);
+    }
+
+    REMOTE_DESC_DEST_BUF = doca_rdma_task_receive_get_dst_buf(TASK_RECEIVE_REMOTE_DESC);
+    REMOTE_DESC_MEMRANGE_SIZE = doca_buf_get_data_len(REMOTE_DESC_DEST_BUF);
+    
+    doca_task_free(doca_rdma_task_receive_as_task(TASK_RECEIVE_REMOTE_DESC));
+
+    doca_buf_dec_refcount(REMOTE_DESC_DEST_BUF);
+    
+
+    // ----------------------------------------------------------------
+    // Prepare and submit Write Task
+    // ----------------------------------------------------------------
+
+    // Write data to send
+    const char * write_data = "Hello from DOCA RDMA :)";
+    size_t write_data_len = std::strlen(write_data) + 1;
+
+    // Create mmap from received descriptor
+    REMOTE_MMAP = doca_mmap_create_from_export(nullptr, REMOTE_DESC_MEMRANGE, REMOTE_DESC_MEMRANGE_SIZE, DEVICE);
+
+    REMOTE_MMAP_MEMERANGE, REMOTE_MMAP_MEMERANGE_SIZE = doca_mmap_get_memrange(REMOTE_MMAP);
+    
+
+    // Get source buffer to copy write data to
+    SOURCE_BUFFER = doca_buf_inventory_buf_get_by_data(LOCAL_BUF_INVENTORY, LOCAL_MMAP, LOCAL_MEMRANGE, write_data_len);
+
+    SOURCE_BUFFER_MEMRANGE = doca_buf_get_data(SOURCE_BUFFER);
+
+    // Copy data to source buffer
+    std::strncpy(SOURCE_BUFFER_MEMRANGE, write_data, write_data_len);
+
+    // Get destination buffer from remote mmap
+    DEST_BUFFER = doca_buf_inventory_buf_get_by_addr(LOCAL_BUF_INVENTORY, REMOTE_MMAP, REMOTE_MMAP_MEMERANGE, write_data_len);
+    
+    
+
+    // Prepare and submit write task
+    WRITE_TASK = doca_rdma_task_write_allocate_init(RDMA_INSTANCE, RDMA_CONNECTION, SOURCE_BUFFER, DEST_BUFFER, ALL);
+    
+    doca_task_submit(doca_rdma_task_write_as_task(WRITE_TASK));
+    
+
+    // ----------------------------------------------------------------
+    // Wait for completion of Write Task
+    // ----------------------------------------------------------------
+
+    progressed = false;
+    while (!progressed) {
+        
+        progressed = progress_engine::progress(ALL, rdma_write_operation_state::WRITE_DATA_COMPLETED);
+    }
+
+    doca_task_free(doca_rdma_task_write_as_task(WRITE_TASK));
+
+
+    // ----------------------------------------------------------------
+    // Prepare and submit Send Task for acknowledge (refer to NOTE)
+    // ----------------------------------------------------------------
+
+    struct doca_rdma_task_send * TASK_SEND_ACK = nullptr;
+    struct doca_buf * ack_dest_buf = nullptr;
+    TASK_SEND_ACK = doca_rdma_task_send_allocate_init(RDMA_INSTANCE, RDMA_CONNECTION, buf_nullptr, ALL);
+    
+    doca_task_submit(doca_rdma_task_send_as_task(TASK_SEND_ACK));
+
+
+    // ----------------------------------------------------------------
+    // Wait for Send Task is done
+    // ----------------------------------------------------------------
+    progressed = false;
+    while (!progressed) {
+        
+        progressed = progress_engine::progress(ALL, rdma_write_operation_state::SENT_COMPLETION);
+    }
+                                                                                                                                                                           
+    doca_task_free(doca_rdma_task_send_as_task(TASK_SEND_ACK));
+
+    
+
+    // -------------
+
+    OPERATION_STATE = rdma_write_operation_state::OPERATION_COMPLETED;
+
+    doca_rdma_connection_disconnect(RDMA_CONNECTION);
+    
+    doca_ctx_stop(RDMA_CTX);
+
+    return 0;
+}

@@ -1,11 +1,3 @@
-/**
- * @file device.hpp
- * @brief DOCA Device C++ wrapper
- *
- * This file provides RAII wrappers for DOCA devices with smart pointers and
- * custom deleters for automatic resource management.
- */
-
 #pragma once
 
 #include <doca_dev.h>
@@ -22,42 +14,39 @@
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
 
+// FIXME: C++ is fucking absurd. All constructors moved
+// to public since static method of class can't call it
+// So I need to use other approaches like PIMPL (shit) or
+// something else from C++32 :/
+
 namespace doca
 {
 
 // Forward declarations
 class Device;
+class DeviceInfo;
+class DeviceList;
 // class DeviceRepresentor; // TODO: Add representor support
+
+using DevicePtr = std::shared_ptr<Device>;
+using DeviceInfoPtr = std::shared_ptr<DeviceInfo>;
+using DeviceListPtr = std::shared_ptr<DeviceList>;
 
 namespace internal
 {
+
 // IB devices names of supported devices
 constexpr std::array<std::string_view, sizes::supportedDeviceSize> supportedDevices = { "mlx5_0", "mlx5_1" };
 
-/**
- * @brief Custom deleter for doca_devinfo list
- */
-struct DeviceListDeleter {
-    void operator()(doca_devinfo ** devList) const;
-};
-
-/**
- * @brief Custom deleter for doca_dev
- */
-struct DeviceDeleter {
-    void operator()(doca_dev * dev) const;
-};
-
 }  // namespace internal
 
-/**
- * @class DeviceInfo
- * @brief Wrapper for doca_devinfo - provides device information and queries
- */
+// ----------------------------------------------------------------------------
+// DeviceInfo
+// ----------------------------------------------------------------------------
 class DeviceInfo
 {
 public:
-    DOCA_CPP_UNSAFE explicit DeviceInfo(doca_devinfo * info);
+    DOCA_CPP_UNSAFE explicit DeviceInfo(doca_devinfo * plainDevInfo);
 
     std::tuple<std::string, error> GetPciAddress() const;
 
@@ -91,14 +80,13 @@ private:
     doca_devinfo * devInfo;
 };
 
-/**
- * @class DeviceList
- * @brief RAII wrapper for DOCA device list using smart pointers
- */
+// ----------------------------------------------------------------------------
+// DeviceList
+// ----------------------------------------------------------------------------
 class DeviceList
 {
 public:
-    static std::tuple<DeviceList, error> Create();
+    static std::tuple<DeviceListPtr, error> Create();
 
     // Move-only type
     DeviceList(const DeviceList &) = delete;
@@ -126,21 +114,28 @@ public:
     Iterator Begin() const;
     Iterator End() const;
 
-private:
-    DeviceList(std::unique_ptr<doca_devinfo *, internal::DeviceListDeleter> list, uint32_t count);
+    struct Deleter {
+        void Delete(doca_devinfo ** devList);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
-    std::unique_ptr<doca_devinfo *, internal::DeviceListDeleter> deviceList;
-    uint32_t numDevices;
+    DeviceList(doca_devinfo ** initialDeviceList, uint32_t count, DeleterPtr deleter);
+    ~DeviceList();
+
+private:
+    doca_devinfo ** deviceList = nullptr;
+    uint32_t numDevices = 0;
+
+    DeleterPtr deleter = nullptr;
 };
 
-/**
- * @class Device
- * @brief RAII wrapper for doca_dev using smart pointer with custom deleter
- */
+// ----------------------------------------------------------------------------
+// Device
+// ----------------------------------------------------------------------------
 class Device
 {
 public:
-    static std::tuple<Device, error> Open(const DeviceInfo & devInfo);
+    static std::tuple<DevicePtr, error> Open(const DeviceInfo & devInfo);
 
     // Move-only type
     Device(const Device &) = delete;
@@ -153,12 +148,20 @@ public:
     DeviceInfo GetDeviceInfo() const;
     DOCA_CPP_UNSAFE doca_dev * GetNative() const;
 
-private:
-    explicit Device(std::unique_ptr<doca_dev, internal::DeviceDeleter> dev);
+    struct Deleter {
+        void Delete(doca_dev * dev);
+    };
+    using DeleterPtr = std::shared_ptr<Device::Deleter>;
 
-    std::unique_ptr<doca_dev, internal::DeviceDeleter> device;
+    explicit Device(doca_dev * initialDevice, DeleterPtr initialDeleter);
+    ~Device();
+
+private:
+    doca_dev * device = nullptr;
+
+    DeleterPtr deleter = nullptr;
 };
 
-using DevicePtr = std::shared_ptr<Device>;
+std::tuple<doca::DevicePtr, error> OpenIbDevice(const std::string & ibDeviceName);
 
 }  // namespace doca

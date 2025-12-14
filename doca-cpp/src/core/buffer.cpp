@@ -1,15 +1,17 @@
-/**
- * @file buffer.cpp
- * @brief DOCA Buffer and BufferInventory implementation
- */
-
 #include "doca-cpp/core/buffer.hpp"
 
-namespace doca
-{
+using doca::Buffer;
+using doca::BufferInventory;
+using doca::BufferInventoryPtr;
+using doca::BufferPtr;
 
-// Custom deleters implementation
-void BufferDeleter::operator()(doca_buf * buf) const
+// ----------------------------------------------------------------------------
+// Buffer
+// ----------------------------------------------------------------------------
+
+Buffer::Buffer(doca_buf * nativeBuffer, DeleterPtr deleter) : buffer(nativeBuffer), deleter(deleter) {}
+
+void Buffer::Deleter::Delete(doca_buf * buf)
 {
     if (buf) {
         uint16_t refcount = 0;
@@ -17,15 +19,24 @@ void BufferDeleter::operator()(doca_buf * buf) const
     }
 }
 
-void BufferInventoryDeleter::operator()(doca_buf_inventory * inv) const
+Buffer::~Buffer()
 {
-    if (inv) {
-        doca_buf_inventory_destroy(inv);
+    if (this->deleter && this->buffer) {
+        this->deleter->Delete(this->buffer);
     }
 }
 
-// Buffer implementation
-Buffer::Buffer(std::unique_ptr<doca_buf, BufferDeleter> buf) : buffer(std::move(buf)) {}
+BufferPtr Buffer::CreateRef(doca_buf * nativeBuffer)
+{
+    auto buffer = std::make_shared<Buffer>(nativeBuffer);
+    return buffer;
+}
+
+BufferPtr Buffer::Create(doca_buf * nativeBuffer)
+{
+    auto buffer = std::make_shared<Buffer>(nativeBuffer, std::make_shared<Buffer::Deleter>());
+    return buffer;
+}
 
 std::tuple<size_t, error> Buffer::GetLength() const
 {
@@ -33,7 +44,7 @@ std::tuple<size_t, error> Buffer::GetLength() const
         return { 0, errors::New("buffer is null") };
     }
     size_t len = 0;
-    auto err = FromDocaError(doca_buf_get_len(this->buffer.get(), &len));
+    auto err = FromDocaError(doca_buf_get_len(this->buffer, &len));
     if (err) {
         return { 0, errors::Wrap(err, "failed to get buffer length") };
     }
@@ -46,7 +57,7 @@ std::tuple<size_t, error> Buffer::GetDataLength() const
         return { 0, errors::New("buffer is null") };
     }
     size_t dataLen = 0;
-    auto err = FromDocaError(doca_buf_get_data_len(this->buffer.get(), &dataLen));
+    auto err = FromDocaError(doca_buf_get_data_len(this->buffer, &dataLen));
     if (err) {
         return { 0, errors::Wrap(err, "failed to get buffer data length") };
     }
@@ -59,7 +70,7 @@ std::tuple<void *, error> Buffer::GetData() const
         return { nullptr, errors::New("buffer is null") };
     }
     void * data = nullptr;
-    auto err = FromDocaError(doca_buf_get_data(this->buffer.get(), &data));
+    auto err = FromDocaError(doca_buf_get_data(this->buffer, &data));
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to get buffer data") };
     }
@@ -86,7 +97,7 @@ error Buffer::SetData(void * data, size_t dataLen)
     if (!this->buffer) {
         return errors::New("buffer is null");
     }
-    auto err = FromDocaError(doca_buf_set_data(this->buffer.get(), data, dataLen));
+    auto err = FromDocaError(doca_buf_set_data(this->buffer, data, dataLen));
     if (err) {
         return errors::Wrap(err, "failed to set buffer data");
     }
@@ -103,7 +114,7 @@ error Buffer::ResetData()
     if (!this->buffer) {
         return errors::New("buffer is null");
     }
-    auto err = FromDocaError(doca_buf_reset_data_len(this->buffer.get()));
+    auto err = FromDocaError(doca_buf_reset_data_len(this->buffer));
     if (err) {
         return errors::Wrap(err, "failed to reset buffer data");
     }
@@ -116,7 +127,7 @@ std::tuple<uint16_t, error> Buffer::IncRefcount()
         return { 0, errors::New("buffer is null") };
     }
     uint16_t refcount = 0;
-    auto err = FromDocaError(doca_buf_inc_refcount(this->buffer.get(), &refcount));
+    auto err = FromDocaError(doca_buf_inc_refcount(this->buffer, &refcount));
     if (err) {
         return { 0, errors::Wrap(err, "failed to increment refcount") };
     }
@@ -129,7 +140,7 @@ std::tuple<uint16_t, error> Buffer::DecRefcount()
         return { 0, errors::New("buffer is null") };
     }
     uint16_t refcount = 0;
-    auto err = FromDocaError(doca_buf_dec_refcount(this->buffer.get(), &refcount));
+    auto err = FromDocaError(doca_buf_dec_refcount(this->buffer, &refcount));
     if (err) {
         return { 0, errors::Wrap(err, "failed to decrement refcount") };
     }
@@ -142,7 +153,7 @@ std::tuple<uint16_t, error> Buffer::GetRefcount() const
         return { 0, errors::New("buffer is null") };
     }
     uint16_t refcount = 0;
-    auto err = FromDocaError(doca_buf_get_refcount(buffer.get(), &refcount));
+    auto err = FromDocaError(doca_buf_get_refcount(this->buffer, &refcount));
     if (err) {
         return { 0, errors::Wrap(err, "failed to get refcount") };
     }
@@ -151,11 +162,14 @@ std::tuple<uint16_t, error> Buffer::GetRefcount() const
 
 doca_buf * Buffer::GetNative() const
 {
-    return this->buffer.get();
+    return this->buffer;
 }
 
-// BufferInventory::Builder implementation
-BufferInventory::Builder::Builder(doca_buf_inventory * inv) : inventory(inv), buildErr(nullptr) {}
+// ----------------------------------------------------------------------------
+// Buffer::Builder
+// ----------------------------------------------------------------------------
+
+BufferInventory::Builder::Builder(doca_buf_inventory * plainInventory) : inventory(plainInventory), buildErr(nullptr) {}
 
 BufferInventory::Builder::~Builder()
 {
@@ -184,33 +198,35 @@ BufferInventory::Builder & BufferInventory::Builder::operator=(Builder && other)
     return *this;
 }
 
-std::tuple<BufferInventory, error> BufferInventory::Builder::Start()
+std::tuple<BufferInventoryPtr, error> BufferInventory::Builder::Start()
 {
     if (this->buildErr) {
         if (this->inventory) {
             doca_buf_inventory_destroy(this->inventory);
             this->inventory = nullptr;
         }
-        return { BufferInventory(nullptr), buildErr };
+        return { nullptr, buildErr };
     }
 
     if (!this->inventory) {
-        return { BufferInventory(nullptr), errors::New("inventory is null") };
+        return { nullptr, errors::New("inventory is null") };
     }
 
     auto err = FromDocaError(doca_buf_inventory_start(this->inventory));
     if (err) {
         doca_buf_inventory_destroy(this->inventory);
         this->inventory = nullptr;
-        return { BufferInventory(nullptr), errors::Wrap(err, "failed to start inventory") };
+        return { nullptr, errors::Wrap(err, "failed to start inventory") };
     }
 
-    auto managedInventory = std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter>(this->inventory);
-    this->inventory = nullptr;
-    return { BufferInventory(std::move(managedInventory)), nullptr };
+    auto bufferInventoryPtr = std::make_shared<BufferInventory>(this->inventory);
+    return { bufferInventoryPtr, nullptr };
 }
 
-// BufferInventory implementation
+// ----------------------------------------------------------------------------
+// BufferInventory
+// ----------------------------------------------------------------------------
+
 BufferInventory::Builder BufferInventory::Create(size_t numElements)
 {
     doca_buf_inventory * inventory = nullptr;
@@ -221,31 +237,57 @@ BufferInventory::Builder BufferInventory::Create(size_t numElements)
     return Builder(inventory);
 }
 
-BufferInventory::BufferInventory(std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter> inv)
-    : inventory(std::move(inv))
+BufferInventory::BufferInventory(doca_buf_inventory * initialInventory) : inventory(initialInventory)
 {
+    this->deleter = std::make_shared<BufferInventory::BufferInventoryDeleter>();
 }
 
-std::tuple<Buffer, error> BufferInventory::AllocBuffer(const MemoryMap & mmap, void * addr, size_t length)
+doca::BufferInventory::~BufferInventory()
+{
+    if (this->deleter && this->inventory) {
+        this->deleter->Delete(this->inventory);
+    }
+}
+
+void doca::BufferInventory::BufferInventoryDeleter::Delete(doca_buf_inventory * inv)
+{
+    if (inv) {
+        std::ignore = doca_buf_inventory_destroy(inv);
+    }
+}
+
+std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, void * addr, size_t length)
 {
     if (!this->inventory) {
-        return { Buffer(nullptr), errors::New("inventory is null") };
+        return { nullptr, errors::New("inventory is null") };
     }
 
     doca_buf * buf = nullptr;
     auto err =
-        FromDocaError(doca_buf_inventory_buf_get_by_addr(this->inventory.get(), mmap.GetNative(), addr, length, &buf));
+        FromDocaError(doca_buf_inventory_buf_get_by_addr(this->inventory, mmap->GetNative(), addr, length, &buf));
     if (err) {
-        return { Buffer(nullptr), errors::Wrap(err, "failed to allocate buffer from inventory") };
+        return { nullptr, errors::Wrap(err, "failed to allocate buffer from inventory") };
     }
 
-    auto managedBuf = std::unique_ptr<doca_buf, BufferDeleter>(buf);
-    return { Buffer(std::move(managedBuf)), nullptr };
+    auto managedBuffer = Buffer::CreateRef(buf);
+    return { managedBuffer, nullptr };
 }
 
-std::tuple<Buffer, error> BufferInventory::AllocBuffer(const MemoryMap & mmap, std::span<std::byte> data)
+std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data)
 {
-    return this->AllocBuffer(mmap, static_cast<void *>(data.data()), data.size_bytes());
+    if (!this->inventory) {
+        return { nullptr, errors::New("inventory is null") };
+    }
+
+    doca_buf * buf = nullptr;
+    auto err = FromDocaError(doca_buf_inventory_buf_get_by_data(
+        this->inventory, mmap->GetNative(), static_cast<void *>(data.data()), data.size_bytes(), &buf));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "failed to allocate buffer from inventory") };
+    }
+
+    auto managedBuffer = Buffer::CreateRef(buf);
+    return { managedBuffer, nullptr };
 }
 
 error BufferInventory::Stop()
@@ -253,7 +295,7 @@ error BufferInventory::Stop()
     if (!this->inventory) {
         return errors::New("inventory is null");
     }
-    auto err = FromDocaError(doca_buf_inventory_stop(this->inventory.get()));
+    auto err = FromDocaError(doca_buf_inventory_stop(this->inventory));
     if (err) {
         return errors::Wrap(err, "failed to stop inventory");
     }
@@ -262,7 +304,5 @@ error BufferInventory::Stop()
 
 doca_buf_inventory * BufferInventory::GetNative() const
 {
-    return this->inventory.get();
+    return this->inventory;
 }
-
-}  // namespace doca

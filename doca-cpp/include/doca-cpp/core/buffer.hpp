@@ -1,11 +1,3 @@
-/**
- * @file buffer.hpp
- * @brief DOCA Buffer and BufferInventory C++ wrappers
- *
- * Provides RAII wrappers for doca_buf and doca_buf_inventory with smart pointers
- * and custom deleters for automatic resource management.
- */
-
 #pragma once
 
 #include <doca_buf.h>
@@ -23,33 +15,27 @@
 namespace doca
 {
 
-// Forward declaration
+// Forward declarations
+class Buffer;
 class BufferInventory;
 
-/**
- * @brief Custom deleter for doca_buf
- */
-struct BufferDeleter {
-    void operator()(doca_buf * buf) const;
-};
+using BufferPtr = std::shared_ptr<Buffer>;
+using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
 
-/**
- * @brief Custom deleter for doca_buf_inventory
- */
-struct BufferInventoryDeleter {
-    void operator()(doca_buf_inventory * inv) const;
-};
-
-/**
- * @class Buffer
- * @brief RAII wrapper for doca_buf with smart pointer and automatic reference counting
- *
- * Buffers reference memory regions within memory maps. They are allocated from
- * a BufferInventory and automatically returned when refcount reaches 0.
- */
+// ----------------------------------------------------------------------------
+// Buffer
+// ----------------------------------------------------------------------------
 class Buffer
 {
 public:
+    struct Deleter {
+        void Delete(doca_buf * buf);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
+
+    static BufferPtr CreateRef(doca_buf * nativeBuffer);
+    static BufferPtr Create(doca_buf * nativeBuffer);
+
     std::tuple<size_t, error> GetLength() const;
     std::tuple<size_t, error> GetDataLength() const;
     std::tuple<void *, error> GetData() const;
@@ -71,31 +57,32 @@ public:
     Buffer(Buffer && other) noexcept = default;
     Buffer & operator=(Buffer && other) noexcept = default;
 
+    explicit Buffer(doca_buf * nativeBuffer, DeleterPtr deleter = nullptr);
+    ~Buffer();
+
 private:
-    friend class BufferInventory;
+    doca_buf * buffer = nullptr;
 
-    explicit Buffer(std::unique_ptr<doca_buf, BufferDeleter> buf);
-
-    std::unique_ptr<doca_buf, BufferDeleter> buffer;
+    DeleterPtr deleter = nullptr;
 };
 
-/**
- * @class BufferInventory
- * @brief RAII wrapper for doca_buf_inventory with smart pointer - manages buffer allocation
- */
+// ----------------------------------------------------------------------------
+// BufferInventory
+// ----------------------------------------------------------------------------
 class BufferInventory
 {
 public:
     class Builder
     {
     public:
-        std::tuple<BufferInventory, error> Start();
+        std::tuple<BufferInventoryPtr, error> Start();
+
+        ~Builder();
 
     private:
         friend class BufferInventory;
 
-        explicit Builder(doca_buf_inventory * inv);
-        ~Builder();
+        explicit Builder(doca_buf_inventory * plainInventory);
 
         Builder(const Builder &) = delete;
         Builder & operator=(const Builder &) = delete;
@@ -106,10 +93,15 @@ public:
         error buildErr = nullptr;
     };
 
+    struct BufferInventoryDeleter {
+        void Delete(doca_buf_inventory * inv);
+    };
+    using BufferInventoryDeleterPtr = std::shared_ptr<BufferInventoryDeleter>;
+
     static Builder Create(size_t numElements);
 
-    std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, void * addr, size_t length);
-    std::tuple<Buffer, error> AllocBuffer(const MemoryMap & mmap, std::span<std::byte> data);
+    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, void * address, size_t length);
+    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data);
 
     error Stop();
     doca_buf_inventory * GetNative() const;
@@ -120,10 +112,13 @@ public:
     BufferInventory(BufferInventory && other) noexcept = default;
     BufferInventory & operator=(BufferInventory && other) noexcept = default;
 
-private:
-    explicit BufferInventory(std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter> inv);
+    explicit BufferInventory(doca_buf_inventory * initialInventory);
+    ~BufferInventory();
 
-    std::unique_ptr<doca_buf_inventory, BufferInventoryDeleter> inventory;
+private:
+    doca_buf_inventory * inventory = nullptr;
+
+    BufferInventoryDeleterPtr deleter = nullptr;
 };
 
 }  // namespace doca

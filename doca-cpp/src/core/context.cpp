@@ -1,16 +1,29 @@
-/**
- * @file context.cpp
- * @brief DOCA Context implementation
- */
-
 #include "doca-cpp/core/context.hpp"
 
-#include "doca-cpp/core/progress_engine.hpp"
+// ----------------------------------------------------------------------------
+// Context
+// ----------------------------------------------------------------------------
 
-namespace doca
+doca::Context::Context(doca_ctx * context, DeleterPtr deleter) : ctx(context), deleter(deleter) {}
+
+doca::Context::~Context()
 {
+    if (this->deleter) {
+        this->deleter->Delete(this->ctx);
+    }
+}
 
-error Context::Start()
+doca::ContextPtr doca::Context::CreateFromNative(doca_ctx * plainCtx)
+{
+    return std::make_shared<doca::Context>(plainCtx, std::make_shared<Deleter>());
+}
+
+doca::ContextPtr doca::Context::CreateReferenceFromNative(doca_ctx * plainCtx)
+{
+    return std::make_shared<doca::Context>(plainCtx);
+}
+
+error doca::Context::Start()
 {
     if (!this->ctx) {
         return errors::New("context is null");
@@ -22,7 +35,7 @@ error Context::Start()
     return nullptr;
 }
 
-error Context::Stop()
+error doca::Context::Stop()
 {
     if (!this->ctx) {
         return errors::New("context is null");
@@ -34,12 +47,7 @@ error Context::Stop()
     return nullptr;
 }
 
-error Context::ConnectToProgressEngine(ProgressEngine & pe)
-{
-    return pe.ConnectContext(*this);
-}
-
-std::tuple<size_t, error> Context::GetNumInflightTasks() const
+std::tuple<size_t, error> doca::Context::GetNumInflightTasks() const
 {
     if (!this->ctx) {
         return { 0, errors::New("context is null") };
@@ -52,44 +60,20 @@ std::tuple<size_t, error> Context::GetNumInflightTasks() const
     return { numTasks, nullptr };
 }
 
-error Context::SetStateChangedCallback(StateChangedCallback callback)
+std::tuple<doca::Context::State, error> doca::Context::GetState() const
 {
     if (!this->ctx) {
-        return errors::New("context is null");
-    }
-
-    // Store the callback
-    this->stateCallback = std::move(callback);
-
-    // Set this context as user data for callback retrieval
-    auto err = this->setUserData(Data(static_cast<void *>(this)));
-    if (err) {
-        return errors::Wrap(err, "failed to put Context pointer to its user data");
-    }
-
-    // Set C callback that forwards to our C++ callback
-    err = FromDocaError(doca_ctx_set_state_changed_cb(this->ctx, &Context::stateChangedCallback));
-    if (err) {
-        return errors::Wrap(err, "failed to set state changed callback");
-    }
-
-    return nullptr;
-}
-
-std::tuple<ContextState, error> Context::GetState() const
-{
-    if (!this->ctx) {
-        return { ContextState::idle, errors::New("context is null") };
+        return { Context::State::idle, errors::New("context is null") };
     }
     doca_ctx_states state;
     auto err = FromDocaError(doca_ctx_get_state(this->ctx, &state));
     if (err) {
-        return { ContextState::idle, errors::Wrap(err, "failed to get number of inflight tasks") };
+        return { Context::State::idle, errors::Wrap(err, "failed to get number of inflight tasks") };
     }
-    return { static_cast<ContextState>(state), nullptr };
+    return { static_cast<Context::State>(state), nullptr };
 }
 
-error Context::FlushTasks()
+error doca::Context::FlushTasks()
 {
     if (!this->ctx) {
         return errors::New("context is null");
@@ -98,36 +82,39 @@ error Context::FlushTasks()
     return nullptr;
 }
 
-doca_ctx * Context::GetNative() const
+doca_ctx * doca::Context::GetNative() const
 {
     return this->ctx;
 }
 
-error Context::setUserData(const Data & data)
+DOCA_CPP_UNSAFE error doca::Context::SetUserData(const Data & data)
 {
     if (!this->ctx) {
         return errors::New("context is null");
     }
-    auto nativeData = data.ToNative();
-    auto err = FromDocaError(doca_ctx_set_user_data(ctx, nativeData));
+    auto err = FromDocaError(doca_ctx_set_user_data(ctx, data.ToNative()));
     if (err) {
         return errors::Wrap(err, "failed to set user data");
     }
     return nullptr;
 }
 
-void Context::stateChangedCallback(const doca_data userData, doca_ctx * ctx, doca_ctx_states prevState,
-                                   doca_ctx_states nextState)
+error doca::Context::SetContextStateChangedCallback(ContextStateChangedCallback callback)
 {
-    std::ignore = ctx;  // Unused parameter
-    // Get the Context object from user data
-    auto * contextPtr = static_cast<Context *>(userData.ptr);
-    if (contextPtr && contextPtr->stateCallback) {
-        Data data(userData.ptr);
-        auto prevStateCpp = static_cast<ContextState>(prevState);
-        auto nextStateCpp = static_cast<ContextState>(nextState);
-        contextPtr->stateCallback(data, prevStateCpp, nextStateCpp);
+    if (!this->ctx) {
+        return errors::New("context is null");
     }
+    auto err = FromDocaError(doca_ctx_set_state_changed_cb(ctx, callback));
+    if (err) {
+        return errors::Wrap(err, "failed to set context state changed callback");
+    }
+    return nullptr;
 }
 
-}  // namespace doca
+void doca::Context::Deleter::Delete(doca_ctx * ctx)
+{
+    if (ctx) {
+        doca_ctx_flush_tasks(ctx);
+        std::ignore = doca_ctx_stop(ctx);
+    }
+}

@@ -33,6 +33,16 @@ find_library(DOCA_COMMON_LIBRARY
     PATH_SUFFIXES lib lib/x86_64-linux-gnu
 )
 
+find_library(DOCA_RDMA_LIBRARY
+    NAMES doca_rdma
+    HINTS
+        ${PC_DOCA_LIBDIR}
+        ${PC_DOCA_LIBRARY_DIRS}
+        /opt/mellanox/doca/lib/x86_64-linux-gnu
+        ENV DOCA_ROOT
+    PATH_SUFFIXES lib lib/x86_64-linux-gnu
+)
+
 # Handle other DOCA libraries
 foreach(lib rdma dma flow)
     find_library(DOCA_${lib}_LIBRARY
@@ -45,20 +55,31 @@ endforeach()
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(DOCA
-    REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_COMMON_LIBRARY
+    REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_COMMON_LIBRARY 
+)
+find_package_handle_standard_args(DOCA
+    REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_RDMA_LIBRARY 
 )
 
 if(DOCA_FOUND)
     add_compile_definitions(DOCA_ALLOW_EXPERIMENTAL_API)
 
     set(DOCA_INCLUDE_DIRS ${DOCA_INCLUDE_DIR})
-    set(DOCA_LIBRARIES ${DOCA_COMMON_LIBRARY})
+    set(DOCA_LIBRARIES ${DOCA_COMMON_LIBRARY} ${DOCA_RDMA_LIBRARY})
 
     # Create imported target
     if(NOT TARGET DOCA::common)
         add_library(DOCA::common UNKNOWN IMPORTED)
         set_target_properties(DOCA::common PROPERTIES
             IMPORTED_LOCATION "${DOCA_COMMON_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${DOCA_INCLUDE_DIR}"
+        )
+    endif()
+
+    if(NOT TARGET DOCA::rdma)
+        add_library(DOCA::rdma UNKNOWN IMPORTED)
+        set_target_properties(DOCA::rdma PROPERTIES
+            IMPORTED_LOCATION "${DOCA_RDMA_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${DOCA_INCLUDE_DIR}"
         )
     endif()

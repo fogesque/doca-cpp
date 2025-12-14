@@ -1,8 +1,8 @@
 /**
  * @file types.hpp
- * @brief DOCA C++ type-safe wrappers and concepts
+ * @brief DOCA C++ types wrappers and concepts
  *
- * This file provides modern C++23 wrappers for DOCA types, including
+ * This file provides wrappers for DOCA types, including
  * smart pointers with custom deleters, enums, and concepts.
  */
 
