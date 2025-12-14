@@ -2,18 +2,52 @@
 
 C++ Adapter For NVIDIA DOCA Framework 
 
-TODO: Переименовать название модуля в нечто неупоминающее DOCA
+TODO: Rename the module to something that doesn’t mention DOCA (acod maybe :))
 
 ## Library Overview
 
-NVIDIA DOCA это большой фреймворк для оффлоада сетевых операций. Фреймворк состоит из множества библиотек. Данный репозиторий создан с целью написать для библиотек DOCA Common, DOCA RDMA, DOCA Flow и DOCA Comch, предоставляющих API на языке C, ООП обертки на языке C++ для того, чтобы функционалом библиотек можно было пользоваться из коробки.
+NVIDIA DOCA is a large framework for network offloading. The framework consists of libraries. This repository aims to provide C++ OOP wrappers around the DOCA Common, DOCA RDMA, DOCA Flow, and DOCA Comch libraries (which expose APIs in C) so their functionality can be used easily from C++.
 
-На данный момент разрабатываются обертки над DOCA Common и DOCA RDMA. 
+Currently, wrappers for DOCA Common and DOCA RDMA are under development.
 
-DOCA Common оперирует со следующими сущностями:
-- Устройство:
+## Prerequisities 
+
+Before building library and samples, DOCA compatible Linux operating system and kernel are required. Please refer to [NVIDIA DOCA Documentation](https://docs.nvidia.com/doca/sdk/doca-framework/index.html) for more information about supported OS and kernel versions.
+
+To build library and samples, make sure you have:
+
+* CMake, Ninja, vcpkg
+* DOCA libraries
+  - DOCA Common
+  - DOCA RDMA
+
+DOCA libraries can be installed with DOCA installation profile called ```doca-networking```. Please refer to [NVIDIA DOCA Documentation](https://docs.nvidia.com/doca/sdk/doca-framework/index.html) for more information about this profile.
+
+Library was tested only for ```amd64``` architecture with Ubuntu 24.04 and Linux Kernel 6.8.0-31 with two ConnectX-6 DX SmartNIC devices. DOCA versions from 3.0.0 to 3.2.0 were used to run RDMA applications.
+
+## Build Library
+
+To build library, run following commands:
+
+```bash
+cmake -S . -B build --preset amd64-linux-debug
+cmake --build build --target doca-cpp
+```
+
+To build samples, run following commands:
+
+```bash
+cmake --build build --target <sample_name>
+```
+
+## Library Development Notes
+
+### DOCA Common Overview
+
+DOCA Common works with the following entities:
+- Device:
    * `Device`
-- Память:
+- Memory:
    * `Buffer`
    * `BufferInventory`
    * `MemoryMap`
@@ -22,200 +56,206 @@ DOCA Common оперирует со следующими сущностями:
    * `ProgressEngine`
    * `Task`
 
-`Device` представляет сетевое устройство, например ConnectX-6 DX SmartNIC. 
-`Buffer` является абстракцией над областью памяти и нужен для манипуляций над памятью через API DOCA. `BufferInventory` это некий контейнер для `Buffer`.  `MemoryMap` это отображение памяти для доступа к ней устройства.
-Большинство операций в DOCA выполняются асинхронно, выполнение операций приводит к вызову callback-функций, которые задаются пользователем и являются индикатором того, что операция выполнена. Для того, чтобы вызвать триггер на вызов callback, необходимо выполнять polling для `ProgressEngine`. Context необходим для прикрепления `Task` к контексту выполнения и для прикрепления его самого к `ProgressEngine`.
+`Device` represents a network device like a ConnectX-6 DX SmartNIC.  
+`Buffer` is an abstraction over a memory region and is used for memory operations via the DOCA API. `BufferInventory` is a container for `Buffer`. `MemoryMap` is a memory mapping used to grant device access to memory.
+Most operations in DOCA are performed asynchronously — they invoke user-supplied callbacks when completed. To trigger the callbacks, you must poll the `ProgressEngine`. Contexts are used to attach `Task`s to the execution environment and also connect them to the `ProgressEngine`.
 
-DOCA RDMA оперирует со следующими сущностями:
+### DOCA RDMA Overview
+
+DOCA RDMA works with the following entities:
 - Runtime:
    * `Rdma`
    * `RdmaContext`
    * `RdmaTask`
    * `RdmaConnection`
 
-`Rdma` это структура, объединяющая в себе управление всей логикой RDMA операций. `RdmaContext` это контекст RDMA, который присоединяется к `ProgressEngine`. `RdmaTask` это операция RDMA (`RdmaTaskSend`, `RdmaTaskReceive` и другие). `RdmaConnection` служит для управления соединением между пирами в сети.
+`Rdma` is the structure that contains and manages the entire RDMA logic. `RdmaContext` attaches to the `ProgressEngine`. `RdmaTask` represents an RDMA operation (`RdmaTaskSend`, `RdmaTaskReceive`, and others). `RdmaConnection` manages the connection between peers.
 
-DOCA RDMA поддерживает множество операций RDMA, но автор держит фокус на следующих:
+DOCA RDMA supports many RDMA operations; the author focuses on:
 - Send
 - Receive
 - Write
 - Read
 
-DOCA RDMA позволяет устанавливаеть соединение клиент-сервер или точка-точка. 
-В первом случае используется RDMA CM (Connection Manager). Сервер слушает порт ОС и принимает запросы на подключения. Клиент подключается к заранее известному адресу сервера. В этом режиме используется RoCEv2.
-Во втором случае используется Out Of Band коммуникация, при которой соединение экспортируется и передается между машинами другим каналом или через флешку. В этом режиме используется RoCEv1.
+DOCA RDMA allows you to set up either client-server connections or point-to-point connections.  
+- For client-server mode, RDMA CM (Connection Manager) is used. The server listens on an OS port and accepts connection requests; the client connects to a server address; this typically uses RoCEv2.  
+- For point-to-point mode, out-of-band communication is used whereby connection information is exported and transferred through another channel (e.g., classic socket or DOCA Comch); this uses RoCEv1.
 
-До или после установки соединения клиент и сервер могут создавать заадачи для RDMA операций. Задачи Receive и Send зеркальны в том смысле, что, при установке задачи Send на одной стороне, на другой должна быть установлена задача Receive, и наоборот. Операции Write и Read не требуют задачи на другом пире.
+Before or after establishing the connection, client and server may create RDMA tasks. Send and Receive tasks are mirrored: when a Send task is submitted on one side, there should be a matching Receive task on the other side. Read and Write operations do not require a corresponding task on the remote peer.
 
-В терминах DOCA два пира в RDMA CM - это Requester и Responder. Ниже стрелкой показано, в какую сторону и при какой операции отправится сетевой пакет.
+In DOCA terms, two RDMA CM peers are Requester and Responder. The table below illustrates direction of data on the wire:
 
 | Task          | Data Direction                               |
 | :---          | :---                                         |
-| Send/Receive  | Side Submitted Send ⟶ Side Submitted Receive |
+| Send/Receive  | Side that submitted Send ⟶ Side that submitted Receive |
 | Write         | Write Requester ⟶ Write Responder            |
 | Read          | Read Responder ⟶ Read Requester              |
 
-Чтобы выполнить операции Write или Read, Requester должен получить у Responder дескриптор памяти, в которую он хочет записать данные из своего буфера или из которой он хочет прочитать данные в свой буфер. Дескриптор передается с помощью Send/Receive операций.
+To perform a Write or Read, the Requester must obtain a descriptor from the Responder for the remote memory to read from or write to. The descriptor is passed via a Send/Receive operation or any of out-of-band communication type (like socket).
 
-Приведу пример. Чтобы выполнить операцию Write, Requester создает задачу Receive и ожидает получения дескриптора от Responder. Responder создает задачу Send и отправляет дескриптор. Requester, получив дескриптор, создает `MemoryMap` используя дескриптор и создает задачу Write. Сетевой пакет отправляется и сетевое устройство у Responder кладет payload в память.
-
-Вспомнив, что завершение операции определяется callback-функцией, мы видим проблему: как Responder поймет, что в его память были записаны данные и как понять, когда это произошло?
-На данный момент ничего, кроме как добавлять дополнительный обмен пакетами, в голову не приходит. В API DOCA решение не найдено.
+Example: To perform a Write, the Requester creates a Receive task and waits to get a descriptor from the Responder. The Responder creates a Send task and sends the descriptor. After receiving the descriptor, the Requester creates a `MemoryMap` from the descriptor. The Write is issued and the Responder's device places the payload into its memory.
 
 ## Architecture Overview
 
-При построении архитектуры была допущена ошибка, которая объясняется тем, что автор решил писать код параллельно изучению примеров от DOCA. Эта ошибка будет исправляться в ближайшем времени.
+Library doca-cpp has three layers:
+* High-level instances for API
+* Internal instances for library logic
+* Wrappers above DOCA API
 
-Изначально архитектура выглядела следующим образом. Оберткой над DOCA RDMA служит `RdmaEngine`, который содержит в себе `RdmaConnectionManager`. `RdmaConnectionManager` имеет методы `ListenToPort()`, `AcceptConnection()` для сервера и `Connect()` для клиента. Так как весь код DOCA построен на callback-функциях, было принято решение менять состояние переменной в каждом callback, затем, запуская `ProgressEngine` в цикле, ожидать изменения этой переменной. Например:
+### High-Level API
+
+Library provides two high-level instances: ```RdmaServer``` and ```RdmaClient```. There is custom specification of how server and client will exchange data via RDMA. The structure of specification is presented in YAML format and looks like this:
+
+```yaml
+version: "0.0.1"
+
+endpoints:
+  - path: /rdma/ep0
+    type: receive
+    buffer:
+      size: 4096 # bytes - 4KB
+
+  - path: /rdma/ep1
+    type: write
+    buffer:
+      size: 4194304 # bytes - 4MB
+
+  - path: /rdma/ep0
+    type: send
+    buffer:
+      size: 4096 # bytes - 4KB
+
+  - path: /rdma/ep1
+    type: read
+    buffer:
+      size: 4194304 # bytes - 4MB
+```
+
+Another instance is ```RdmaEndpoint``` which is presented in specification above. Endpoint is just buffer with its path that is like buffer's unique resource identifier (URI). Specification may have two same paths since buffer may be requested for writing or reading. Type represents RDMA operation which will be processed after request.
+
+Instance ```RdmaBuffer``` is also high-level instance that allows user to register memory to it. When user registers memory and invokes RDMA operation with this buffer, library takes ownership of this memory, yet imlicitly.
+
+In the future code for server and client will be auto generated by specification file, but now user must provide endpoints creation and its registration in server. To process buffers by requests user can implement simple interface:
+
 ```C++
-// Will be called when connection state will become disconnect
-void ConnectionDisconnectionCallback(doca_rdma_connection * rdmaConnection, 
-    union doca_data connectionUserData, union doca_data ctxUserData)
+class RdmaServiceInterface
 {
-    // Retrieve RdmaEngine from doca_data
-    auto rdmaEngine = static_cast<RdmaEngine *>(ctxUserData.ptr);
-    // Change RdmaEngine internal connection state
-    rdmaEngine->SetConnectionState(RdmaConnection::State::disconnected);
-}
-```
-Затем, чтобы определить, что состояние соединения изменилось, необходимо опрашивать `ProgressEngine`:
-```C++
-...
-while (this->rdmaConnection->GetState() != RdmaConnection::State::requested) {
-    // Progress RDMA engine to handle incoming connection requests
-    this->rdmaEngine->Progress();
-}
-...
-```
-`RdmaEngine` выполняет подключение и устанавливает задачи в отдельном потоке. Для этого есть класс `RdmaExecutor`, который создает пул потоков в размере одного потока и имеет метод `SubmitOperation(RdmaBuffer buffer, RdmaOperationType type)` для того, чтобы передать в поток буфер для операции и ее тип. Операции кладутся в очередь на выполнение.
-
-Изначально было решено сделать класс `RdmaPeer` с методами `Send()`, `Receive()`, `Write()`, `Read()`, которые просто бы вызывали `RdmaExecutor::SubmitOperation()`, получали бы `RdmaAwaitable`, который имеет под капотом `std::future` для ожидания результата операции. `RdmaServer` и `RdmaClient` наследуются от `RdmaPeer` и не добавляют ничего более. Разница лишь в том, какие методы будут вызваны у `RdmaConnectionManager` для соединения.
-
-В текущем варианте код пользователя для сервера и клиента выглядел бы так:
-```C++
-void ClientUsageExample() {
-    // Create client
-    auto client = RdmaClient::Create();
-
-    // Perform Send
-    auto sendBuffer = RdmaBuffer::Create();
-    auto awaitable = client.Send(sendBuffer);
-
-    // Wait for result
-    awaitable.Await() // Will wait for Send callback
-
-    // Perform Write
-    auto writeBuffer = RdmaBuffer::Create();
-    auto awaitable = client.Write(writeBuffer);
-
-    // Wait for result
-    awaitable.Await() // Will wait for Write callback
-}
-
-void ServerUsageExample() {
-    // Create server
-    auto server = RdmaServer::Create();
-
-    // Perform Receive
-    auto receiveBuffer = RdmaBuffer::Create();
-    auto awaitable = server.Receive(receiveBuffer);
-
-    // Wait for result
-    awaitable.Await() // Will wait for Receive callback
-
-    // PROBLEM:
-    // How to handle client's Write Task?
-}
+public:
+    virtual error Handle(RdmaBufferPtr buffer) = 0;
+};
 ```
 
-Проблема дизайна уже очевидна исходя из описанного в конце Library Overview. Метод Write() содержит вызовы:
+Server code after that will look like this:
 
 ```C++
-void RdmaPeer::Write() {
-    // Simplified code
-    Buffer sourceBuffer;
-    Buffer descriptor;
-    this->rdmaEngine->Receive(descriptor);
-    auto mmap = MemoryMap::CreateFromDescriptor(descriptor);
-    auto destBuffer = Buffer::GetFromMmap(mmap);
-    this->rdmaEbgine->Write(sourceBuffer, destBuffer);
+int main()
+{
+    // Open InfiniBand device
+    auto device = doca::OpenIbDevice("mlx5_0");
+
+    // Create RDMA server
+    auto server = doca::rdma::RdmaServer::Create()
+            .SetDevice(device)
+            .SetListenPort(12345)
+            .Build();
+
+    const auto cfg0 = endpoints::Config{
+        .path = "/rdma/ep0",
+        .size = 4096,
+        .type = doca::rdma::RdmaEndpointType::send,
+    };
+
+    const auto cfg1 = endpoints::Config{
+        .path = "/rdma/ep0",
+        .size = 4096,
+        .type = doca::rdma::RdmaEndpointType::receive,
+    };
+
+    const auto cfg2 = endpoints::Config{
+        .path = "/rdma/ep1",
+        .size = 4194304,
+        .type = doca::rdma::RdmaEndpointType::write,
+    };
+
+    const auto cfg3 = endpoints::Config{
+        .path = "/rdma/ep1",
+        .size = 4194304,
+        .type = doca::rdma::RdmaEndpointType::read,
+    };
+
+    const auto configs = std::vector<endpoints::Config>({ cfg0, cfg1, cfg2, cfg3 });
+
+    auto endpoints = endpoints::CreateEndpoints(device, configs);
+
+    // Attach User's handlers to endpoints
+
+    auto userHandler = std::make_shared<UserService>();
+    for (auto & endpoint : endpoints) {
+        endpoint->RegisterService(userHandler);
+    }
+
+    // Register endpoints to server
+    server->RegisterEndpoints(endpoints);
+
+    // Start port listening and RDMA requests handling
+    server->Serve();
+
+    return 0;
 }
 ```
 
-То есть, чтобы принять данные, `RdmaServer` должен установить Send. Это несколько не вписывается в текущий дизайн, а также проблема с синхронизацией Write или Read остается.
+Client code example will be presented soon.
 
-Такая архитектура, хоть и использует сущности клиент и сервер, не является клиент-серверной. Здесь скорее зеркальное общение между пирами, которое должно быть синхронно по операциям.
+### Execution model
 
-Клиент-серверная архитектура подразумевает, что сервер слушает подключения на порте и отвечает на запросы. Клиент же подключается и шлет эти запросы, получая ответ. Какие могут быть запросы в случае RDMA? Ответ: такие же, как операции, но с указанием направления, которое будет у данных. В итоге список возможных запросов:
-* Send To Server
-* Receive From Server
-* Write To Server
-* Read From Server
-* Send To Requester
-* Receive From Requester
-* Write To Requester
-* Read From Requester
+To run RDMA operations, server submits Receive task and waits for any of the clients requests. After receiving it, server parses payload data to fetch endpoint information: path and operation type. Then it processes RDMA operation.
 
-С одной стороны, кажется, что 4 из 8 операции дублирующие по смыслу. С другой стороны, стоит отметить, что каждая из них определяет, кто Requester, а кто Responder. Однако условившись, что Requester = Client и Responder = Server, мы зачеркиваем лишние операции.
+If operation type is Send or Write, server calls user's handler after completion. If it's Receive or Read, then server calls user's handler before submitting it.
 
-В итоге правильный интерфейс выглядел бы так: 
-```C++
-void ClientUsageExample() {
-    // Create client
-    auto client = RdmaClient::Create();
+Mirrored operations are processed simply with Receive or Send task submittion and require client to submit opposite task on its side.
+Operations Write and Read are processed with more complex way. First, server submits Send task to send endpoint's memory descriptor to client. After that client submits Write or Read task. Since there is synchronization issues in DOCA API, library synchronize this operation by setting additional tasks in both client and server: when client will finish Write or Read operation, it submits Send task to send empty message as acknowledge; server submits Receive task accordingly.  
 
-    // Perform Send
-    auto sendBuffer = RdmaBuffer::Create();
-    auto awaitable = client.Send(sendBuffer);
+Example of Write request processing:
 
-    // Wait for result
-    awaitable.Await() // Will wait for Send callback
-
-    // Perform Write
-    auto writeBuffer = RdmaBuffer::Create();
-    auto awaitable = client.Write(writeBuffer);
-
-    // Wait for result
-    awaitable.Await() // Will wait for Write callback
-}
-
-void ServerUsageExample() {
-    // Create server
-    auto server = RdmaServer::Create();
-
-    // Listen and get requests
-    server.Serve();
-
-    // PROBLEM:
-    // Which Task to submit inside of Serve()?
-}
+```
+      server              client
+        |                   |
+     receive                |
+        |                   |
+        | <--request----- send
+        |                   |
+        |                receive
+        |                   |
+      send --descriptor---> |
+        |                   |
+        |  <-----data---- write
+        |                   |
+   user handler             |
+  processes data            |
+        |                   |
+     receive                |
+        |                   |
+        |  <-----ack----  send
+        |                   |
+        |                   |
 ```
 
-Однако такая архитектура поднимает вопрос: а как сервер должен понимать, что от него запрашивает клиент? Какую задачу надо ставить?
+There may be multiple connections issues in this design, but author will troubleshoot it later.
 
-Эти вопросы приводят к необходимости создать свой протокол. Например, сервер будет ставить задачу Receive для каждого подключения, и клиент должен сделать Send с указанием вида операции, которую он хочет провести. Затем сервер и клиент зеркально ставят задачи под выбранную операцию.
+All RDMA tasks are handled by executor, which is instance that creates DOCA RDMA engine and contexts, then launches one thread that is waiting for incoming tasks requests by server. There is asynchronous mechanism for these tasks, but yet server waits for completion right after submitting. Maybe in future there will be way to use asynchronous processing, for example when there will be batch operations support.
 
-Но как быть с Write? Если клиент поставит Write, как сервер поймет, что в его буфер записаны данные?
+Instances like ```RdmaExecutor``` is related to library's internal logic and should not be used by customer.
 
-Эта проблема может быть решена добавлением Receive задачи для сервера и Send задачи для клиента после выполнения задачи Write. 
+### DOCA API Wrappers
 
-## RDMA Problems
+DOCA API presents C-style functions that is very similar to C++ class methods since their module name is in its signature. So library wrappers just adds classes with similar methods and handles RAII strategy. There are objects that created and should be destroyed and objects that are just references to DOCA constant structures. 
 
-На данный момент автор столкнулся со следующими проблемами.
+## Future Plans
 
-* Какая схема взаимодействия подходит для RDMA: зеркальная точка-точка или клиент-сервер?
-* Как организовать синхронизацию операций Read и Write?
-* Как спроектировать сервер для обработки запросов клиента? Какой протокол составить?
-* Как сделать схему точка-точка с контрактом, в котором будут указаны желаемые операции?
-* Что нужно делать с буферами на сервере, с которыми работает клиент? Сколько их должно быть и какого размера? Как организовать интерфейс для доступа к ним?
-
-Также автор уже задумывается над следующими вещами:
-
-* Как добиться максимальной производительности RDMA в DOCA? Какие размеры буферов, какое количество?
-* Можно ли переиспользовать буферы, мапы памяти и дескрипторы для операций в цикле?
-
-## Notes
-
-Автор видит возможную схожесть между RDMA и gRPC. В gRPC есть унарная, серверная потоковая передача, клиентская потоковая передача и двунаправленная потоковая передача. Для RDMA можно было бы создавать похожий контракт и генерировать код с вызовом нужных операций под капотом прозрачных для пользователя вызовов по типу `client.service.SendSomething(something);`
-
-По контракту мы сможем определить весь набор операций, который нужен для выполнения вызова сервиса из него и при желании сгенерировать под каждый из них код.
+1. Provide client code
+2. Launch and test one client and server
+3. Experiment with buffers sizes, make performance test
+4. Handle point-to-point operations above RoCEv1
+5. Provide descriptors exchange on connection established event, not per request
+6. Provide multiple connections support
+7. Add code generation for client and server from YAML
