@@ -248,6 +248,8 @@ error doca::rdma::RdmaExecutor::Start()
     // Start worker thread
     this->running.store(true);
     this->workerThread = std::make_unique<std::thread>([this] { this->workerLoop(); });
+
+    return nullptr;
 }
 
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
@@ -470,7 +472,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA Receive Task") };
     }
 
-    // Wait for task completion
+    // Wait for task completion: if it will complete with error, function will return it
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState);
     if (err) {
         this->stats.failedOperations++;
@@ -511,7 +513,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     receiveTask->Free();
 
     // Decrement buffer reference count in BufferInventory
-    auto [_, rcErr] = destBuf->DecRefcount();
+    auto [__, rcErr] = destBuf->DecRefcount();
     if (rcErr) {
         this->stats.failedOperations++;
         return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in BufferInventory") };
@@ -526,10 +528,10 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
 OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
 {
     // TODO: Design issues: fix author's brain please
-    auto [connectionId, connErr] = request.connectionPromise->get_future().get()->GetId();
-    if (connErr) {
+    auto [connectionId, err] = request.connectionPromise->get_future().get()->GetId();
+    if (err) {
         this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(connErr, "Failed to get connection ID") };
+        return { nullptr, errors::Wrap(err, "Failed to get connection ID") };
     }
 
     // Check that connection is active
@@ -542,17 +544,17 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
-    auto [srcBuf, err] = this->getDocaBuffer(request.sourceBuffer);
-    if (err) {
+    auto [srcBuf, srcBufErr] = this->getDocaBuffer(request.sourceBuffer);
+    if (srcBufErr) {
         this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+        return { nullptr, errors::Wrap(srcBufErr, "Failed to get doca buffer") };
     }
 
     // Get DOCA buffer for destination RDMA buffer
-    auto [dstBuf, err] = this->getDocaBuffer(request.destinationBuffer);
-    if (err) {
+    auto [dstBuf, dstBufErr] = this->getDocaBuffer(request.destinationBuffer);
+    if (dstBufErr) {
         this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+        return { nullptr, errors::Wrap(dstBufErr, "Failed to get doca buffer") };
     }
 
     // Create RdmaSendTask from RdmaEngine
@@ -605,10 +607,10 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
 OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
 {
     // TODO: Design issues: fix author's brain please
-    auto [connectionId, connErr] = request.connectionPromise->get_future().get()->GetId();
-    if (connErr) {
+    auto [connectionId, err] = request.connectionPromise->get_future().get()->GetId();
+    if (err) {
         this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(connErr, "Failed to get connection ID") };
+        return { nullptr, errors::Wrap(err, "Failed to get connection ID") };
     }
 
     // Check that connection is active
@@ -621,17 +623,17 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
-    auto [srcBuf, err] = this->getDocaBuffer(request.sourceBuffer);
-    if (err) {
+    auto [srcBuf, srcBufErr] = this->getDocaBuffer(request.sourceBuffer);
+    if (srcBufErr) {
         this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+        return { nullptr, errors::Wrap(srcBufErr, "Failed to get doca buffer") };
     }
 
     // Get DOCA buffer for destination RDMA buffer
-    auto [dstBuf, err] = this->getDocaBuffer(request.destinationBuffer);
-    if (err) {
+    auto [dstBuf, dstBufErr] = this->getDocaBuffer(request.destinationBuffer);
+    if (dstBufErr) {
         this->stats.failedOperations++;
-        return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
+        return { nullptr, errors::Wrap(dstBufErr, "Failed to get doca buffer") };
     }
 
     // Create task from RdmaEngine
@@ -714,7 +716,7 @@ error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::
 
 error doca::rdma::RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desiredState,
                                                  RdmaTaskInterface::State & changingState,
-                                                 std::chrono::milliseconds waitTimeout = 0ms)
+                                                 std::chrono::milliseconds waitTimeout)
 {
     if (this->progressEngine == nullptr) {
         return errors::New("ProgressEngine is null");

@@ -14,10 +14,14 @@
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
-#include "doca-cpp/rdma/internal/rdma_engine.hpp"
 
 namespace doca::rdma
 {
+
+class RdmaAddress;
+using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
+class RdmaConnection;
+using RdmaConnectionPtr = std::shared_ptr<RdmaConnection>;
 
 enum class RdmaConnectionType {
     outOfBand,
@@ -64,15 +68,13 @@ public:
 
     ~RdmaAddress();
 
-private:
     explicit RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPtr deleter);
 
+private:
     doca_rdma_addr * rdmaAddress = nullptr;
 
     DeleterPtr deleter = nullptr;
 };
-
-using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
 
 // ----------------------------------------------------------------------------
 // RdmaConnection
@@ -112,17 +114,14 @@ public:
     RdmaConnection(RdmaConnection && other) noexcept = default;
     RdmaConnection & operator=(RdmaConnection && other) noexcept = default;
 
-private:
     explicit RdmaConnection(doca_rdma_connection * nativeConnection);
+
+private:
     doca_rdma_connection * rdmaConnection = nullptr;
 
     RdmaConnection::State connectionState = RdmaConnection::State::idle;
 
-    // RdmaConnectionId connectionId = 0;
-
     bool accepted = false;
 };
-
-using RdmaConnectionPtr = std::shared_ptr<RdmaConnection>;
 
 }  // namespace doca::rdma

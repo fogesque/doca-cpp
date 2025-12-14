@@ -14,6 +14,10 @@
 namespace doca::rdma
 {
 
+// Forward declarations
+class RdmaBuffer;
+using RdmaBufferPtr = std::shared_ptr<RdmaBuffer>;
+
 using MemoryRange = std::vector<std::uint8_t>;
 using MemoryRangePtr = std::shared_ptr<MemoryRange>;
 
@@ -142,7 +146,5 @@ private:
     MemoryRangePtr memoryRangeDescriptor = nullptr;
     MemoryMapPtr descriptorMemoryMap = nullptr;
 };
-
-using RdmaBufferPtr = std::shared_ptr<RdmaBuffer>;
 
 }  // namespace doca::rdma

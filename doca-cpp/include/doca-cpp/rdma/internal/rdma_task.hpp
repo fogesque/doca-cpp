@@ -21,6 +21,19 @@
 namespace doca::rdma
 {
 
+// Forward declarations
+class RdmaTaskInterface;
+class RdmaSendTask;
+class RdmaReceiveTask;
+class RdmaWriteTask;
+class RdmaReadTask;
+
+using RdmaTaskInterfacePtr = std::shared_ptr<RdmaTaskInterface>;
+using RdmaSendTaskPtr = std::shared_ptr<RdmaSendTask>;
+using RdmaReceiveTaskPtr = std::shared_ptr<RdmaReceiveTask>;
+using RdmaWriteTaskPtr = std::shared_ptr<RdmaWriteTask>;
+using RdmaReadTaskPtr = std::shared_ptr<RdmaReadTask>;
+
 // ----------------------------------------------------------------------------
 // RdmaTaskInterface
 // ----------------------------------------------------------------------------
@@ -43,8 +56,6 @@ public:
     virtual std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) = 0;
 };
 
-using RdmaTaskInterfacePtr = std::shared_ptr<RdmaTaskInterface>;
-
 // ----------------------------------------------------------------------------
 // RdmaSendTask
 // ----------------------------------------------------------------------------
@@ -65,13 +76,11 @@ public:
 
     void Free() override;
 
-private:
     explicit RdmaSendTask(doca_rdma_task_send * initialTask);
 
+private:
     doca_rdma_task_send * task = nullptr;
 };
-
-using RdmaSendTaskPtr = std::shared_ptr<RdmaSendTask>;
 
 // ----------------------------------------------------------------------------
 // RdmaReceiveTask
@@ -95,13 +104,11 @@ public:
 
     void Free() override;
 
-private:
-    explicit RdmaReceiveTask(doca_rdma_task_send * initialTask);
+    explicit RdmaReceiveTask(doca_rdma_task_receive * initialTask);
 
+private:
     doca_rdma_task_receive * task = nullptr;
 };
-
-using RdmaReceiveTaskPtr = std::shared_ptr<RdmaReceiveTask>;
 
 // ----------------------------------------------------------------------------
 // RdmaWriteTask
@@ -123,13 +130,11 @@ public:
 
     void Free() override;
 
-private:
-    explicit RdmaWriteTask(doca_rdma_task_send * initialTask);
+    explicit RdmaWriteTask(doca_rdma_task_write * initialTask);
 
+private:
     doca_rdma_task_write * task = nullptr;
 };
-
-using RdmaWriteTaskPtr = std::shared_ptr<RdmaWriteTask>;
 
 // ----------------------------------------------------------------------------
 // RdmaReadTask
@@ -151,12 +156,10 @@ public:
 
     void Free() override;
 
-private:
-    explicit RdmaReadTask(doca_rdma_task_send * initialTask);
+    explicit RdmaReadTask(doca_rdma_task_read * initialTask);
 
+private:
     doca_rdma_task_read * task = nullptr;
 };
-
-using RdmaReadTaskPtr = std::shared_ptr<RdmaReadTask>;
 
 }  // namespace doca::rdma

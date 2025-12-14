@@ -25,6 +25,7 @@ namespace doca::rdma
 
 // Forward declarations
 class RdmaEngine;
+using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
 
 enum class TransportType {
     rc = DOCA_RDMA_TRANSPORT_TYPE_RC,  // Reliable Connection
@@ -134,14 +135,12 @@ public:
 
     static Builder Create(doca::DevicePtr device);
 
-private:
     explicit RdmaEngine(doca_rdma * plainRdma);
 
+private:
     doca_rdma * rdmaInstance = nullptr;
 
     doca::ContextPtr rdmaContext = nullptr;
 };
-
-using RdmaEnginePtr = std::shared_ptr<RdmaEngine>;
 
 }  // namespace doca::rdma

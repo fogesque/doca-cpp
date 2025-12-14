@@ -130,7 +130,7 @@ std::tuple<doca::ContextPtr, error> RdmaEngine::AsContext()
 error RdmaEngine::ConnectToAddress(RdmaAddressPtr address, doca::Data & connectionUserData)
 {
     if (this->rdmaInstance == nullptr) {
-        return { nullptr, errors::New("RDMA Engine is not initialized") };
+        return errors::New("RDMA Engine is not initialized");
     }
 
     auto err = FromDocaError(
@@ -144,7 +144,7 @@ error RdmaEngine::ConnectToAddress(RdmaAddressPtr address, doca::Data & connecti
 error RdmaEngine::ListenToPort(uint16_t port)
 {
     if (this->rdmaInstance == nullptr) {
-        return { nullptr, errors::New("RDMA Engine is not initialized") };
+        return errors::New("RDMA Engine is not initialized");
     }
 
     auto err = FromDocaError(doca_rdma_start_listen_to_port(this->rdmaInstance, port));

@@ -1,7 +1,5 @@
 #include "doca-cpp/rdma/internal/rdma_task.hpp"
 
-#include "rdma_task.hpp"
-
 using doca::rdma::RdmaReadTask;
 using doca::rdma::RdmaReadTaskPtr;
 using doca::rdma::RdmaReceiveTask;
@@ -23,6 +21,8 @@ std::tuple<RdmaSendTaskPtr, error> RdmaSendTask::Create(doca_rdma_task_send * in
     auto rdmaTaskSend = std::make_shared<RdmaSendTask>(initialTask);
     return { rdmaTaskSend, nullptr };
 }
+
+RdmaSendTask::RdmaSendTask(doca_rdma_task_send * initialTask) : task(initialTask) {}
 
 RdmaSendTask::~RdmaSendTask()
 {
@@ -56,13 +56,12 @@ std::tuple<doca::BufferPtr, error> RdmaSendTask::GetBuffer(RdmaBufferType type)
     }
 
     auto nativeBuffer = doca_rdma_task_send_get_src_buf(this->task);
-    auto nativeBufferPtr = std::make_shared<doca_buf>(const_cast<doca_buf *>(nativeBuffer));
 
-    auto buffer = std::make_shared<doca::Buffer>(nativeBufferPtr);
+    auto buffer = doca::Buffer::CreateRef(const_cast<doca_buf *>(nativeBuffer));
     return { buffer, nullptr };
 }
 
-error doca::rdma::RdmaSendTask::Submit()
+error RdmaSendTask::Submit()
 {
     if (this->task == nullptr) {
         return errors::New("RdmaSendTask is not initialized");
@@ -75,7 +74,7 @@ error doca::rdma::RdmaSendTask::Submit()
     return nullptr;
 }
 
-void doca::rdma::RdmaSendTask::Free()
+void RdmaSendTask::Free()
 {
     doca_task_free(doca_rdma_task_send_as_task(this->task));
     this->task = nullptr;
@@ -93,6 +92,8 @@ std::tuple<RdmaReceiveTaskPtr, error> RdmaReceiveTask::Create(doca_rdma_task_rec
     auto rdmaTaskReceive = std::make_shared<RdmaReceiveTask>(initialTask);
     return { rdmaTaskReceive, nullptr };
 }
+
+RdmaReceiveTask::RdmaReceiveTask(doca_rdma_task_receive * initialTask) : task(initialTask) {}
 
 RdmaReceiveTask::~RdmaReceiveTask()
 {
@@ -126,9 +127,9 @@ std::tuple<doca::BufferPtr, error> RdmaReceiveTask::GetBuffer(RdmaBufferType typ
     }
 
     auto nativeBuffer = doca_rdma_task_receive_get_dst_buf(this->task);
-    auto nativeBufferPtr = std::make_shared<doca_buf>(const_cast<doca_buf *>(nativeBuffer));
 
-    auto buffer = std::make_shared<doca::Buffer>(nativeBufferPtr);
+    auto buffer = doca::Buffer::CreateRef(nativeBuffer);
+
     return { buffer, nullptr };
 }
 
@@ -144,7 +145,7 @@ std::tuple<doca::rdma::RdmaConnectionPtr, error> RdmaReceiveTask::GetTaskConnect
     return { connection, nullptr };
 }
 
-error doca::rdma::RdmaReceiveTask::Submit()
+error RdmaReceiveTask::Submit()
 {
     if (this->task == nullptr) {
         return errors::New("RdmaReceiveTask is not initialized");
@@ -157,7 +158,7 @@ error doca::rdma::RdmaReceiveTask::Submit()
     return nullptr;
 }
 
-void doca::rdma::RdmaReceiveTask::Free()
+void RdmaReceiveTask::Free()
 {
     doca_task_free(doca_rdma_task_receive_as_task(this->task));
     this->task = nullptr;
@@ -176,7 +177,9 @@ std::tuple<RdmaWriteTaskPtr, error> RdmaWriteTask::Create(doca_rdma_task_write *
     return { rdmaTaskWrite, nullptr };
 }
 
-doca::rdma::RdmaWriteTask::~RdmaWriteTask()
+RdmaWriteTask::RdmaWriteTask(doca_rdma_task_write * initialTask) : task(initialTask) {}
+
+RdmaWriteTask::~RdmaWriteTask()
 {
     if (this->task) {
         doca_task_free(doca_rdma_task_write_as_task(this->task));
@@ -209,13 +212,12 @@ std::tuple<doca::BufferPtr, error> RdmaWriteTask::GetBuffer(RdmaBufferType type)
         nativeBuffer = doca_rdma_task_write_get_src_buf(this->task);
     }
     nativeBuffer = doca_rdma_task_write_get_dst_buf(this->task);
-    auto nativeBufferPtr = std::make_shared<doca_buf>(const_cast<doca_buf *>(nativeBuffer));
 
-    auto buffer = std::make_shared<doca::Buffer>(nativeBufferPtr);
+    auto buffer = doca::Buffer::CreateRef(const_cast<doca_buf *>(nativeBuffer));
     return { buffer, nullptr };
 }
 
-error doca::rdma::RdmaWriteTask::Submit()
+error RdmaWriteTask::Submit()
 {
     if (this->task == nullptr) {
         return errors::New("RdmaWriteTask is not initialized");
@@ -228,7 +230,7 @@ error doca::rdma::RdmaWriteTask::Submit()
     return nullptr;
 }
 
-void doca::rdma::RdmaWriteTask::Free()
+void RdmaWriteTask::Free()
 {
     doca_task_free(doca_rdma_task_write_as_task(this->task));
     this->task = nullptr;
@@ -248,7 +250,9 @@ std::tuple<RdmaReadTaskPtr, error> RdmaReadTask::Create(doca_rdma_task_read * in
     return { rdmaTaskRead, nullptr };
 }
 
-doca::rdma::RdmaReadTask::~RdmaReadTask()
+RdmaReadTask::RdmaReadTask(doca_rdma_task_read * initialTask) : task(initialTask) {}
+
+RdmaReadTask::~RdmaReadTask()
 {
     if (this->task) {
         doca_task_free(doca_rdma_task_read_as_task(this->task));
@@ -281,13 +285,12 @@ std::tuple<doca::BufferPtr, error> RdmaReadTask::GetBuffer(RdmaBufferType type)
         nativeBuffer = doca_rdma_task_read_get_src_buf(this->task);
     }
     nativeBuffer = doca_rdma_task_read_get_dst_buf(this->task);
-    auto nativeBufferPtr = std::make_shared<doca_buf>(const_cast<doca_buf *>(nativeBuffer));
 
-    auto buffer = std::make_shared<doca::Buffer>(nativeBufferPtr);
+    auto buffer = doca::Buffer::CreateRef(const_cast<doca_buf *>(nativeBuffer));
     return { buffer, nullptr };
 }
 
-error doca::rdma::RdmaReadTask::Submit()
+error RdmaReadTask::Submit()
 {
     if (this->task == nullptr) {
         return errors::New("RdmaReadTask is not initialized");
@@ -300,7 +303,7 @@ error doca::rdma::RdmaReadTask::Submit()
     return nullptr;
 }
 
-void doca::rdma::RdmaReadTask::Free()
+void RdmaReadTask::Free()
 {
     doca_task_free(doca_rdma_task_read_as_task(this->task));
     this->task = nullptr;

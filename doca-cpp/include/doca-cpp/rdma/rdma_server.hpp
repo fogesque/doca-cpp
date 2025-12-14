@@ -16,6 +16,7 @@ namespace doca::rdma
 
 // Forward declarations
 class RdmaServer;
+using RdmaServerPtr = std::shared_ptr<RdmaServer>;
 
 // ----------------------------------------------------------------------------
 // RdmaServer
@@ -58,9 +59,9 @@ public:
     RdmaServer(RdmaServer && other) noexcept = default;
     RdmaServer & operator=(RdmaServer && other) noexcept = default;
 
-private:
     explicit RdmaServer(doca::DevicePtr initialDevice, uint16_t port);
 
+private:
     std::map<RdmaEndpointId, RdmaEndpointPtr> endpoints;
 
     doca::DevicePtr device = nullptr;
@@ -70,7 +71,7 @@ private:
 
     error mapEndpointsMemory();
 
-    std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestData(const MemoryRangePtr requestMemoreRange);
+    std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestPayload(const MemoryRangePtr requestMemoreRange);
 
     std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
 
@@ -86,7 +87,5 @@ private:
     // TODO: Add graceful shutdown support
     std::atomic_bool continueServing = true;
 };
-
-using RdmaServerPtr = std::shared_ptr<RdmaServer>;
 
 }  // namespace doca::rdma

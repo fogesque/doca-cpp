@@ -56,6 +56,18 @@ namespace doca::rdma
 // Forward declarations
 // ----------------------------------------------------------------------------
 class RdmaExecutor;
+using RdmaExecutorPtr = std::shared_ptr<RdmaExecutor>;
+
+// ----------------------------------------------------------------------------
+// Operation Responce
+// ----------------------------------------------------------------------------
+using OperationResponce = std::pair<RdmaBufferPtr, error>;
+
+// Promise will contain operation error and copy of pointer to buffer
+using OperationRequestPromise = std::shared_ptr<std::promise<OperationResponce>>;
+
+// Promise will contain connection if operation type is Receive. Caused by DOCA design
+using OperationConnectionPromise = std::shared_ptr<std::promise<RdmaConnectionPtr>>;
 
 // ----------------------------------------------------------------------------
 // Operation Request
@@ -76,14 +88,6 @@ struct OperationRequest {
     OperationRequestPromise responcePromise = nullptr;
     OperationConnectionPromise connectionPromise = nullptr;
 };
-
-using OperationResponce = std::pair<RdmaBufferPtr, error>;
-
-// Promise will contain operation error and copy of pointer to buffer
-using OperationRequestPromise = std::shared_ptr<std::promise<OperationResponce>>;
-
-// Promise will contain connection if operation type is Receive. Caused by DOCA design
-using OperationConnectionPromise = std::shared_ptr<std::promise<RdmaConnectionPtr>>;
 
 namespace ErrorType
 {
@@ -128,7 +132,6 @@ public:
 
     const Statistics & GetStatistics() const;
 
-private:
     struct Config {
         RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
         RdmaEnginePtr initialRdmaEngine = nullptr;
@@ -137,6 +140,7 @@ private:
 
     explicit RdmaExecutor(const Config & initialConfig);
 
+private:
     void workerLoop();
 
     OperationResponce executeOperation(OperationRequest & request);
@@ -176,7 +180,5 @@ private:
     doca::ProgressEnginePtr progressEngine = nullptr;
     doca::BufferInventoryPtr bufferInventory = nullptr;
 };
-
-using RdmaExecutorPtr = std::shared_ptr<RdmaExecutor>;
 
 }  // namespace doca::rdma

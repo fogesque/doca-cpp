@@ -23,6 +23,7 @@ RdmaEndpoint::Builder & RdmaEndpoint::Builder::SetDevice(doca::DevicePtr device)
         this->buildErr = errors::Wrap(this->buildErr, "Device is null");
     }
     this->device = device;
+    return *this;
 }
 
 RdmaEndpoint::Builder & RdmaEndpoint::Builder::SetPath(RdmaEndpointPath path)

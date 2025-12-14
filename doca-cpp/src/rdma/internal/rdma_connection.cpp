@@ -1,20 +1,16 @@
 #include "doca-cpp/rdma/internal/rdma_connection.hpp"
 
-#include "rdma_connection.hpp"
-
 using doca::rdma::RdmaAddress;
 using doca::rdma::RdmaAddressPtr;
 using doca::rdma::RdmaConnection;
 using doca::rdma::RdmaConnectionPtr;
 using doca::rdma::RdmaConnectionRole;
-using doca::rdma::RdmaEngine;
-using doca::rdma::RdmaEnginePtr;
 
 // ----------------------------------------------------------------------------
 // RdmaAddress
 // ----------------------------------------------------------------------------
 
-explicit RdmaAddress::RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPtr deleter)
+RdmaAddress::RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPtr deleter)
     : rdmaAddress(initialRdmaAddress), deleter(deleter)
 {
 }
@@ -78,7 +74,7 @@ error RdmaConnection::SetUserData(doca::Data & userData)
 
     auto err = FromDocaError(doca_rdma_connection_set_user_data(this->rdmaConnection, userData.ToNative()));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to set user data to RDMA connection") };
+        return errors::Wrap(err, "failed to set user data to RDMA connection");
     }
 
     return nullptr;
@@ -93,11 +89,6 @@ RdmaConnection::State RdmaConnection::GetState() const
 {
     return this->connectionState;
 }
-
-// void RdmaConnection::SetId(RdmaConnectionId connId)
-// {
-//     this->connectionId = connId;
-// }
 
 std::tuple<doca::rdma::RdmaConnectionId, error> RdmaConnection::GetId() const
 {
@@ -132,7 +123,7 @@ error doca::rdma::RdmaConnection::Accept()
 
     auto err = FromDocaError(doca_rdma_connection_accept(this->rdmaConnection, nullptr, 0));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to accept RDMA connection") };
+        return errors::Wrap(err, "failed to accept RDMA connection");
     }
 
     return nullptr;
@@ -146,7 +137,7 @@ error doca::rdma::RdmaConnection::Reject()
 
     auto err = FromDocaError(doca_rdma_connection_reject(this->rdmaConnection));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to reject RDMA connection") };
+        return errors::Wrap(err, "failed to reject RDMA connection");
     }
 
     return nullptr;

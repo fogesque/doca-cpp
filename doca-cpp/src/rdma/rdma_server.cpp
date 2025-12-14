@@ -1,7 +1,5 @@
 #include "doca-cpp/rdma/rdma_server.hpp"
 
-#include "rdma_server.hpp"
-
 using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
@@ -11,6 +9,22 @@ using doca::rdma::RdmaServerPtr;
 
 using doca::rdma::RdmaBufferPtr;
 
+/**
+ * @brief RDMA Endpoint Message Format
+ *
+ * Layout in memory:
+ *
+ *  Offset  Size  Field
+ *  ──────  ────  ─────────────────────
+ *  0       2     Path Length (uint16_t)
+ *  2       N     Path String (char[])
+ *  2+N     2     Operation Opcode (uint16_t)
+ *
+ * Example: Path="/rdma/ep1", OpCode=SEND
+ *
+ *  [0x00 0x09] [/r d m a / e p 1] [0x00 0x02]
+ *   len=9       9 bytes path        opcode
+ */
 namespace RequestMessageFormat
 {
 constexpr auto messageBufferSize = 260;  // bytes; 2 for path size, 256 for path, 2 for operation code
@@ -60,7 +74,7 @@ RdmaServer::Builder RdmaServer::Create()
     return Builder();
 }
 
-explicit RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : device(initialDevice), port(port) {}
+RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : device(initialDevice), port(port) {}
 
 error RdmaServer::Serve()
 {
@@ -95,8 +109,15 @@ error RdmaServer::Serve()
         return errors::Wrap(bufErr, "Failed to create RDMA request buffer");
     }
 
+    // Serving is:
+    // 1. Receive request from client's connection
+    // 2. Parse request to fetch endpoint ID
+    // 3. Process RDMA operation related to this endpoint
+    // +
+    // Call user's service Handle() function to process data in RDMA buffer
+
     while (this->continueServing) {
-        // Submit Receive task for RDMA request
+        // Create receive task for executor
         auto receiveOperationRequest = OperationRequest{
             .type = OperationRequest::Type::receive,
             .sourceBuffer = nullptr,
@@ -105,26 +126,27 @@ error RdmaServer::Serve()
             .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
         };
 
+        // Submit receive task for getting request
         auto [requestAwaitable, err] = this->executor->SubmitOperation(receiveOperationRequest);
         if (err) {
             return errors::Wrap(err, "Failed to submit receive operation");
         }
 
-        // Wait for Request
+        // Wait for request to come
         auto [requestBuffer, reqErr] = requestAwaitable.Await();
         if (reqErr) {
             return errors::Wrap(reqErr, "Failed to execute receive operation");
         }
         auto requestConnection = requestAwaitable.GetConnection();
 
-        // Fetch endpoint from Request
+        // Fetch endpoint from request
         auto [requestMemoryRange, mrErr] = requestBuffer->GetMemoryRange();
         if (mrErr) {
             return errors::Wrap(mrErr, "Failed to get request memory range");
         }
 
         // Parse endpoint ID from request
-        auto [endpointId, idErr] = this->parseEndpointIdFromRequestData(requestMemoryRange);
+        auto [endpointId, idErr] = this->parseEndpointIdFromRequestPayload(requestMemoryRange);
         if (idErr) {
             return errors::Wrap(idErr, "Failed to parse endpoint ID");
         }
@@ -145,7 +167,7 @@ error RdmaServer::Serve()
             }
         }
 
-        // Launch Request processing with requested endpoint
+        // Launch request processing with requested endpoint
         auto [processedBuffer, procErr] = this->handleRequest(endpointId, requestConnection);
         if (procErr) {
             return errors::Wrap(procErr, "Failed to handle RDMA request");
@@ -189,7 +211,7 @@ error doca::rdma::RdmaServer::mapEndpointsMemory()
     return error();
 }
 
-std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromRequestData(
+std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromRequestPayload(
     const MemoryRangePtr requestMemoreRange)
 {
     if (requestMemoreRange == nullptr) {
@@ -349,7 +371,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleWriteRequest(cons
         return { nullptr, errors::Wrap(ackOpErr, "Failed to execute operation") };
     }
 
-    auto [_, ackErr] = awaitable.Await();
+    auto [__, ackErr] = awaitable.Await();
     if (ackErr) {
         return { nullptr, errors::Wrap(ackErr, "Failed to receive acknowledge") };
     }

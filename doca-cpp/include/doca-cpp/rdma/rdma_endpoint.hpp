@@ -32,6 +32,7 @@ namespace doca::rdma
 
 // Forward declarations
 class RdmaEndpoint;
+using RdmaEndpointPtr = std::shared_ptr<RdmaEndpoint>;
 
 // Endpoint structures
 
@@ -77,7 +78,6 @@ using RdmaEndpointBufferPtr = RdmaBufferPtr;
  */
 
 // RdmaServiceInterface
-
 class RdmaServiceInterface
 {
 public:
@@ -138,17 +138,15 @@ public:
     RdmaEndpoint(RdmaEndpoint && other) noexcept = default;
     RdmaEndpoint & operator=(RdmaEndpoint && other) = default;
 
-private:
     explicit RdmaEndpoint(doca::DevicePtr initialDevice, RdmaEndpoint::Config initialConfig);
 
+private:
     doca::DevicePtr device = nullptr;
 
     RdmaEndpoint::Config config = {};
 
     RdmaServiceInterfacePtr service = nullptr;
 };
-
-using RdmaEndpointPtr = std::shared_ptr<RdmaEndpoint>;
 
 std::string EndpointTypeToString(const RdmaEndpointType & type);
 

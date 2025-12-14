@@ -12,6 +12,8 @@
 namespace doca::rdma
 {
 
+class RdmaAwaitable;
+
 using OperationResponce = std::pair<RdmaBufferPtr, error>;
 
 class RdmaAwaitable
@@ -44,7 +46,7 @@ public:
 private:
     std::future<OperationResponce> taskFuture;
 
-    // Connection future is used only in Receive operation recognize peer which requested RDMA operation
+    // Connection future is used only in Receive operation to recognize peer which requested RDMA operation
     std::future<RdmaConnectionPtr> connectionFuture;
 };
 
