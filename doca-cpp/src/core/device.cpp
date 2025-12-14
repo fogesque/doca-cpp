@@ -191,7 +191,7 @@ std::tuple<DeviceListPtr, error> DeviceList::Create()
     if (err) {
         return { nullptr, errors::Wrap(err, "failed to create device list") };
     }
-    auto managedList = std::make_shared<DeviceList>(devList, nbDevs, DeviceList::Deleter());
+    auto managedList = std::make_shared<DeviceList>(devList, nbDevs, std::make_shared<DeviceList::Deleter>());
     return { managedList, nullptr };
 }
 
@@ -273,11 +273,14 @@ std::tuple<DevicePtr, error> Device::Open(const DeviceInfo & devInfo)
         return { nullptr, errors::Wrap(err, "failed to open device") };
     }
 
-    auto managedDev = std::make_shared<Device>(dev, Device::Deleter());
+    auto managedDev = std::make_shared<Device>(dev, std::make_shared<Device::Deleter>());
     return { managedDev, nullptr };
 }
 
-Device::Device(doca_dev * initialDevice, Device::DeleterPtr deleter) : device(initialDevice), deleter(deleter) {}
+Device::Device(doca_dev * initialDevice, Device::DeleterPtr initialDeleter)
+    : device(initialDevice), deleter(initialDeleter)
+{
+}
 
 error Device::AccelerateResourceReclaim() const
 {

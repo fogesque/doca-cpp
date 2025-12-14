@@ -1,7 +1,5 @@
 #include "doca-cpp/core/buffer.hpp"
 
-#include "buffer.hpp"
-
 using doca::Buffer;
 using doca::BufferInventory;
 using doca::BufferInventoryPtr;
@@ -11,7 +9,7 @@ using doca::BufferPtr;
 // Buffer
 // ----------------------------------------------------------------------------
 
-Buffer::Buffer(doca_buf * nativeBuffer, DeleterPtr deleter = nullptr) : buffer(nativeBuffer), deleter(deleter) {}
+Buffer::Buffer(doca_buf * nativeBuffer, DeleterPtr deleter) : buffer(nativeBuffer), deleter(deleter) {}
 
 void Buffer::Deleter::Delete(doca_buf * buf)
 {
@@ -221,10 +219,7 @@ std::tuple<BufferInventoryPtr, error> BufferInventory::Builder::Start()
         return { nullptr, errors::Wrap(err, "failed to start inventory") };
     }
 
-    auto managedInventory = std::shared_ptr<doca_buf_inventory>(this->inventory, BufferInventoryDeleter());
-    this->inventory = nullptr;
-
-    auto bufferInventoryPtr = std::make_shared<BufferInventory>(managedInventory);
+    auto bufferInventoryPtr = std::make_shared<BufferInventory>(this->inventory);
     return { bufferInventoryPtr, nullptr };
 }
 
@@ -242,7 +237,17 @@ BufferInventory::Builder BufferInventory::Create(size_t numElements)
     return Builder(inventory);
 }
 
-BufferInventory::BufferInventory(doca_buf_inventory * initialInventory) : inventory(initialInventory) {}
+BufferInventory::BufferInventory(doca_buf_inventory * initialInventory) : inventory(initialInventory)
+{
+    this->deleter = std::make_shared<BufferInventory::BufferInventoryDeleter>();
+}
+
+doca::BufferInventory::~BufferInventory()
+{
+    if (this->deleter && this->inventory) {
+        this->deleter->Delete(this->inventory);
+    }
+}
 
 void doca::BufferInventory::BufferInventoryDeleter::Delete(doca_buf_inventory * inv)
 {

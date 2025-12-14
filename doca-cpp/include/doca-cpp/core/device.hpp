@@ -14,6 +14,11 @@
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/types.hpp"
 
+// FIXME: C++ is fucking absurd. All constructors moved
+// to public since static method of class can't call it
+// So I need to use other approaches like PIMPL (shit) or
+// something else from C++32 :/
+
 namespace doca
 {
 
@@ -22,6 +27,10 @@ class Device;
 class DeviceInfo;
 class DeviceList;
 // class DeviceRepresentor; // TODO: Add representor support
+
+using DevicePtr = std::shared_ptr<Device>;
+using DeviceInfoPtr = std::shared_ptr<DeviceInfo>;
+using DeviceListPtr = std::shared_ptr<DeviceList>;
 
 namespace internal
 {
@@ -71,8 +80,6 @@ private:
     doca_devinfo * devInfo;
 };
 
-using DeviceInfoPtr = std::shared_ptr<DeviceInfo>;
-
 // ----------------------------------------------------------------------------
 // DeviceList
 // ----------------------------------------------------------------------------
@@ -112,18 +119,15 @@ public:
     };
     using DeleterPtr = std::shared_ptr<Deleter>;
 
+    DeviceList(doca_devinfo ** initialDeviceList, uint32_t count, DeleterPtr deleter);
     ~DeviceList();
 
 private:
-    DeviceList(doca_devinfo ** initialDeviceList, uint32_t count, DeleterPtr deleter);
-
     doca_devinfo ** deviceList = nullptr;
     uint32_t numDevices = 0;
 
     DeleterPtr deleter = nullptr;
 };
-
-using DeviceListPtr = std::shared_ptr<DeviceList>;
 
 // ----------------------------------------------------------------------------
 // Device
@@ -147,19 +151,16 @@ public:
     struct Deleter {
         void Delete(doca_dev * dev);
     };
-    using DeleterPtr = std::shared_ptr<Deleter>;
+    using DeleterPtr = std::shared_ptr<Device::Deleter>;
 
+    explicit Device(doca_dev * initialDevice, DeleterPtr initialDeleter);
     ~Device();
 
 private:
-    explicit Device(doca_dev * initialDevice, DeleterPtr deleter);
-
     doca_dev * device = nullptr;
 
     DeleterPtr deleter = nullptr;
 };
-
-using DevicePtr = std::shared_ptr<Device>;
 
 std::tuple<doca::DevicePtr, error> OpenIbDevice(const std::string & ibDeviceName);
 

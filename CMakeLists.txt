@@ -17,7 +17,19 @@ find_package(errors CONFIG REQUIRED)
 
 # Library sources
 set(DOCA_CPP_SOURCES
+    # Core
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/device.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/buffer.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/context.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/mmap.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/progress_engine.cpp
+    # RDMA
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_server.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_executor.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_endpoint.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_connection.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_engine.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_task.cpp
 )
 
 # Library target
@@ -40,6 +52,7 @@ target_link_libraries(${TARGET_NAME}
     PRIVATE
         errors::errors
         DOCA::common
+        DOCA::rdma
         # Add other DOCA libs as needed
 )
 

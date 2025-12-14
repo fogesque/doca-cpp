@@ -18,6 +18,8 @@ class Context;
 class ProgressEngine;
 class TaskInterface;
 
+using ProgressEnginePtr = std::shared_ptr<ProgressEngine>;
+
 enum class MaxTasksInBatch {
     tasks16 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_16,
     tasks32 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_32,
@@ -101,16 +103,13 @@ public:
     };
     using DeleterPtr = std::shared_ptr<Deleter>;
 
+    explicit ProgressEngine(doca_pe * initialProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
     ~ProgressEngine();
 
 private:
-    explicit ProgressEngine(doca_pe * initialProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
-
     doca_pe * progressEngine = nullptr;
 
     DeleterPtr deleter = nullptr;
 };
-
-using ProgressEnginePtr = std::shared_ptr<ProgressEngine>;
 
 }  // namespace doca

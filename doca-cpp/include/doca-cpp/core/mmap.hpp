@@ -14,6 +14,11 @@
 namespace doca
 {
 
+// Forward declarations
+class MemoryMap;
+
+using MemoryMapPtr = std::shared_ptr<MemoryMap>;
+
 // ----------------------------------------------------------------------------
 // MemoryMap
 // ----------------------------------------------------------------------------
@@ -68,18 +73,15 @@ public:
     };
     using DeleterPtr = std::shared_ptr<Deleter>;
 
+    explicit MemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter);
     ~MemoryMap();
 
 private:
-    explicit MemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter);
-
     doca_mmap * memoryMap = nullptr;
 
     DevicePtr device = nullptr;
 
     DeleterPtr deleter = nullptr;
 };
-
-using MemoryMapPtr = std::shared_ptr<MemoryMap>;
 
 }  // namespace doca

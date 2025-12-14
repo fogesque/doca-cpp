@@ -19,9 +19,8 @@ namespace doca
 class Buffer;
 class BufferInventory;
 
-struct BufferInventoryDeleter {
-    void operator()(doca_buf_inventory * inv) const;
-};
+using BufferPtr = std::shared_ptr<Buffer>;
+using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
 
 // ----------------------------------------------------------------------------
 // Buffer
@@ -58,19 +57,14 @@ public:
     Buffer(Buffer && other) noexcept = default;
     Buffer & operator=(Buffer && other) noexcept = default;
 
+    explicit Buffer(doca_buf * nativeBuffer, DeleterPtr deleter = nullptr);
     ~Buffer();
 
 private:
-    explicit Buffer(doca_buf * nativeBuffer, DeleterPtr deleter = nullptr);
-
-    friend class BufferInventory;
-
     doca_buf * buffer = nullptr;
 
     DeleterPtr deleter = nullptr;
 };
-
-using BufferPtr = std::shared_ptr<Buffer>;
 
 // ----------------------------------------------------------------------------
 // BufferInventory
@@ -118,14 +112,13 @@ public:
     BufferInventory(BufferInventory && other) noexcept = default;
     BufferInventory & operator=(BufferInventory && other) noexcept = default;
 
-private:
     explicit BufferInventory(doca_buf_inventory * initialInventory);
+    ~BufferInventory();
 
+private:
     doca_buf_inventory * inventory = nullptr;
 
     BufferInventoryDeleterPtr deleter = nullptr;
 };
-
-using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
 
 }  // namespace doca

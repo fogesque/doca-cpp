@@ -11,7 +11,7 @@ using doca::MemoryMapPtr;
 
 MemoryMap::Builder::Builder(doca_mmap * plainMmap) : mmap(plainMmap), buildErr(nullptr), device(nullptr) {}
 
-explicit MemoryMap::Builder::Builder(doca_mmap * plainMmap, DevicePtr device)
+MemoryMap::Builder::Builder(doca_mmap * plainMmap, DevicePtr device)
     : mmap(plainMmap), buildErr(nullptr), device(device)
 {
 }

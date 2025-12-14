@@ -15,6 +15,8 @@ namespace doca
 // Forward declarations
 class Context;
 
+using ContextPtr = std::shared_ptr<Context>;
+
 using ContextStateChangedCallback = doca_ctx_state_changed_callback_t;
 
 // ----------------------------------------------------------------------------
@@ -56,14 +58,12 @@ public:
 
     error SetContextStateChangedCallback(ContextStateChangedCallback callback);
 
-private:
     explicit Context(doca_ctx * context, DeleterPtr deleter = nullptr);
 
+private:
     doca_ctx * ctx = nullptr;
 
     DeleterPtr deleter = nullptr;
 };
-
-using ContextPtr = std::shared_ptr<Context>;
 
 }  // namespace doca
