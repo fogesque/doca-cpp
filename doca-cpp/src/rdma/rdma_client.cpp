@@ -1,11 +1,13 @@
-#include "doca-cpp/rdma/rdma_server.hpp"
+#include "doca-cpp/rdma/rdma_client.hpp"
+
+#include "rdma_client.hpp"
 
 using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
 
-using doca::rdma::RdmaServer;
-using doca::rdma::RdmaServerPtr;
+using doca::rdma::RdmaClient;
+using doca::rdma::RdmaClientPtr;
 
 using doca::rdma::RdmaBufferPtr;
 
@@ -38,10 +40,10 @@ constexpr auto messageEndpointPathOffset = messageEndpointSizeOffset + messageEn
 }  // namespace RequestMessageFormat
 
 // ----------------------------------------------------------------------------
-// RdmaServer::Builder
+// RdmaClient::Builder
 // ----------------------------------------------------------------------------
 
-RdmaServer::Builder & RdmaServer::Builder::SetDevice(doca::DevicePtr device)
+RdmaClient::Builder & RdmaClient::Builder::SetDevice(doca::DevicePtr device)
 {
     if (device == nullptr) {
         this->buildErr = errors::New("device is null");
@@ -50,40 +52,40 @@ RdmaServer::Builder & RdmaServer::Builder::SetDevice(doca::DevicePtr device)
     return *this;
 }
 
-RdmaServer::Builder & RdmaServer::Builder::SetListenPort(uint16_t port)
+RdmaClient::Builder & RdmaClient::Builder::SetListenPort(uint16_t port)
 {
     this->port = port;
     return *this;
 }
 
-std::tuple<RdmaServerPtr, error> RdmaServer::Builder::Build()
+std::tuple<RdmaClientPtr, error> RdmaClient::Builder::Build()
 {
     if (this->device == nullptr) {
-        return { nullptr, errors::New("Failed to create RdmaServer: associated device was not set") };
+        return { nullptr, errors::New("Failed to create RdmaClient: associated device was not set") };
     }
-    auto server = std::make_shared<RdmaServer>(this->device, this->port);
+    auto server = std::make_shared<RdmaClient>(this->device, this->port);
     return { server, nullptr };
 }
 
 // ----------------------------------------------------------------------------
-// RdmaServer
+// RdmaClient
 // ----------------------------------------------------------------------------
 
-RdmaServer::Builder RdmaServer::Create()
+RdmaClient::Builder RdmaClient::Create()
 {
     return Builder();
 }
 
-RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : device(initialDevice), port(port) {}
+RdmaClient::RdmaClient(doca::DevicePtr initialDevice) : device(initialDevice) {}
 
-error RdmaServer::Serve()
+error doca::rdma::RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort)
 {
     // Check if there are registered endpoints
     if (this->endpoints.empty()) {
-        return errors::New("Failed to serve: no endpoints to process");
+        return errors::New("Failed to connect: no endpoints to process");
     }
 
-    // Map all buffers in endpoints before serving
+    // Map all buffers in endpoints
     auto mapErr = this->mapEndpointsMemory();
     if (mapErr) {
         return errors::Wrap(mapErr, "Failed to map endpoints memory");
@@ -96,10 +98,10 @@ error RdmaServer::Serve()
     }
     this->executor = executor;
 
-    // Start listen to port and accept connection
-    err = this->executor->ListenToPort(this->port);
+    // Connect to server
+    err = this->executor->ConnectToAddress(serverAddress, serverPort);
     if (err) {
-        return errors::Wrap(err, "Failed to listen to port");
+        return errors::Wrap(err, "Failed to connect to RDMA server");
     }
 
     // Start Executor
@@ -114,84 +116,12 @@ error RdmaServer::Serve()
     if (bufErr) {
         return errors::Wrap(bufErr, "Failed to create RDMA request buffer");
     }
-
-    // Serving is:
-    // 1. Receive request from client's connection
-    // 2. Parse request to fetch endpoint ID
-    // 3. Process RDMA operation related to this endpoint
-    // +
-    // Call user's service Handle() function to process data in RDMA buffer
-
-    while (this->continueServing) {
-        // Create receive task for executor
-        auto receiveOperationRequest = OperationRequest{
-            .type = OperationRequest::Type::receive,
-            .sourceBuffer = nullptr,
-            .destinationBuffer = requestRdmaBuffer,
-            .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
-            .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
-        };
-
-        // Submit receive task for getting request
-        auto [requestAwaitable, err] = this->executor->SubmitOperation(receiveOperationRequest);
-        if (err) {
-            return errors::Wrap(err, "Failed to submit receive operation");
-        }
-
-        // Wait for request to come
-        auto [requestBuffer, reqErr] = requestAwaitable.Await();
-        if (reqErr) {
-            return errors::Wrap(reqErr, "Failed to execute receive operation");
-        }
-        auto requestConnection = requestAwaitable.GetConnection();
-
-        // Fetch endpoint from request
-        auto [requestMemoryRange, mrErr] = requestBuffer->GetMemoryRange();
-        if (mrErr) {
-            return errors::Wrap(mrErr, "Failed to get request memory range");
-        }
-
-        // Parse endpoint ID from request
-        auto [endpointId, idErr] = this->parseEndpointIdFromRequestPayload(requestMemoryRange);
-        if (idErr) {
-            return errors::Wrap(idErr, "Failed to parse endpoint ID");
-        }
-
-        // Check if this endpoint exists
-        if (!this->endpoints.contains(endpointId)) {
-            // TODO: If there is no endpoint, we just continue to process request
-            // Maybe this is bad since this will break other requests??? Think
-            continue;
-        }
-        auto endpoint = this->endpoints.at(endpointId);
-
-        // Server -> Client endpoint, so call user service before transferring
-        if (endpoint->Type() == RdmaEndpointType::read || endpoint->Type() == RdmaEndpointType::receive) {
-            err = endpoint->Service()->Handle(endpoint->Buffer());
-            if (err) {
-                return errors::Wrap(err, "Service processing RDMA buffer failed");
-            }
-        }
-
-        // Launch request processing with requested endpoint
-        auto [processedBuffer, procErr] = this->handleRequest(endpointId, requestConnection);
-        if (procErr) {
-            return errors::Wrap(procErr, "Failed to handle RDMA request");
-        }
-
-        // Server <- Client endpoint, so call user service after transferring
-        if (endpoint->Type() == RdmaEndpointType::write || endpoint->Type() == RdmaEndpointType::send) {
-            err = endpoint->Service()->Handle(processedBuffer);
-            if (err) {
-                return errors::Wrap(err, "Service processing RDMA buffer failed");
-            }
-        }
-    }
+    this->requestBuffer = requestRdmaBuffer;
 
     return nullptr;
 }
 
-void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
+void RdmaClient::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
 {
     for (auto & endpoint : endpoints) {
         auto endpointId = this->makeIdForEndpoint(endpoint);
@@ -199,12 +129,140 @@ void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
     }
 }
 
-RdmaEndpointId RdmaServer::makeIdForEndpoint(const RdmaEndpointPtr endpoint) const
+error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
+{
+    // Client's request is:
+    // 1. Send request buffer with desired endpoint to server
+    // 2. Perform RDMA operation according to endpoint type
+
+    if (this->executor == nullptr) {
+        return errors::New("RDMA Executor is not initialized");
+    }
+
+    if (!this->endpoints.contains(endpointId)) {
+        return errors::New("Endpoint with given ID is not registered in client");
+    }
+    auto endpoint = this->endpoints.at(endpointId);
+
+    // Get active connection
+    auto [connection, connErr] = this->executor->GetActiveConnection();
+    if (connErr) {
+        return errors::Wrap(connErr, "Failed to get active RDMA connection");
+    }
+
+    // Prepare request buffer payload
+    auto [requestBuffer, prepErr] = this->prepareRequestBuffer(endpointId);
+    if (prepErr) {
+        return errors::Wrap(prepErr, "Failed to prepare request buffer");
+    }
+
+    // Create send task for executor
+    auto sendOperationRequest = OperationRequest{
+        .type = OperationRequest::Type::receive,
+        .sourceBuffer = requestBuffer,
+        .destinationBuffer = nullptr,
+        .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
+        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
+    };
+    sendOperationRequest.connectionPromise->set_value(nullptr);
+
+    // Submit receive task for getting request
+    auto [requestAwaitable, err] = this->executor->SubmitOperation(receiveOperationRequest);
+    if (err) {
+        return errors::Wrap(err, "Failed to submit receive operation");
+    }
+
+    // Wait for request to come
+    auto [requestBuffer, reqErr] = requestAwaitable.Await();
+    if (reqErr) {
+        return errors::Wrap(reqErr, "Failed to execute receive operation");
+    }
+    auto requestConnection = requestAwaitable.GetConnection();
+
+    // Fetch endpoint from request
+    auto [requestMemoryRange, mrErr] = requestBuffer->GetMemoryRange();
+    if (mrErr) {
+        return errors::Wrap(mrErr, "Failed to get request memory range");
+    }
+
+    // Parse endpoint ID from request
+    auto [endpointId, idErr] = this->parseEndpointIdFromRequestPayload(requestMemoryRange);
+    if (idErr) {
+        return errors::Wrap(idErr, "Failed to parse endpoint ID");
+    }
+
+    // Check if this endpoint exists
+    if (!this->endpoints.contains(endpointId)) {
+        // TODO: If there is no endpoint, we just continue to process request
+        // Maybe this is bad since this will break other requests??? Think
+        continue;
+    }
+    auto endpoint = this->endpoints.at(endpointId);
+
+    // Server -> Client endpoint, so call user service before transferring
+    if (endpoint->Type() == RdmaEndpointType::read || endpoint->Type() == RdmaEndpointType::receive) {
+        err = endpoint->Service()->Handle(endpoint->Buffer());
+        if (err) {
+            return errors::Wrap(err, "Service processing RDMA buffer failed");
+        }
+    }
+
+    // Launch request processing with requested endpoint
+    auto [processedBuffer, procErr] = this->handleRequest(endpointId, requestConnection);
+    if (procErr) {
+        return errors::Wrap(procErr, "Failed to handle RDMA request");
+    }
+
+    // Server <- Client endpoint, so call user service after transferring
+    if (endpoint->Type() == RdmaEndpointType::write || endpoint->Type() == RdmaEndpointType::send) {
+        err = endpoint->Service()->Handle(processedBuffer);
+        if (err) {
+            return errors::Wrap(err, "Service processing RDMA buffer failed");
+        }
+    }
+}
+
+std::tuple<RdmaBufferPtr, error> RdmaClient::prepareRequestBuffer(const RdmaEndpointId & endpointId)
+{
+    if (!this->endpoints.contains(endpointId)) {
+        return { nullptr, errors::New("Endpoint with given ID is not registered in client") };
+    }
+    auto endpoint = this->endpoints.at(endpointId);
+
+    auto [requestMemRange, mrErr] = this->requestBuffer->GetMemoryRange();
+    if (mrErr) {
+        return { nullptr, errors::Wrap(mrErr, "Failed to get request buffer memory range") };
+    }
+
+    if (requestMemRange->size() < RequestMessageFormat::messageBufferSize) {
+        return { nullptr, errors::New("Request buffer memory range is too small") };
+    }
+
+    auto * ptr = requestMemRange->data();
+
+    // Write path length
+    const uint16_t pathLen = static_cast<uint16_t>(endpoint->Path().size());
+    ptr[0] = static_cast<uint8_t>((pathLen >> 8u) & 0xFFu);
+    ptr[1] = static_cast<uint8_t>(pathLen & 0xFFu);
+
+    // Write path string
+    std::memcpy(ptr + RequestMessageFormat::messageEndpointPathOffset, endpoint->Path().data(), pathLen);
+
+    // Write opcode
+    const uint16_t opcode = static_cast<uint16_t>(endpoint->Type());
+    const size_t opcodeOffset = RequestMessageFormat::messageEndpointPathOffset + pathLen;
+    ptr[opcodeOffset] = static_cast<uint8_t>((opcode >> 8u) & 0xFFu);
+    ptr[opcodeOffset + 1] = static_cast<uint8_t>(opcode & 0xFFu);
+
+    return { this->requestBuffer, nullptr };
+}
+
+RdmaEndpointId RdmaClient::makeIdForEndpoint(const RdmaEndpointPtr endpoint) const
 {
     return endpoint->Path() + rdma::EndpointTypeToString(endpoint->Type());
 }
 
-error doca::rdma::RdmaServer::mapEndpointsMemory()
+error doca::rdma::RdmaClient::mapEndpointsMemory()
 {
     for (auto & [_, endpoint] : this->endpoints) {
         auto err =
@@ -217,7 +275,7 @@ error doca::rdma::RdmaServer::mapEndpointsMemory()
     return error();
 }
 
-std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromRequestPayload(
+std::tuple<RdmaEndpointId, error> doca::rdma::RdmaClient::parseEndpointIdFromRequestPayload(
     const MemoryRangePtr requestMemoreRange)
 {
     if (requestMemoreRange == nullptr) {
@@ -261,7 +319,7 @@ std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromReq
     return { endpointId, nullptr };
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleRequest(const RdmaEndpointId & endpointId,
+std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleRequest(const RdmaEndpointId & endpointId,
                                                                        RdmaConnectionPtr connection)
 {
     const auto endpointType = this->endpoints.at(endpointId)->Type();
@@ -279,7 +337,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleRequest(const Rdm
     }
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleSendRequest(const RdmaEndpointId & endpointId)
+std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleSendRequest(const RdmaEndpointId & endpointId)
 {
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();
@@ -301,7 +359,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleSendRequest(const
     return awaitable.Await();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
+std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleReceiveRequest(const RdmaEndpointId & endpointId,
                                                                               RdmaConnectionPtr connection)
 {
     auto endpoint = this->endpoints.at(endpointId);
@@ -326,7 +384,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReceiveRequest(co
     return awaitable.Await();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleWriteRequest(const RdmaEndpointId & endpointId,
+std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleWriteRequest(const RdmaEndpointId & endpointId,
                                                                             RdmaConnectionPtr connection)
 {
     auto endpoint = this->endpoints.at(endpointId);
@@ -386,7 +444,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleWriteRequest(cons
     return { endpointBuffer, nullptr };
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReadRequest(const RdmaEndpointId & endpointId,
+std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleReadRequest(const RdmaEndpointId & endpointId,
                                                                            RdmaConnectionPtr connection)
 {
     auto endpoint = this->endpoints.at(endpointId);

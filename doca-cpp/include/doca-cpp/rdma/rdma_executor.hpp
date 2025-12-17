@@ -102,9 +102,12 @@ class RdmaExecutor
 public:
     const std::size_t TasksQueueSizeThreshold = 20;
 
-    static std::tuple<RdmaExecutorPtr, error> Create(RdmaConnectionRole initialRole, doca::DevicePtr initialDevice);
+    static std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr initialDevice);
 
     error Start();
+
+    error ConnectToAddress(const std::string & serverAddress, uint16_t serverPort);
+    error ListenToPort(uint16_t port);
 
     RdmaExecutor() = delete;
     ~RdmaExecutor();
@@ -122,18 +125,10 @@ public:
     void AddActiveConnection(RdmaConnectionPtr connection);
     void RemoveActiveConnection(RdmaConnectionId connectionId);
 
-    struct Statistics {
-        std::atomic<uint64_t> sendOperations{ 0 };
-        std::atomic<uint64_t> receiveOperations{ 0 };
-        std::atomic<uint64_t> readOperations{ 0 };
-        std::atomic<uint64_t> writeOperations{ 0 };
-        std::atomic<uint64_t> failedOperations{ 0 };
-    };
-
-    const Statistics & GetStatistics() const;
+    // FIXME: Temporary function for getting active connection for client
+    std::tuple<RdmaConnectionPtr, error> GetActiveConnection();
 
     struct Config {
-        RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
         RdmaEnginePtr initialRdmaEngine = nullptr;
         doca::DevicePtr initialDevice = nullptr;
     };
@@ -158,8 +153,6 @@ private:
     error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
                                  std::chrono::milliseconds waitTimeout = 0ms);
 
-    error setupConnection(RdmaConnectionRole role);
-
     std::tuple<doca::BufferPtr, error> getDocaBuffer(RdmaBufferPtr rdmaBuffer);
 
     std::atomic<bool> running;
@@ -167,12 +160,10 @@ private:
     std::queue<OperationRequest> operationQueue;
     std::mutex queueMutex;
     std::condition_variable queueCondVar;
-    Statistics stats;
 
     doca::DevicePtr device = nullptr;
 
     RdmaEnginePtr rdmaEngine = nullptr;
-    RdmaConnectionRole rdmaConnectionRole = RdmaConnectionRole::client;
     std::map<RdmaConnectionId, RdmaConnectionPtr> activeConnections;
     std::map<RdmaConnectionId, RdmaConnectionPtr> requestedConnections;
 
