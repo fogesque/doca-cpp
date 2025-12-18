@@ -66,6 +66,8 @@ public:
     std::tuple<std::span<const std::uint8_t>, error> ExportPci() const;
     std::tuple<std::span<const std::uint8_t>, error> ExportRdma() const;
 
+    std::tuple<std::span<uint8_t>, error> GetMemoryRange();
+
     DOCA_CPP_UNSAFE doca_mmap * GetNative() const;
 
     struct Deleter {

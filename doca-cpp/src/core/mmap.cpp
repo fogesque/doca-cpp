@@ -1,5 +1,7 @@
 #include "doca-cpp/core/mmap.hpp"
 
+#include "mmap.hpp"
+
 using doca::AccessFlags;
 using doca::DevicePtr;
 using doca::MemoryMap;
@@ -248,6 +250,28 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
     auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
     auto exportDescSpan = std::span<const std::uint8_t>(exportDescPtr, exportDescLen);
     return { exportDescSpan, nullptr };
+}
+
+std::tuple<std::span<uint8_t>, error> doca::MemoryMap::GetMemoryRange()
+{
+    if (!this->device) {
+        return { {}, errors::New("No device associated with mmap") };
+    }
+    if (!this->memoryMap) {
+        return { {}, errors::New("mmap is null") };
+    }
+
+    void * memrange = nullptr;
+    size_t memsize = 0;
+
+    auto err = FromDocaError(doca_mmap_get_memrange(this->memoryMap, &memrange, &memsize));
+    if (err) {
+        return { {}, errors::Wrap(err, "Failed to get memory range from memory map") };
+    }
+
+    auto memrangeSpan = std::span<std::uint8_t>(static_cast<uint8_t *>(memrange), memsize);
+
+    return { memrangeSpan, nullptr };
 }
 
 doca_mmap * MemoryMap::GetNative() const
