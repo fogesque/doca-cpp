@@ -10,6 +10,7 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 #include "doca-cpp/rdma/rdma_executor.hpp"
+#include "doca-cpp/rdma/rdma_request.hpp"
 
 namespace doca::rdma
 {
@@ -78,9 +79,8 @@ private:
 
     std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
 
-    std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId);
-    std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId,
-                                                          RdmaConnectionPtr connection);
+    std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
+    std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId);
     std::tuple<RdmaBufferPtr, error> handleWriteRequest(const RdmaEndpointId & endpointId,
                                                         RdmaConnectionPtr connection);
     std::tuple<RdmaBufferPtr, error> handleReadRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
@@ -88,6 +88,7 @@ private:
     RdmaExecutorPtr executor = nullptr;
 
     RdmaBufferPtr requestBuffer = nullptr;
+    RdmaBufferPtr remoteDescriptorBuffer = nullptr;
 };
 
 }  // namespace doca::rdma
