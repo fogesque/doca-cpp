@@ -75,9 +75,9 @@ private:
 
     std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
     std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId);
-    std::tuple<RdmaBufferPtr, error> handleWriteRequest(const RdmaEndpointId & endpointId,
-                                                        RdmaConnectionPtr connection);
-    std::tuple<RdmaBufferPtr, error> handleReadRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
+    std::tuple<RdmaBufferPtr, error> handleOperationRequest(const OperationRequest::Type type,
+                                                            const RdmaEndpointId & endpointId,
+                                                            RdmaConnectionPtr connection);
 
     RdmaExecutorPtr executor = nullptr;
 

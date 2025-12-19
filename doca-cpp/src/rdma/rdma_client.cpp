@@ -9,6 +9,10 @@ using doca::rdma::RdmaClientPtr;
 
 using doca::rdma::RdmaBufferPtr;
 
+using doca::rdma::RdmaConnectionPtr;
+
+using doca::rdma::OperationRequest;
+
 // ----------------------------------------------------------------------------
 // RdmaClient::Builder
 // ----------------------------------------------------------------------------
@@ -48,7 +52,7 @@ RdmaClient::Builder RdmaClient::Create()
 
 RdmaClient::RdmaClient(doca::DevicePtr initialDevice) : device(initialDevice) {}
 
-error doca::rdma::RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort)
+error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort)
 {
     // Check if there are registered endpoints
     if (this->endpoints.empty()) {
@@ -183,7 +187,7 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
     }
 }
 
-error doca::rdma::RdmaClient::mapEndpointsMemory()
+error RdmaClient::mapEndpointsMemory()
 {
     for (auto & [_, endpoint] : this->endpoints) {
         auto err =
@@ -196,8 +200,8 @@ error doca::rdma::RdmaClient::mapEndpointsMemory()
     return error();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleRequest(const RdmaEndpointId & endpointId,
-                                                                       RdmaConnectionPtr connection)
+std::tuple<RdmaBufferPtr, error> RdmaClient::handleRequest(const RdmaEndpointId & endpointId,
+                                                           RdmaConnectionPtr connection)
 {
     const auto endpointType = this->endpoints.at(endpointId)->Type();
     switch (endpointType) {
@@ -206,16 +210,16 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleRequest(const Rdm
         case RdmaEndpointType::receive:
             return this->handleReceiveRequest(endpointId);
         case RdmaEndpointType::write:
-            return this->handleWriteRequest(endpointId, connection);
+            return this->handleOperationRequest(OperationRequest::Type::write, endpointId, connection);
         case RdmaEndpointType::read:
-            return this->handleReadRequest(endpointId, connection);
+            return this->handleOperationRequest(OperationRequest::Type::read, endpointId, connection);
         default:
             return { nullptr, errors::New("Unknown endpoint type in request") };
     }
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleSendRequest(const RdmaEndpointId & endpointId,
-                                                                           RdmaConnectionPtr connection)
+std::tuple<RdmaBufferPtr, error> RdmaClient::handleSendRequest(const RdmaEndpointId & endpointId,
+                                                               RdmaConnectionPtr connection)
 {
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();
@@ -238,7 +242,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleSendRequest(const
     return awaitable.Await();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleReceiveRequest(const RdmaEndpointId & endpointId)
+std::tuple<RdmaBufferPtr, error> RdmaClient::handleReceiveRequest(const RdmaEndpointId & endpointId)
 {
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();
@@ -259,16 +263,21 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleReceiveRequest(co
     return awaitable.Await();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleWriteRequest(const RdmaEndpointId & endpointId,
-                                                                            RdmaConnectionPtr connection)
+std::tuple<RdmaBufferPtr, error> RdmaClient::handleOperationRequest(const OperationRequest::Type type,
+                                                                    const RdmaEndpointId & endpointId,
+                                                                    RdmaConnectionPtr connection)
 {
+    if (type != OperationRequest::Type::write && type != OperationRequest::Type::read) {
+        return { nullptr, errors::New("Invalid operation type for RDMA operation request") };
+    }
+
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();
 
     // Since client requested Write, it must:
     // 1. Receive memory descriptor from server (FIXME: To increase performance it's better to send it once, not per
     // request)
-    // 2. Perform write operation
+    // 2. Perform RDMA operation
     // 3. Send acknowledge message to server
 
     // Receive operation for receiving descriptor
@@ -280,126 +289,79 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleWriteRequest(cons
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
-    auto [awaitable, err] = this->executor->SubmitOperation(receiveOperation);
+    auto [recvAwaitable, err] = this->executor->SubmitOperation(receiveOperation);
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to submit operation") };
     }
 
-    auto [remoteDescBuffer, recvErr] = awaitable.Await();
+    auto [remoteDescBuffer, recvErr] = recvAwaitable.Await();
     if (recvErr) {
         return { nullptr, errors::Wrap(recvErr, "Failed to receive remote descriptor") };
     }
 
     // Create remote buffer
-    const auto remoteDescSize = receiveOperation.bytesAffected;
 
+    // Get memory range from descriptor buffer
     auto [descMemrange, descErr] = remoteDescBuffer->GetMemoryRange();
     if (descErr) {
         return { nullptr, errors::Wrap(descErr, "Failed to get memory of remote descriptor") };
     }
 
+    // Get actual size of descriptor
+    const auto remoteDescSize = receiveOperation.bytesAffected;
     auto descSpan = std::span<uint8_t>(descMemrange->begin(), remoteDescSize);
 
-    auto [descMmap, mapErr] = doca::MemoryMap::CreateFromExport(descSpan, this->device).Start();
-    if (mapErr) {
-        return { nullptr, errors::Wrap(mapErr, "Failed to create memory map for remote descriptor") };
+    // Create remote RDMA buffer from exported descriptor
+    auto [remoteBuffer, remErr] = RdmaBuffer::FromExportedRemoteDescriptor(descSpan, this->device);
+    if (remErr) {
+        return { nullptr, errors::Wrap(remErr, "Failed to create remote RDMA buffer from exported descriptor") };
     }
 
-    // task needs source and dest buffer
-    // dest buffer needs mmap, memrange and size
-    // BUT: all these are taken from RdmaBuffer, so I need to create another RdmaBuffer with exported mmap
+    // Set source and destination buffers based on operation type
+    auto sourceBuffer = (type == OperationRequest::Type::write) ? endpointBuffer : remoteBuffer;
+    auto destinationBuffer = (type == OperationRequest::Type::write) ? remoteBuffer : endpointBuffer;
 
-    // auto [descMem]
-
-    //     auto remote
-
-    // TODO: Create RDMA buffer from descriptor
-
-    // auto remoteMemoryMemrange = remoteMemoryMap->
-
-    //                             auto remoteBuffer = RdmaBuffer::
-
-    // After sending descriptor, submit Receive task to get completion acknowledge
-    // FIXME: switch empty message to immediate value
-    auto receiveOperation = OperationRequest{
-        .type = OperationRequest::Type::write,
-        .sourceBuffer = nullptr,
-        .destinationBuffer = nullptr,  // empty message
+    // After receiving descriptor, submit task to perform RDMA read or write operation
+    auto rdmaOperation = OperationRequest{
+        .type = type,
+        .sourceBuffer = sourceBuffer,
+        .destinationBuffer = destinationBuffer,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    receiveOperation.connectionPromise->set_value(connection);
+    rdmaOperation.connectionPromise->set_value(connection);
 
-    auto [ackAwaitable, ackOpErr] = this->executor->SubmitOperation(receiveOperation);
-    if (ackOpErr) {
-        return { nullptr, errors::Wrap(ackOpErr, "Failed to execute operation") };
+    auto [awaitable, submErr] = this->executor->SubmitOperation(rdmaOperation);
+    if (submErr) {
+        return { nullptr, errors::Wrap(submErr, "Failed to submit operation") };
     }
 
-    auto [__, ackErr] = awaitable.Await();
-    if (ackErr) {
-        return { nullptr, errors::Wrap(ackErr, "Failed to receive acknowledge") };
+    auto [__, opErr] = awaitable.Await();
+    if (opErr) {
+        return { nullptr, errors::Wrap(opErr, "Failed to perform RDMA operation") };
     }
 
-    // Now endpoint buffer has data from client, so user service will handle it
-    return { endpointBuffer, nullptr };
-}
-
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaClient::handleReadRequest(const RdmaEndpointId & endpointId,
-                                                                           RdmaConnectionPtr connection)
-{
-    auto endpoint = this->endpoints.at(endpointId);
-    auto endpointBuffer = endpoint->Buffer();
-
-    // Since client requested Read, server must:
-    // 1. Send memory descriptor to client (FIXME: To increase performance it's better to send it once, not per request)
-    // 2. Receive acknowledge message from client
-
-    auto [bufferDescriptor, dscErr] = endpointBuffer->ExportMemoryDescriptor(this->device);
-    if (dscErr) {
-        return { nullptr, errors::Wrap(dscErr, "Failed to export memory descriptor") };
-    }
-
-    // Send operation for sending descriptor
-    auto sendOperation = OperationRequest{
+    // After performing RDMA operation, submit Send task to send completion acknowledge
+    auto ackOperation = OperationRequest{
         .type = OperationRequest::Type::send,
-        .sourceBuffer = bufferDescriptor,
+        .sourceBuffer = nullptr,  // empty message
         .destinationBuffer = nullptr,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    // Set promise connection to use it in executor
-    sendOperation.connectionPromise->set_value(connection);
+    ackOperation.connectionPromise->set_value(connection);
 
-    auto [awaitable, err] = this->executor->SubmitOperation(sendOperation);
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to execute operation") };
-    }
-
-    auto [sendBuffer, sendErr] = awaitable.Await();
-    if (sendErr) {
-        return { nullptr, errors::Wrap(err, "Failed send exported descriptor") };
-    }
-
-    // After sending descriptor, submit Receive task to get completion acknowledge
-    // FIXME: switch empty message to immediate value
-    auto receiveOperation = OperationRequest{
-        .type = OperationRequest::Type::receive,
-        .sourceBuffer = nullptr,
-        .destinationBuffer = nullptr,  // empty message
-        .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
-        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
-    };
-
-    auto [ackAwaitable, ackOpErr] = this->executor->SubmitOperation(receiveOperation);
-    if (ackOpErr) {
-        return { nullptr, errors::Wrap(ackOpErr, "Failed to execute operation") };
-    }
-
-    auto [_, ackErr] = awaitable.Await();
+    auto [ackAwaitable, ackErr] = this->executor->SubmitOperation(ackOperation);
     if (ackErr) {
-        return { nullptr, errors::Wrap(ackErr, "Failed to receive acknowledge") };
+        return { nullptr, errors::Wrap(ackErr, "Failed to execute operation") };
     }
 
-    // Now endpoint buffer is sent to client
+    auto [___, sendErr] = ackAwaitable.Await();
+    if (sendErr) {
+        return { nullptr, errors::Wrap(sendErr, "Failed to send acknowledge") };
+    }
+
+    // Now data is written to remote buffer if operation was Write
+    // or data is read to local endpoint buffer if operation was Read
     return { endpointBuffer, nullptr };
 }

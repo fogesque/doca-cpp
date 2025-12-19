@@ -547,7 +547,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     }
 
     // Set affected bytes
-    auto [destBuffer, getErr] = receiveTask->GetBuffer(RdmaBufferType::destination);
+    auto [destBuffer, getErr] = receiveTask->GetBuffer(RdmaBuffer::Type::destination);
     if (getErr) {
         return { nullptr, errors::Wrap(getErr, "Failed to get destination buffer from RDMA Receive Task") };
     }
