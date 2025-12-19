@@ -94,7 +94,7 @@ std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
         return { nullptr, this->buildErr };
     }
 
-    if (!this->mmap) {
+    if (this->mmap == nullptr) {
         return { nullptr, errors::New("Memory map is null") };
     }
 
@@ -110,6 +110,7 @@ std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
     }
 
     auto memoryMapPtr = std::make_shared<MemoryMap>(this->mmap, this->device, std::make_shared<Deleter>());
+    this->mmap = nullptr;
     return { memoryMapPtr, nullptr };
 }
 

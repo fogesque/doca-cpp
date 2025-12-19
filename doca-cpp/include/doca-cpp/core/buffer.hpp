@@ -93,10 +93,10 @@ public:
         error buildErr = nullptr;
     };
 
-    struct BufferInventoryDeleter {
-        void Delete(doca_buf_inventory * inv);
+    struct Deleter {
+        void Delete(doca_buf_inventory * inventory);
     };
-    using BufferInventoryDeleterPtr = std::shared_ptr<BufferInventoryDeleter>;
+    using DeleterPtr = std::shared_ptr<Deleter>;
 
     static Builder Create(size_t numElements);
 
@@ -118,7 +118,7 @@ public:
 private:
     doca_buf_inventory * inventory = nullptr;
 
-    BufferInventoryDeleterPtr deleter = nullptr;
+    DeleterPtr deleter = nullptr;
 };
 
 }  // namespace doca
