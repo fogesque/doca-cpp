@@ -1,0 +1,9 @@
+# RDMA client-server application sample config
+
+server:
+  device: "mlx5_1"
+  ipv4: "192.168.88.1"
+  port: 12345
+
+client:
+  device: "mlx5_3"
