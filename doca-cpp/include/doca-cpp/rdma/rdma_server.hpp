@@ -10,6 +10,7 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 #include "doca-cpp/rdma/rdma_executor.hpp"
+#include "doca-cpp/rdma/rdma_request.hpp"
 
 namespace doca::rdma
 {
@@ -67,8 +68,6 @@ private:
     doca::DevicePtr device = nullptr;
     uint16_t port = 12345;
 
-    RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
-
     error mapEndpointsMemory();
 
     std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestPayload(const MemoryRangePtr requestMemoreRange);
@@ -78,9 +77,8 @@ private:
     std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId);
     std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId,
                                                           RdmaConnectionPtr connection);
-    std::tuple<RdmaBufferPtr, error> handleWriteRequest(const RdmaEndpointId & endpointId,
-                                                        RdmaConnectionPtr connection);
-    std::tuple<RdmaBufferPtr, error> handleReadRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
+    std::tuple<RdmaBufferPtr, error> handleOperationRequest(const RdmaEndpointId & endpointId,
+                                                            RdmaConnectionPtr connection);
 
     RdmaExecutorPtr executor = nullptr;
 

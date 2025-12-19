@@ -32,14 +32,6 @@ using DevicePtr = std::shared_ptr<Device>;
 using DeviceInfoPtr = std::shared_ptr<DeviceInfo>;
 using DeviceListPtr = std::shared_ptr<DeviceList>;
 
-namespace internal
-{
-
-// IB devices names of supported devices
-constexpr std::array<std::string_view, sizes::supportedDeviceSize> supportedDevices = { "mlx5_0", "mlx5_1" };
-
-}  // namespace internal
-
 // ----------------------------------------------------------------------------
 // DeviceInfo
 // ----------------------------------------------------------------------------
@@ -94,7 +86,7 @@ public:
     DeviceList(DeviceList && other) noexcept = default;
     DeviceList & operator=(DeviceList && other) noexcept = default;
 
-    std::tuple<DeviceInfo, error> GetIbDeviceInfo(const std::string_view & ibDevname) const;
+    std::tuple<DeviceInfoPtr, error> GetIbDeviceInfo(const std::string_view & ibDevname) const;
 
     size_t Size() const;
 

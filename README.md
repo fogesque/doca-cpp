@@ -27,6 +27,15 @@ Library was tested only for ```amd64``` architecture with Ubuntu 24.04 and Linux
 
 ## Build Library
 
+Library depends on some custom C++ packages. To make vcpkg automatically install it when configuring CMake project, run:
+
+```bash
+cd <your_directory>
+git clone https://github.com/fogesque/vcpkg-ports.git
+export VCPKG_OVERLAY_PORTS="<your_directory>/vcpkg-ports" # Or store in ~/.profile or ~/.bashrc
+```
+
+
 To build library, run following commands:
 
 ```bash

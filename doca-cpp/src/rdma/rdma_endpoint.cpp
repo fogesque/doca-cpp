@@ -1,13 +1,14 @@
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 
-using doca::rdma::MemoryRange;
-using doca::rdma::MemoryRangePtr;
+using doca::MemoryRange;
+using doca::MemoryRangePtr;
 using doca::rdma::RdmaBuffer;
 using doca::rdma::RdmaBufferPtr;
 using doca::rdma::RdmaEndpoint;
 using doca::rdma::RdmaEndpointPtr;
 
 using doca::rdma::RdmaEndpointBufferPtr;
+using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
 
@@ -112,5 +113,26 @@ std::string doca::rdma::EndpointTypeToString(const RdmaEndpointType & type)
             return "read";
         default:
             return "unknown";
+    }
+}
+
+RdmaEndpointId doca::rdma::MakeEndpointId(const RdmaEndpointPtr endpoint)
+{
+    return endpoint->Path() + doca::rdma::EndpointTypeToString(endpoint->Type());
+}
+
+doca::AccessFlags doca::rdma::GetEndpointAccessFlags(const RdmaEndpointType & type)
+{
+    switch (type) {
+        case RdmaEndpointType::send:
+            return doca::AccessFlags::localReadWrite;
+        case RdmaEndpointType::receive:
+            return doca::AccessFlags::localReadWrite;
+        case RdmaEndpointType::write:
+            return doca::AccessFlags::rdmaWrite;
+        case RdmaEndpointType::read:
+            return doca::AccessFlags::rdmaRead;
+        default:
+            return doca::AccessFlags::localReadOnly;
     }
 }

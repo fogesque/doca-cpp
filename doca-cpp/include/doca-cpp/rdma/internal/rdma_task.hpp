@@ -51,9 +51,9 @@ public:
 
     virtual ~RdmaTaskInterface() = default;
 
-    virtual error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) = 0;
+    virtual error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) = 0;
 
-    virtual std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) = 0;
+    virtual std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) = 0;
 };
 
 // ----------------------------------------------------------------------------
@@ -68,9 +68,9 @@ public:
 
     ~RdmaSendTask() override;
 
-    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
+    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
 
     error Submit() override;
 
@@ -94,9 +94,9 @@ public:
 
     ~RdmaReceiveTask() override;
 
-    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
+    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
 
     std::tuple<RdmaConnectionPtr, error> GetTaskConnection();
 
@@ -122,9 +122,9 @@ public:
 
     ~RdmaWriteTask() override;
 
-    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
+    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
 
     error Submit() override;
 
@@ -148,9 +148,9 @@ public:
 
     ~RdmaReadTask() override;
 
-    error SetBuffer(RdmaBufferType type, doca::BufferPtr buffer) override;
+    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
 
-    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaBufferType type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
 
     error Submit() override;
 

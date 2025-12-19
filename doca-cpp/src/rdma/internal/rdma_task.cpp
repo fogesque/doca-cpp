@@ -31,9 +31,9 @@ RdmaSendTask::~RdmaSendTask()
     }
 }
 
-error RdmaSendTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
+error RdmaSendTask::SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer)
 {
-    if (type != RdmaBufferType::source) {
+    if (type != RdmaBuffer::Type::source) {
         return errors::New("RdmaSendTask only supports setting source buffer");
     }
 
@@ -45,9 +45,9 @@ error RdmaSendTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
     return nullptr;
 }
 
-std::tuple<doca::BufferPtr, error> RdmaSendTask::GetBuffer(RdmaBufferType type)
+std::tuple<doca::BufferPtr, error> RdmaSendTask::GetBuffer(const RdmaBuffer::Type & type)
 {
-    if (type != RdmaBufferType::source) {
+    if (type != RdmaBuffer::Type::source) {
         return { nullptr, errors::New("RdmaSendTask only supports getting source buffer") };
     }
 
@@ -102,9 +102,9 @@ RdmaReceiveTask::~RdmaReceiveTask()
     }
 }
 
-error RdmaReceiveTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
+error RdmaReceiveTask::SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer)
 {
-    if (type != RdmaBufferType::destination) {
+    if (type != RdmaBuffer::Type::destination) {
         return errors::New("RdmaReceiveTask only supports setting destination buffer");
     }
 
@@ -116,9 +116,9 @@ error RdmaReceiveTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
     return nullptr;
 }
 
-std::tuple<doca::BufferPtr, error> RdmaReceiveTask::GetBuffer(RdmaBufferType type)
+std::tuple<doca::BufferPtr, error> RdmaReceiveTask::GetBuffer(const RdmaBuffer::Type & type)
 {
-    if (type != RdmaBufferType::destination) {
+    if (type != RdmaBuffer::Type::destination) {
         return { nullptr, errors::New("RdmaReceiveTask only supports getting destination buffer") };
     }
 
@@ -186,13 +186,13 @@ RdmaWriteTask::~RdmaWriteTask()
     }
 }
 
-error RdmaWriteTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
+error RdmaWriteTask::SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer)
 {
     if (this->task == nullptr) {
         return errors::New("RdmaWriteTask is not initialized");
     }
 
-    if (type == RdmaBufferType::source) {
+    if (type == RdmaBuffer::Type::source) {
         doca_rdma_task_write_set_src_buf(this->task, buffer->GetNative());
         return nullptr;
     }
@@ -201,14 +201,14 @@ error RdmaWriteTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
     return nullptr;
 }
 
-std::tuple<doca::BufferPtr, error> RdmaWriteTask::GetBuffer(RdmaBufferType type)
+std::tuple<doca::BufferPtr, error> RdmaWriteTask::GetBuffer(const RdmaBuffer::Type & type)
 {
     if (this->task == nullptr) {
         return { nullptr, errors::New("RdmaWriteTask is not initialized") };
     }
 
     const doca_buf * nativeBuffer = nullptr;
-    if (type == RdmaBufferType::source) {
+    if (type == RdmaBuffer::Type::source) {
         nativeBuffer = doca_rdma_task_write_get_src_buf(this->task);
     }
     nativeBuffer = doca_rdma_task_write_get_dst_buf(this->task);
@@ -259,13 +259,13 @@ RdmaReadTask::~RdmaReadTask()
     }
 }
 
-error RdmaReadTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
+error RdmaReadTask::SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer)
 {
     if (this->task == nullptr) {
         return errors::New("RdmaReadTask is not initialized");
     }
 
-    if (type == RdmaBufferType::source) {
+    if (type == RdmaBuffer::Type::source) {
         doca_rdma_task_read_set_src_buf(this->task, buffer->GetNative());
         return nullptr;
     }
@@ -274,14 +274,14 @@ error RdmaReadTask::SetBuffer(RdmaBufferType type, doca::BufferPtr buffer)
     return nullptr;
 }
 
-std::tuple<doca::BufferPtr, error> RdmaReadTask::GetBuffer(RdmaBufferType type)
+std::tuple<doca::BufferPtr, error> RdmaReadTask::GetBuffer(const RdmaBuffer::Type & type)
 {
     if (this->task == nullptr) {
         return { nullptr, errors::New("RdmaReadTask is not initialized") };
     }
 
     const doca_buf * nativeBuffer = nullptr;
-    if (type == RdmaBufferType::source) {
+    if (type == RdmaBuffer::Type::source) {
         nativeBuffer = doca_rdma_task_read_get_src_buf(this->task);
     }
     nativeBuffer = doca_rdma_task_read_get_dst_buf(this->task);

@@ -5,8 +5,9 @@
 
 int main()
 {
-    std::println("DOCA Device Discovery Example");
-    std::println("==============================\n");
+    std::println("==================================");
+    std::println("DOCA-CPP Device Discovery Sample");
+    std::println("==================================\n");
 
     // Discover all available DOCA devices
     std::println("Discovering DOCA devices...");
