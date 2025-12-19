@@ -1,13 +1,14 @@
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 
-using doca::rdma::MemoryRange;
-using doca::rdma::MemoryRangePtr;
+using doca::MemoryRange;
+using doca::MemoryRangePtr;
 using doca::rdma::RdmaBuffer;
 using doca::rdma::RdmaBufferPtr;
 using doca::rdma::RdmaEndpoint;
 using doca::rdma::RdmaEndpointPtr;
 
 using doca::rdma::RdmaEndpointBufferPtr;
+using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
 
@@ -113,4 +114,9 @@ std::string doca::rdma::EndpointTypeToString(const RdmaEndpointType & type)
         default:
             return "unknown";
     }
+}
+
+RdmaEndpointId doca::rdma::MakeEndpointId(const RdmaEndpointPtr endpoint)
+{
+    return endpoint->Path() + doca::rdma::EndpointTypeToString(endpoint->Type());
 }
