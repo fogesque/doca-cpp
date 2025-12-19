@@ -25,8 +25,10 @@ set(DOCA_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/progress_engine.cpp
     # RDMA
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_server.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_executor.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_client.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_endpoint.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_executor.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_buffer.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_connection.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_engine.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_task.cpp
