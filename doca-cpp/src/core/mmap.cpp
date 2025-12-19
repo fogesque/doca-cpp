@@ -1,11 +1,11 @@
 #include "doca-cpp/core/mmap.hpp"
 
-#include "mmap.hpp"
-
 using doca::AccessFlags;
 using doca::DevicePtr;
 using doca::MemoryMap;
 using doca::MemoryMapPtr;
+using doca::MemoryRange;
+using doca::MemoryRangePtr;
 
 // ----------------------------------------------------------------------------
 // MemoryMap::Builder
@@ -25,32 +25,12 @@ MemoryMap::Builder::~Builder()
     }
 }
 
-MemoryMap::Builder::Builder(Builder && other) noexcept : mmap(other.mmap), buildErr(other.buildErr)
-{
-    other.mmap = nullptr;
-    other.buildErr = nullptr;
-}
-
-MemoryMap::Builder & MemoryMap::Builder::operator=(Builder && other) noexcept
-{
-    if (this != &other) {
-        if (this->mmap) {
-            std::ignore = doca_mmap_destroy(this->mmap);
-        }
-        this->mmap = other.mmap;
-        this->buildErr = other.buildErr;
-        other.mmap = nullptr;
-        other.buildErr = nullptr;
-    }
-    return *this;
-}
-
 MemoryMap::Builder & MemoryMap::Builder::AddDevice(DevicePtr device)
 {
     if (this->mmap && !this->buildErr) {
         auto err = FromDocaError(doca_mmap_add_dev(this->mmap, device->GetNative()));
         if (err) {
-            this->buildErr = errors::Wrap(err, "failed to add device to mmap");
+            this->buildErr = errors::Wrap(err, "Failed to add device to memory map");
         }
         this->device = device;
     }
@@ -60,22 +40,22 @@ MemoryMap::Builder & MemoryMap::Builder::AddDevice(DevicePtr device)
 MemoryMap::Builder & MemoryMap::Builder::SetPermissions(AccessFlags permissions)
 {
     if (this->mmap && !this->buildErr) {
-        auto err = FromDocaError(doca_mmap_set_permissions(this->mmap, ToUint32(permissions)));
+        auto err = FromDocaError(doca_mmap_set_permissions(this->mmap, doca::ToUint32(permissions)));
         if (err) {
-            this->buildErr = errors::Wrap(err, "failed to set mmap permissions");
+            this->buildErr = errors::Wrap(err, "Failed to set mmap permissions");
         }
     }
     return *this;
 }
 
-MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(std::vector<std::uint8_t> & buffer)
+MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(MemoryRangePtr memoryRange)
 {
     if (this->mmap && !this->buildErr) {
-        auto dataPtr = static_cast<void *>(buffer.data());
-        auto dataLength = buffer.size();
+        auto dataPtr = static_cast<void *>(memoryRange->data());
+        auto dataLength = memoryRange->size();
         auto err = FromDocaError(doca_mmap_set_memrange(this->mmap, dataPtr, dataLength));
         if (err) {
-            this->buildErr = errors::Wrap(err, "failed to set memory range");
+            this->buildErr = errors::Wrap(err, "Failed to set memory range");
         }
     }
     return *this;
@@ -86,7 +66,7 @@ MemoryMap::Builder & MemoryMap::Builder::SetMaxNumDevices(uint32_t maxDevices)
     if (this->mmap && !this->buildErr) {
         auto err = FromDocaError(doca_mmap_set_max_num_devices(this->mmap, maxDevices));
         if (err) {
-            this->buildErr = errors::Wrap(err, "failed to set max number of devices");
+            this->buildErr = errors::Wrap(err, "Failed to set max number of devices");
         }
     }
     return *this;
@@ -98,7 +78,7 @@ MemoryMap::Builder & MemoryMap::Builder::SetUserData(const Data & data)
         auto nativeData = data.ToNative();
         auto err = FromDocaError(doca_mmap_set_user_data(this->mmap, nativeData));
         if (err) {
-            this->buildErr = errors::Wrap(err, "failed to set user data");
+            this->buildErr = errors::Wrap(err, "Failed to set user data");
         }
     }
     return *this;
@@ -115,18 +95,18 @@ std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
     }
 
     if (!this->mmap) {
-        return { nullptr, errors::New("mmap is null") };
+        return { nullptr, errors::New("Memory map is null") };
     }
 
     if (!this->device) {
-        return { nullptr, errors::New("no device added to mmap") };
+        return { nullptr, errors::New("No device added to memory map") };
     }
 
     auto err = FromDocaError(doca_mmap_start(this->mmap));
     if (err) {
         std::ignore = doca_mmap_destroy(this->mmap);
         this->mmap = nullptr;
-        return { nullptr, errors::Wrap(err, "failed to start mmap") };
+        return { nullptr, errors::Wrap(err, "Failed to start memory map") };
     }
 
     auto memoryMapPtr = std::make_shared<MemoryMap>(this->mmap, this->device, std::make_shared<Deleter>());
@@ -140,8 +120,8 @@ std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
 MemoryMap::Builder MemoryMap::Create()
 {
     doca_mmap * mmap = nullptr;
-    auto err = doca_mmap_create(&mmap);
-    if (err != DOCA_SUCCESS || mmap == nullptr) {
+    auto err = FromDocaError(doca_mmap_create(&mmap));
+    if (err) {
         return Builder(nullptr);
     }
     return Builder(mmap);
@@ -182,11 +162,11 @@ MemoryMap::~MemoryMap()
 error MemoryMap::Stop()
 {
     if (!this->memoryMap) {
-        return errors::New("mmap is null");
+        return errors::New("Memory map is null");
     }
     auto err = FromDocaError(doca_mmap_stop(this->memoryMap));
     if (err) {
-        return errors::Wrap(err, "failed to stop mmap");
+        return errors::Wrap(err, "Failed to stop memory map");
     }
     return nullptr;
 }
@@ -197,11 +177,11 @@ error MemoryMap::RemoveDevice()
         return nullptr;
     }
     if (!this->memoryMap) {
-        return errors::New("mmap is null");
+        return errors::New("Memory map is null");
     }
     auto err = FromDocaError(doca_mmap_rm_dev(this->memoryMap, this->device->GetNative()));
     if (err) {
-        return errors::Wrap(err, "failed to deregister device from mmap");
+        return errors::Wrap(err, "Failed to deregister device from memory map");
     }
     return nullptr;
 }
@@ -209,10 +189,10 @@ error MemoryMap::RemoveDevice()
 std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportPci() const
 {
     if (!this->device) {
-        return { {}, errors::New("no device associated with mmap") };
+        return { {}, errors::New("No device associated with memory map") };
     }
     if (!this->memoryMap) {
-        return { {}, errors::New("mmap is null") };
+        return { {}, errors::New("Memory map is null") };
     }
 
     const void * exportDesc = nullptr;
@@ -221,7 +201,7 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportPci() const
     auto err =
         FromDocaError(doca_mmap_export_pci(this->memoryMap, this->device->GetNative(), &exportDesc, &exportDescLen));
     if (err) {
-        return { {}, errors::Wrap(err, "failed to export mmap for PCI") };
+        return { {}, errors::Wrap(err, "Failed to export mmap for PCI") };
     }
 
     auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
@@ -232,10 +212,10 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportPci() const
 std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
 {
     if (!this->device) {
-        return { {}, errors::New("no device associated with mmap") };
+        return { {}, errors::New("No device associated with memory map") };
     }
     if (!this->memoryMap) {
-        return { {}, errors::New("mmap is null") };
+        return { {}, errors::New("Memory map is null") };
     }
 
     const void * exportDesc = nullptr;
@@ -244,7 +224,7 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
     auto err =
         FromDocaError(doca_mmap_export_rdma(this->memoryMap, this->device->GetNative(), &exportDesc, &exportDescLen));
     if (err) {
-        return { {}, errors::Wrap(err, "failed to export mmap for RDMA") };
+        return { {}, errors::Wrap(err, "Failed to export mmap for RDMA") };
     }
 
     auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
@@ -255,10 +235,10 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
 std::tuple<std::span<uint8_t>, error> doca::MemoryMap::GetMemoryRange()
 {
     if (!this->device) {
-        return { {}, errors::New("No device associated with mmap") };
+        return { {}, errors::New("No device associated with memory map") };
     }
     if (!this->memoryMap) {
-        return { {}, errors::New("mmap is null") };
+        return { {}, errors::New("Memory map is null") };
     }
 
     void * memrange = nullptr;

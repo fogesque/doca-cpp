@@ -16,8 +16,10 @@ namespace doca
 
 // Forward declarations
 class MemoryMap;
-
 using MemoryMapPtr = std::shared_ptr<MemoryMap>;
+
+using MemoryRange = std::vector<std::uint8_t>;
+using MemoryRangePtr = std::shared_ptr<MemoryRange>;
 
 // ----------------------------------------------------------------------------
 // MemoryMap
@@ -32,7 +34,7 @@ public:
 
         Builder & AddDevice(DevicePtr device);
         Builder & SetPermissions(AccessFlags permissions);
-        Builder & SetMemoryRange(std::vector<std::uint8_t> & buffer);
+        Builder & SetMemoryRange(MemoryRangePtr memoryRange);
         Builder & SetMaxNumDevices(uint32_t maxDevices);
         Builder & SetUserData(const Data & data);
         std::tuple<MemoryMapPtr, error> Start();
@@ -44,8 +46,8 @@ public:
 
         Builder(const Builder &) = delete;
         Builder & operator=(const Builder &) = delete;
-        Builder(Builder && other) noexcept;
-        Builder & operator=(Builder && other) noexcept;
+        Builder(Builder && other) noexcept = default;
+        Builder & operator=(Builder && other) noexcept = default;
 
         doca_mmap * mmap = nullptr;
         error buildErr;
