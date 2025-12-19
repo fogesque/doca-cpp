@@ -16,7 +16,7 @@ using doca::rdma::RdmaBufferPtr;
 RdmaServer::Builder & RdmaServer::Builder::SetDevice(doca::DevicePtr device)
 {
     if (device == nullptr) {
-        this->buildErr = errors::New("device is null");
+        this->buildErr = errors::New("Device is null");
     }
     this->device = device;
     return *this;
@@ -131,7 +131,7 @@ error RdmaServer::Serve()
 
         // Check if this endpoint exists
         if (!this->endpoints.contains(endpointId)) {
-            // TODO: If there is no endpoint, we just continue to process request
+            // TODO: If there is no endpoint, we just continue to process another request
             // Maybe this is bad since this will break other requests??? Think
             continue;
         }
@@ -166,17 +166,12 @@ error RdmaServer::Serve()
 void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
 {
     for (auto & endpoint : endpoints) {
-        auto endpointId = this->makeIdForEndpoint(endpoint);
+        auto endpointId = doca::rdma::MakeEndpointId(endpoint);
         this->endpoints.insert({ endpointId, endpoint });
     }
 }
 
-RdmaEndpointId RdmaServer::makeIdForEndpoint(const RdmaEndpointPtr endpoint) const
-{
-    return endpoint->Path() + rdma::EndpointTypeToString(endpoint->Type());
-}
-
-error doca::rdma::RdmaServer::mapEndpointsMemory()
+error RdmaServer::mapEndpointsMemory()
 {
     for (auto & [_, endpoint] : this->endpoints) {
         auto err =
@@ -189,8 +184,8 @@ error doca::rdma::RdmaServer::mapEndpointsMemory()
     return error();
 }
 
-std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromRequestPayload(
-    const MemoryRangePtr requestMemoreRange)
+std::tuple<RdmaEndpointId, error> RdmaServer::parseEndpointIdFromRequestPayload(
+    const doca::MemoryRangePtr requestMemoreRange)
 {
     if (requestMemoreRange == nullptr) {
         return { "", errors::New("Request memory range is null") };
@@ -233,8 +228,8 @@ std::tuple<RdmaEndpointId, error> doca::rdma::RdmaServer::parseEndpointIdFromReq
     return { endpointId, nullptr };
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleRequest(const RdmaEndpointId & endpointId,
-                                                                       RdmaConnectionPtr connection)
+std::tuple<RdmaBufferPtr, error> RdmaServer::handleRequest(const RdmaEndpointId & endpointId,
+                                                           RdmaConnectionPtr connection)
 {
     const auto endpointType = this->endpoints.at(endpointId)->Type();
     switch (endpointType) {
@@ -251,7 +246,7 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleRequest(const Rdm
     }
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleSendRequest(const RdmaEndpointId & endpointId)
+std::tuple<RdmaBufferPtr, error> RdmaServer::handleSendRequest(const RdmaEndpointId & endpointId)
 {
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();
@@ -273,8 +268,8 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleSendRequest(const
     return awaitable.Await();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
-                                                                              RdmaConnectionPtr connection)
+std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
+                                                                  RdmaConnectionPtr connection)
 {
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();
@@ -298,8 +293,8 @@ std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleReceiveRequest(co
     return awaitable.Await();
 }
 
-std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaServer::handleOperationRequest(const RdmaEndpointId & endpointId,
-                                                                                RdmaConnectionPtr connection)
+std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEndpointId & endpointId,
+                                                                    RdmaConnectionPtr connection)
 {
     auto endpoint = this->endpoints.at(endpointId);
     auto endpointBuffer = endpoint->Buffer();

@@ -68,8 +68,6 @@ private:
     doca::DevicePtr device = nullptr;
     uint16_t port = 12345;
 
-    RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
-
     error mapEndpointsMemory();
 
     std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestPayload(const MemoryRangePtr requestMemoreRange);

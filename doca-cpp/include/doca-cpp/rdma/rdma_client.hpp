@@ -69,13 +69,7 @@ private:
 
     doca::DevicePtr device = nullptr;
 
-    RdmaEndpointId makeIdForEndpoint(const RdmaEndpointPtr endpoint) const;
-
     error mapEndpointsMemory();
-
-    std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestPayload(const MemoryRangePtr requestMemoreRange);
-
-    std::tuple<RdmaBufferPtr, error> prepareRequestBuffer(const RdmaEndpointId & endpointId);
 
     std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
 
