@@ -172,7 +172,7 @@ std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> endpoints::CreateEnd
         if (!buffers.contains(config.path)) {
             // So if there is new unique path met, allocate buffer
             auto data = std::make_shared<std::vector<std::uint8_t>>(config.size);
-            auto memrange = std::make_shared<doca::rdma::MemoryRange>(data->begin(), data->end());
+            auto memrange = std::make_shared<doca::MemoryRange>(data->begin(), data->end());
             auto buffer = std::make_shared<doca::rdma::RdmaBuffer>();
 
             // Won't return error here

@@ -1,7 +1,5 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
-#include "rdma_buffer.hpp"
-
 using doca::rdma::RdmaBuffer;
 using doca::rdma::RdmaBufferPtr;
 

@@ -111,6 +111,7 @@ public:
     class Builder
     {
     public:
+        explicit Builder(doca_rdma * plainRdma);
         ~Builder();
 
         Builder & SetPermissions(doca::AccessFlags permissions);
@@ -122,7 +123,6 @@ public:
 
     private:
         friend class RdmaEngine;
-        explicit Builder(doca_rdma * plainRdma);
 
         Builder(const Builder &) = delete;
         Builder & operator=(const Builder &) = delete;

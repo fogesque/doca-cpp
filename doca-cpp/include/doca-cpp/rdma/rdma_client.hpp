@@ -25,36 +25,13 @@ using RdmaClientPtr = std::shared_ptr<RdmaClient>;
 class RdmaClient
 {
 public:
+    static std::tuple<RdmaClientPtr, error> Create(doca::DevicePtr device);
+
     error Connect(const std::string & serverAddress, uint16_t serverPort);
 
     void RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
 
     error RequestEndpointProcessing(const RdmaEndpointId & endpointId);
-
-    class Builder
-    {
-    public:
-        ~Builder() = default;
-        Builder() = default;
-
-        Builder & SetDevice(doca::DevicePtr device);
-        Builder & SetListenPort(uint16_t port);
-
-        std::tuple<RdmaClientPtr, error> Build();
-
-    private:
-        // friend class RdmaClient;
-        Builder(const Builder &) = delete;
-        Builder & operator=(const Builder &) = delete;
-        Builder(Builder && other) = default;
-        Builder & operator=(Builder && other) = default;
-
-        error buildErr = nullptr;
-        doca::DevicePtr device = nullptr;
-        uint16_t port = 0;
-    };
-
-    static Builder Create();
 
     // Move-only type
     RdmaClient(const RdmaClient &) = delete;

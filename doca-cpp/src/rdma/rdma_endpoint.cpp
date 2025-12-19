@@ -1,7 +1,5 @@
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 
-#include "rdma_endpoint.hpp"
-
 using doca::MemoryRange;
 using doca::MemoryRangePtr;
 using doca::rdma::RdmaBuffer;

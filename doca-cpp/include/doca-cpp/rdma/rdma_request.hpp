@@ -21,20 +21,22 @@ namespace doca::rdma
 namespace RdmaRequestMessageFormat
 {
 constexpr auto messageBufferSize = 260;  // 260 bytes: 2 for path size, 256 for path, 2 for operation code
-constexpr auto messageEndpointPathMaxLength =
-    messageBufferSize - messageEndpointSizeLength - messageEndpointOpcodeLength;  // 256 bytes
 
 constexpr auto messageEndpointSizeOffset = 0x0000;
 constexpr auto messageEndpointSizeLength = 2;  // bytes
 
 constexpr auto messageEndpointOpcodeLength = 2;  // bytes
 
+constexpr auto messageEndpointPathMaxLength =
+    messageBufferSize - messageEndpointSizeLength - messageEndpointOpcodeLength;  // 256 bytes
+
 constexpr auto messageEndpointPathOffset = messageEndpointSizeOffset + messageEndpointSizeLength;
 }  // namespace RdmaRequestMessageFormat
 
 namespace RdmaRequest
 {
-std::tuple<RdmaEndpointId, error> ParseEndpointIdFromPayload(const std::span<uint8_t> & requestPayload)
+
+inline std::tuple<RdmaEndpointId, error> ParseEndpointIdFromPayload(const std::span<uint8_t> & requestPayload)
 {
     const auto * requestData = requestPayload.data();
     const auto requestSize = requestPayload.size();
@@ -78,8 +80,8 @@ std::tuple<RdmaEndpointId, error> ParseEndpointIdFromPayload(const std::span<uin
     return { endpointId, nullptr };
 }
 
-std::tuple<RdmaBufferPtr, error> MakeRequestBuffer(const RdmaEndpointPath endpointPath,
-                                                   const RdmaEndpointType endpointType)
+inline std::tuple<RdmaBufferPtr, error> MakeRequestBuffer(const RdmaEndpointPath endpointPath,
+                                                          const RdmaEndpointType endpointType)
 {
     auto requestPayload = std::make_shared<MemoryRange>(RdmaRequestMessageFormat::messageBufferSize, 0);
 

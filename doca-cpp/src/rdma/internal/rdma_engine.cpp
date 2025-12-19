@@ -28,6 +28,15 @@ RdmaEngine::Builder RdmaEngine::Create(doca::DevicePtr device)
     return Builder(plainRdma);
 }
 
+RdmaEngine::Builder::Builder(doca_rdma * plainRdma) : rdma(plainRdma) {}
+
+RdmaEngine::Builder::~Builder()
+{
+    if (this->rdma) {
+        std::ignore = doca_rdma_destroy(this->rdma);
+    }
+}
+
 RdmaEngine::Builder & RdmaEngine::Builder::SetPermissions(doca::AccessFlags permissions)
 {
     if (this->rdma && !this->buildErr) {
@@ -82,11 +91,12 @@ std::tuple<RdmaEnginePtr, error> RdmaEngine::Builder::Build()
         return { nullptr, this->buildErr };
     }
 
-    if (!this->rdma) {
-        return { nullptr, errors::New("rdma is null") };
+    if (this->rdma == nullptr) {
+        return { nullptr, errors::New("RDMA instance is not initialized") };
     }
 
     auto rdmaEngine = std::make_shared<RdmaEngine>(this->rdma);
+    this->rdma = nullptr;
     return { rdmaEngine, nullptr };
 }
 
@@ -136,7 +146,7 @@ error RdmaEngine::ConnectToAddress(RdmaAddressPtr address, doca::Data & connecti
     auto err = FromDocaError(
         doca_rdma_connect_to_addr(this->rdmaInstance, address->GetNative(), connectionUserData.ToNative()));
     if (err) {
-        return errors::Wrap(err, "failed to connect to RDMA address");
+        return errors::Wrap(err, "Failed to connect to RDMA address");
     }
     return nullptr;
 }
@@ -149,7 +159,7 @@ error RdmaEngine::ListenToPort(uint16_t port)
 
     auto err = FromDocaError(doca_rdma_start_listen_to_port(this->rdmaInstance, port));
     if (err) {
-        return errors::Wrap(err, "failed to start listen to port");
+        return errors::Wrap(err, "Failed to start listen to port");
     }
     return nullptr;
 }
@@ -164,7 +174,7 @@ error RdmaEngine::SetReceiveTaskCompletionCallbacks(ReceiveTaskCompletionCallbac
     auto err = FromDocaError(
         doca_rdma_task_receive_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA Receive Task callbacks");
+        return errors::Wrap(err, "Failed to set RDMA receive task callbacks");
     }
     return nullptr;
 }
@@ -179,7 +189,7 @@ error RdmaEngine::SetSendTaskCompletionCallbacks(SendTaskCompletionCallback succ
     auto err = FromDocaError(
         doca_rdma_task_send_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA Send Task callbacks");
+        return errors::Wrap(err, "Failed to set RDMA send task callbacks");
     }
     return nullptr;
 }
@@ -194,7 +204,7 @@ error RdmaEngine::SetReadTaskCompletionCallbacks(ReadTaskCompletionCallback succ
     auto err = FromDocaError(
         doca_rdma_task_read_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA Read Task callbacks");
+        return errors::Wrap(err, "Failed to set RDMA read task callbacks");
     }
     return nullptr;
 }
@@ -209,7 +219,7 @@ error RdmaEngine::SetWriteTaskCompletionCallbacks(WriteTaskCompletionCallback su
     auto err = FromDocaError(
         doca_rdma_task_write_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA Write Task callbacks");
+        return errors::Wrap(err, "Failed to set RDMA write task callbacks");
     }
     return nullptr;
 }
@@ -224,7 +234,7 @@ error RdmaEngine::SetConnectionStateChangedCallbacks(const ConnectionCallbacks &
         this->rdmaInstance, callbacks.requestCallback, callbacks.establishedCallback, callbacks.failureCallback,
         callbacks.disconnectCallback));
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA connection state callbacks");
+        return errors::Wrap(err, "Failed to set RDMA connection state callbacks");
     }
     return err;
 }
@@ -240,7 +250,7 @@ std::tuple<RdmaReceiveTaskPtr, error> RdmaEngine::AllocateReceiveTask(doca::Buff
     auto err = FromDocaError(doca_rdma_task_receive_allocate_init(this->rdmaInstance, destBuffer->GetNative(),
                                                                   taskUserData.ToNative(), &nativeTask));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RdmaReceiveTask") };
+        return { nullptr, errors::Wrap(err, "Failed to create RDMA receive task") };
     }
 
     auto task = std::make_shared<RdmaReceiveTask>(nativeTask);
@@ -259,7 +269,7 @@ std::tuple<RdmaSendTaskPtr, error> RdmaEngine::AllocateSendTask(RdmaConnectionPt
     auto err = FromDocaError(doca_rdma_task_send_allocate_init(
         this->rdmaInstance, connection->GetNative(), sourceBuffer->GetNative(), taskUserData.ToNative(), &nativeTask));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RdmaSendTask") };
+        return { nullptr, errors::Wrap(err, "Failed to create RDMA send task") };
     }
 
     auto task = std::make_shared<RdmaSendTask>(nativeTask);
@@ -280,7 +290,7 @@ std::tuple<RdmaReadTaskPtr, error> RdmaEngine::AllocateReadTask(RdmaConnectionPt
                                                                sourceBuffer->GetNative(), destBuffer->GetNative(),
                                                                taskUserData.ToNative(), &nativeTask));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RdmaReadTask") };
+        return { nullptr, errors::Wrap(err, "Failed to create RDMA read task") };
     }
 
     auto task = std::make_shared<RdmaReadTask>(nativeTask);
@@ -301,7 +311,7 @@ std::tuple<RdmaWriteTaskPtr, error> RdmaEngine::AllocateWriteTask(RdmaConnection
                                                                 sourceBuffer->GetNative(), destBuffer->GetNative(),
                                                                 taskUserData.ToNative(), &nativeTask));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RdmaWriteTask") };
+        return { nullptr, errors::Wrap(err, "Failed to create RDMA write task") };
     }
 
     auto task = std::make_shared<RdmaWriteTask>(nativeTask);

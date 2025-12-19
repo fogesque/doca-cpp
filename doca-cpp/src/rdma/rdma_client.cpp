@@ -14,45 +14,24 @@ using doca::rdma::RdmaConnectionPtr;
 using doca::rdma::OperationRequest;
 
 // ----------------------------------------------------------------------------
-// RdmaClient::Builder
-// ----------------------------------------------------------------------------
-
-RdmaClient::Builder & RdmaClient::Builder::SetDevice(doca::DevicePtr device)
-{
-    if (device == nullptr) {
-        this->buildErr = errors::New("device is null");
-    }
-    this->device = device;
-    return *this;
-}
-
-RdmaClient::Builder & RdmaClient::Builder::SetListenPort(uint16_t port)
-{
-    this->port = port;
-    return *this;
-}
-
-std::tuple<RdmaClientPtr, error> RdmaClient::Builder::Build()
-{
-    if (this->device == nullptr) {
-        return { nullptr, errors::New("Failed to create RdmaClient: associated device was not set") };
-    }
-    auto server = std::make_shared<RdmaClient>(this->device, this->port);
-    return { server, nullptr };
-}
-
-// ----------------------------------------------------------------------------
 // RdmaClient
 // ----------------------------------------------------------------------------
 
-RdmaClient::Builder RdmaClient::Create()
+std::tuple<RdmaClientPtr, error> doca::rdma::RdmaClient::Create(doca::DevicePtr device)
 {
-    return Builder();
+    if (device == nullptr) {
+        return { nullptr, errors::New("Device pointer is null") };
+    }
+
+    auto client = std::make_shared<RdmaClient>(device);
+
+    return { client, nullptr };
 }
 
 RdmaClient::RdmaClient(doca::DevicePtr initialDevice) : device(initialDevice) {}
 
 error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort)
+
 {
     // Check if there are registered endpoints
     if (this->endpoints.empty()) {
@@ -185,6 +164,8 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
             return errors::Wrap(err, "Service processing RDMA buffer failed");
         }
     }
+
+    return nullptr;
 }
 
 error RdmaClient::mapEndpointsMemory()
