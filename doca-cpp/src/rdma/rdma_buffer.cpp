@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
+#include "rdma_buffer.hpp"
+
 using doca::rdma::RdmaBuffer;
 using doca::rdma::RdmaBufferPtr;
 
@@ -11,6 +13,41 @@ std::tuple<RdmaBufferPtr, error> RdmaBuffer::FromMemoryRange(doca::MemoryRangePt
         return { nullptr, errors::Wrap(err, "Failed to register memory range to buffer") };
     }
     return { buffer, nullptr };
+}
+
+std::tuple<RdmaBufferPtr, error> doca::rdma::RdmaBuffer::FromExportedRemoteDescriptor(std::span<uint8_t> & descPayload,
+                                                                                      doca::DevicePtr device)
+{
+    // Create memory map from exported descriptor
+    auto [descMmap, mapErr] = doca::MemoryMap::CreateFromExport(descPayload, device).Start();
+    if (mapErr) {
+        return { nullptr, errors::Wrap(mapErr, "Failed to create memory map for remote descriptor") };
+    }
+
+    // Get memory range from descriptor mmap
+    auto [descMemrange, rgnErr] = descMmap->GetMemoryRange();
+    if (rgnErr) {
+        return { nullptr, errors::Wrap(rgnErr, "Failed to get memory range from remote descriptor mmap") };
+    }
+
+    // Copy memory range data to new MemoryRange
+    auto remoteMemrange = std::make_shared<doca::MemoryRange>(descMemrange.size());
+    std::ignore = std::copy(descMemrange.begin(), descMemrange.end(), remoteMemrange->begin());
+
+    // Create RdmaBuffer for remote memory
+    auto remoteBuffer = std::make_shared<RdmaBuffer>();
+
+    auto err = remoteBuffer->RegisterMemoryRange(remoteMemrange);
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to register memory range to remote buffer") };
+    }
+
+    err = remoteBuffer->SetExportedMemoryMap(descMmap);
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to set exported memory map to remote buffer") };
+    }
+
+    return { remoteBuffer, nullptr };
 }
 
 error RdmaBuffer::RegisterMemoryRange(doca::MemoryRangePtr memoryRange)
@@ -95,6 +132,15 @@ std::tuple<doca::MemoryRangePtr, error> RdmaBuffer::GetMemoryRange()
         return { nullptr, ErrorTypes::MemoryRangeNotRegistered };
     }
     return { this->memoryRange, nullptr };
+}
+
+error doca::rdma::RdmaBuffer::SetExportedMemoryMap(MemoryMapPtr memoryMap)
+{
+    if (this->memoryMap != nullptr) {
+        return errors::New("RdmaBuffer already has a memory map assigned");
+    }
+    this->memoryMap = memoryMap;
+    return nullptr;
 }
 
 std::size_t RdmaBuffer::MemoryRangeSize() const

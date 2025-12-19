@@ -43,6 +43,9 @@ public:
 
     static std::tuple<RdmaBufferPtr, error> FromMemoryRange(MemoryRangePtr memoryRange);
 
+    static std::tuple<RdmaBufferPtr, error> FromExportedRemoteDescriptor(std::span<uint8_t> & descPayload,
+                                                                         doca::DevicePtr device);
+
     error RegisterMemoryRange(MemoryRangePtr memoryRange);
 
     error MapMemory(doca::DevicePtr device, doca::AccessFlags permissions);
@@ -52,6 +55,8 @@ public:
     std::tuple<RdmaBufferPtr, error> ExportMemoryDescriptor(doca::DevicePtr device);
 
     std::tuple<MemoryRangePtr, error> GetMemoryRange();
+
+    error SetExportedMemoryMap(MemoryMapPtr memoryMap);
 
     std::size_t MemoryRangeSize() const;
 
@@ -63,10 +68,6 @@ private:
 
     doca::DevicePtr device = nullptr;
     MemoryMapPtr memoryMap = nullptr;
-
-    // TODO: Add exported descriptor members for cache
-    // MemoryRangePtr memoryRangeDescriptor = nullptr;
-    // MemoryMapPtr descriptorMemoryMap = nullptr;
 };
 
 }  // namespace doca::rdma
