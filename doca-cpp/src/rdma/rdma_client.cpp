@@ -51,16 +51,16 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
     }
     this->executor = executor;
 
-    // Connect to server
-    err = this->executor->ConnectToAddress(serverAddress, serverPort);
-    if (err) {
-        return errors::Wrap(err, "Failed to connect to RDMA server");
-    }
-
     // Start Executor
     err = this->executor->Start();
     if (err) {
         return errors::Wrap(err, "Failed to start RDMA executor");
+    }
+
+    // Connect to server
+    err = this->executor->ConnectToAddress(serverAddress, serverPort);
+    if (err) {
+        return errors::Wrap(err, "Failed to connect to RDMA server");
     }
 
     // Prepare Buffer for remote memory descriptor

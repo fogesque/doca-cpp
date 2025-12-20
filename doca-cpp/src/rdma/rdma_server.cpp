@@ -68,16 +68,16 @@ error RdmaServer::Serve()
     }
     this->executor = executor;
 
-    // Start listen to port and accept connection
-    err = this->executor->ListenToPort(this->port);
-    if (err) {
-        return errors::Wrap(err, "Failed to listen to port");
-    }
-
     // Start Executor
     err = this->executor->Start();
     if (err) {
         return errors::Wrap(err, "Failed to start RDMA executor");
+    }
+
+    // Start listen to port and accept connection
+    err = this->executor->ListenToPort(this->port);
+    if (err) {
+        return errors::Wrap(err, "Failed to listen to port");
     }
 
     // Prepare Buffer for EndpointMessage (aka RdmaRequest payload)
