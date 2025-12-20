@@ -84,8 +84,15 @@ private:
 
     RdmaExecutorPtr executor = nullptr;
 
-    // TODO: Add graceful shutdown support
+    // Poll interval for RDMA operation completions
+    std::chrono::milliseconds completionPollInterval = 1ms;
+
+    // Serving control for graceful shutdown
     std::atomic_bool continueServing = true;
+    std::atomic_bool isServing = false;          // Track if Serve() is running
+    std::mutex serveMutex;                       // Ensure only one Serve() call
+    std::condition_variable shutdownCondVar;     // For timeout coordination
+    std::atomic_bool shutdownRequested = false;  // Signal to exit Await()
 };
 
 }  // namespace doca::rdma

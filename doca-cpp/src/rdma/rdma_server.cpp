@@ -50,6 +50,22 @@ RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : device(in
 
 error RdmaServer::Serve()
 {
+    // Ensure only one Serve() is running
+    {
+        std::lock_guard<std::mutex> lock(this->serveMutex);
+        if (this->isServing.load()) {
+            return errors::New("Server is already serving");
+        }
+        this->isServing.store(true);
+    }
+
+    // Cleanup guard to reset isServing on exit
+    auto deferredCleanup = [this]() {
+        this->isServing.store(false);
+        this->shutdownCondVar.notify_all();
+    };
+    std::unique_ptr<void, decltype(deferredCleanup)> cleanupGuard(nullptr, deferredCleanup);
+
     // Check if there are registered endpoints
     if (this->endpoints.empty()) {
         return errors::New("Failed to serve: no endpoints to process");
@@ -100,7 +116,12 @@ error RdmaServer::Serve()
     // +
     // Call user's service Handle() function to process data in RDMA buffer
 
-    while (this->continueServing) {
+    while (this->continueServing.load()) {
+        // Check shutdown before blocking operation
+        if (this->shutdownRequested.load()) {
+            break;
+        }
+
         // Create receive task for executor
         auto receiveOperationRequest = OperationRequest{
             .type = OperationRequest::Type::receive,
@@ -117,7 +138,8 @@ error RdmaServer::Serve()
         }
 
         // Wait for request to come
-        auto [requestBuffer, reqErr] = requestAwaitable.Await();
+        auto [requestBuffer, reqErr] =
+            requestAwaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
         if (reqErr) {
             return errors::Wrap(reqErr, "Failed to execute receive operation");
         }
@@ -177,11 +199,24 @@ void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
     }
 }
 
-error doca::rdma::RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)
+error RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)
 {
-    // FIXME: ask AI about golang's way then implement
+    // Signal stop serving but don't request shutdown yet
     this->continueServing.store(false);
+    this->shutdownRequested.store(false);
 
+    // Wait for Serve() to exit with timeout
+    std::unique_lock<std::mutex> lock(this->serveMutex);
+    auto shutdownComplete =
+        this->shutdownCondVar.wait_for(lock, shutdownTimeout, [this]() { return !this->isServing.load(); });
+
+    if (!shutdownComplete) {
+        // Timeout expired - force shutdown
+        this->shutdownRequested.store(true);  // Force interrupt
+        return errors::New("Shutdown timeout: server forced to stop");
+    }
+
+    // Clean shutdown completed
     return nullptr;
 }
 
@@ -279,7 +314,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleSendRequest(const RdmaEndpoin
         return { nullptr, errors::Wrap(err, "Failed to execute operation") };
     }
 
-    return awaitable.Await();
+    return awaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
 }
 
 std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
@@ -304,7 +339,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndp
         return { nullptr, errors::Wrap(err, "Failed to execute operation") };
     }
 
-    return awaitable.Await();
+    return awaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
 }
 
 std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEndpointId & endpointId,
@@ -338,7 +373,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
         return { nullptr, errors::Wrap(err, "Failed to submit operation") };
     }
 
-    auto [_, sendErr] = awaitable.Await();
+    auto [_, sendErr] = awaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
     if (sendErr) {
         return { nullptr, errors::Wrap(sendErr, "Failed to send exported descriptor") };
     }
@@ -358,11 +393,10 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
         return { nullptr, errors::Wrap(ackOpErr, "Failed to execute operation") };
     }
 
-    auto [__, ackErr] = awaitable.Await();
+    auto [__, ackErr] = ackAwaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
     if (ackErr) {
         return { nullptr, errors::Wrap(ackErr, "Failed to receive acknowledge") };
     }
 
-    // Now endpoint buffer has data from client, so user service will handle it
     return { endpointBuffer, nullptr };
 }

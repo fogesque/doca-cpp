@@ -19,11 +19,32 @@ using OperationResponce = std::pair<RdmaBufferPtr, error>;
 class RdmaAwaitable
 {
 public:
+    // Blocking await for operation completion
     OperationResponce Await()
     {
         return this->taskFuture.get();
     }
 
+    // Await with timeout and shutdown support
+    OperationResponce AwaitWithShutdown(const std::chrono::milliseconds pollInterval,
+                                        const std::atomic_bool & shutdownFlag)
+    {
+        while (!shutdownFlag.load()) {
+            auto status = this->taskFuture.wait_for(pollInterval);
+
+            if (status == std::future_status::ready) {
+                // Operation completed
+                return this->taskFuture.get();
+            }
+
+            // status == timeout or deferred, continue polling
+        }
+
+        // Shutdown requested
+        return { nullptr, errors::New("Operation aborted due to shutdown") };
+    }
+
+    // Blocking await for connection retrieval
     RdmaConnectionPtr GetConnection()
     {
         return this->connectionFuture.get();
