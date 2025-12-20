@@ -177,6 +177,14 @@ void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
     }
 }
 
+error doca::rdma::RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)
+{
+    // FIXME: ask AI about golang's way then implement
+    this->continueServing.store(false);
+
+    return nullptr;
+}
+
 error RdmaServer::mapEndpointsMemory()
 {
     for (auto & [_, endpoint] : this->endpoints) {

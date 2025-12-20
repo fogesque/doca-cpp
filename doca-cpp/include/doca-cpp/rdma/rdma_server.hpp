@@ -29,6 +29,8 @@ public:
 
     void RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
 
+    error Shutdown(const std::chrono::milliseconds shutdownTimeout);
+
     class Builder
     {
     public:
