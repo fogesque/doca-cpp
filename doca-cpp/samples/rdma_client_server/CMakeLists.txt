@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.22)
 # Find errors
 find_package(errors CONFIG REQUIRED)
 
+# Find yaml-cpp
+find_package(yaml-cpp CONFIG REQUIRED)
+
 # ======================================================================
 # Sample: server
 # ======================================================================
@@ -14,6 +17,7 @@ target_link_libraries(${TARGET_NAME_SERVER}
     PRIVATE
         doca-cpp
         errors::errors
+        yaml-cpp::yaml-cpp
 )
 
 target_include_directories(${TARGET_NAME_SERVER}
@@ -36,6 +40,7 @@ target_link_libraries(${TARGET_NAME_CLIENT}
     PRIVATE
         doca-cpp
         errors::errors
+        yaml-cpp::yaml-cpp
 )
 
 target_include_directories(${TARGET_NAME_CLIENT}

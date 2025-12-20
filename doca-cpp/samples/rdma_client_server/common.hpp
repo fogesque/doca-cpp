@@ -1,21 +1,122 @@
 #pragma once
 
+#include <yaml-cpp/yaml.h>
+
 #include <cstdint>
 #include <errors/errors.hpp>
+#include <filesystem>
 #include <map>
 #include <string>
 
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 
+// Sample configs namespace
 namespace configs
 {
-constexpr std::string deviceServerIbName = "mlx5_1";
-constexpr std::string serverAddress = "192.168.88.1";
-constexpr std::uint16_t serverPort = 12345;
 
-constexpr std::string deviceClientIbName = "mlx5_3";
+// Sample configs for server and client
+struct SampleConfig {
+    struct ServerConfig {
+        std::string deviceServerIbName;
+        std::string serverAddress;
+        std::uint16_t serverPort;
+    };
+
+    struct ClientConfig {
+        std::string deviceClientIbName;
+    };
+
+    ServerConfig serverCfg;
+    ClientConfig clientCfg;
+};
+using SampleConfigPtr = std::shared_ptr<SampleConfig>;
+
+// Parses sample configs from YAML config file
+inline std::tuple<SampleConfigPtr, error> ParseSampleConfigs(const std::string & configFilename)
+{
+    auto cfg = std::make_shared<SampleConfig>();
+
+    if (!std::filesystem::exists(configFilename)) {
+        return { nullptr, errors::New("No config file found; make sure to add it next to executable") };
+    }
+
+    YAML::Node yamlConfig = YAML::LoadFile(configFilename);
+    YAML::Node serverNode;
+    YAML::Node clientNode;
+
+    try {
+        serverNode = yamlConfig["server"];
+        clientNode = yamlConfig["client"];
+    } catch (std::runtime_error & e) {
+        return { nullptr, errors::New("Missing server or client node in YAML config file") };
+    }
+
+    if (!yamlConfig.IsMap()) {
+        return { nullptr, errors::New("Invalid format in YAML config file") };
+    }
+
+    if (!serverNode && !clientNode) {
+        return { nullptr, errors::New("Missing content in server or client node in YAML config file") };
+    }
+
+    // Parse server configs
+
+    if (serverNode["device"]) {
+        try {
+            cfg->serverCfg.deviceServerIbName = serverNode["device"].as<std::string>();
+        } catch (std::runtime_error & e) {
+            return { nullptr, errors::New("Failed to parse 'device' field in server node") };
+        }
+    }
+
+    if (serverNode["ipv4"]) {
+        try {
+            cfg->serverCfg.serverAddress = serverNode["ipv4"].as<std::string>();
+        } catch (std::runtime_error & e) {
+            return { nullptr, errors::New("Failed to parse 'ipv4' field in server node") };
+        }
+    }
+
+    if (serverNode["port"]) {
+        try {
+            cfg->serverCfg.serverPort = serverNode["port"].as<uint16_t>();
+        } catch (std::runtime_error & e) {
+            return { nullptr, errors::New("Failed to parse 'port' field in server node") };
+        }
+    }
+
+    // Parse client configs
+
+    if (clientNode["device"]) {
+        try {
+            cfg->clientCfg.deviceClientIbName = clientNode["device"].as<std::string>();
+        } catch (std::runtime_error & e) {
+            return { nullptr, errors::New("Failed to parse 'device' field in client node") };
+        }
+    }
+
+    return { cfg, nullptr };
+}
+
+// Prints parsed configs (for debugging)
+inline void PrintSampleConfigs(const SampleConfigPtr cfg)
+{
+    std::println("  ========== Parsed configs =========");
+
+    std::println("  Server:");
+    std::println("    Device:          {}", cfg->serverCfg.deviceServerIbName);
+    std::println("    IPv4:            {}", cfg->serverCfg.serverAddress);
+    std::println("    Port:            {}", cfg->serverCfg.serverPort);
+
+    std::println("  Client:");
+    std::println("    Device:          {}", cfg->clientCfg.deviceClientIbName);
+
+    std::println("  ===================================");
+}
+
 }  // namespace configs
 
+// Endpoints declarations and create function
 namespace endpoints
 {
 struct Config {

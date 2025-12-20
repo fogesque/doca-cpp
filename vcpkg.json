@@ -25,7 +25,10 @@
             ]
         },
         "samples": {
-            "description": "Build examples"
+            "description": "Build examples",
+            "dependencies": [
+                "yaml-cpp"
+            ]
         }
     }
 }

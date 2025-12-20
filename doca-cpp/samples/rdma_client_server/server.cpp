@@ -13,8 +13,18 @@ int main()
     std::println("DOCA-CPP RDMA Server Sample");
     std::println("==================================\n");
 
+    // Parse sample configs
+    auto [cfg, err] = configs::ParseSampleConfigs("rdma_client_server_configs.yaml");
+    if (err) {
+        std::println("Failed to parse configs: {}", err->What());
+        return 1;
+    }
+
+    // Print sample configs
+    configs::PrintSampleConfigs(cfg);
+
     // Open InfiniBand device
-    auto [device, openErr] = doca::OpenIbDevice(configs::deviceServerIbName);
+    auto [device, openErr] = doca::OpenIbDevice(cfg->serverCfg.deviceServerIbName);
     if (openErr) {
         std::println("Failed to open server device: {}", openErr->What());
         return 1;
@@ -22,7 +32,7 @@ int main()
 
     // Create RDMA server
     auto [server, createErr] =
-        doca::rdma::RdmaServer::Create().SetDevice(device).SetListenPort(configs::serverPort).Build();
+        doca::rdma::RdmaServer::Create().SetDevice(device).SetListenPort(cfg->serverCfg.serverPort).Build();
     if (createErr) {
         std::println("Failed to create server: {}", createErr->What());
         return 1;
