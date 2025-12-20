@@ -8,9 +8,13 @@
 
 namespace doca::logging
 {
-inline std::atomic<kvalog::LogLevel> globalLogLevel{ kvalog::LogLevel::Off };
 
-inline kvalog::Logger::Config GetDefaultLoggerConfig()
+using LogLevel = kvalog::LogLevel;
+using LoggerConfig = kvalog::Logger::Config;
+
+inline std::atomic<LogLevel> globalLogLevel{ LogLevel::Off };
+
+inline LoggerConfig GetDefaultLoggerConfig()
 {
     kvalog::Logger::Config config;
     config.format = kvalog::OutputFormat::Terminal;
@@ -31,12 +35,12 @@ inline kvalog::Logger::Config GetDefaultLoggerConfig()
     return config;
 }
 
-inline void SetLogLevel(kvalog::LogLevel level)
+inline void SetLogLevel(LogLevel level)
 {
     globalLogLevel.store(level, std::memory_order_relaxed);
 }
 
-inline kvalog::LogLevel GetLogLevel()
+inline LogLevel GetLogLevel()
 {
     return globalLogLevel.load(std::memory_order_relaxed);
 }
@@ -58,43 +62,61 @@ inline kvalog::LogLevel GetLogLevel()
 // Logging macros - check global level before logging
 #define DOCA_CPP_LOG_TRACE(...)                                                                                        \
     do {                                                                                                               \
-        if (doca::logging::globalLogLevel.load(std::memory_order_relaxed) <= kvalog::LogLevel::Trace) {                \
-            doca::logging::GetLogger().trace(__VA_ARGS__);                                                             \
+        const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
+        if (globalLevel != kvalog::LogLevel::Off) {                                                                    \
+            if (globalLevel <= kvalog::LogLevel::Trace) {                                                              \
+                doca::logging::GetLogger().trace(__VA_ARGS__);                                                         \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
 #define DOCA_CPP_LOG_DEBUG(...)                                                                                        \
     do {                                                                                                               \
-        if (doca::logging::globalLogLevel.load(std::memory_order_relaxed) <= kvalog::LogLevel::Debug) {                \
-            doca::logging::GetLogger().debug(__VA_ARGS__);                                                             \
+        const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
+        if (globalLevel != kvalog::LogLevel::Off) {                                                                    \
+            if (globalLevel <= kvalog::LogLevel::Debug) {                                                              \
+                doca::logging::GetLogger().debug(__VA_ARGS__);                                                         \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
 #define DOCA_CPP_LOG_INFO(...)                                                                                         \
     do {                                                                                                               \
-        if (doca::logging::globalLogLevel.load(std::memory_order_relaxed) <= kvalog::LogLevel::Info) {                 \
-            doca::logging::GetLogger().info(__VA_ARGS__);                                                              \
+        const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
+        if (globalLevel != kvalog::LogLevel::Off) {                                                                    \
+            if (globalLevel <= kvalog::LogLevel::Info) {                                                               \
+                doca::logging::GetLogger().info(__VA_ARGS__);                                                          \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
 #define DOCA_CPP_LOG_WARN(...)                                                                                         \
     do {                                                                                                               \
-        if (doca::logging::globalLogLevel.load(std::memory_order_relaxed) <= kvalog::LogLevel::Warn) {                 \
-            doca::logging::GetLogger().warn(__VA_ARGS__);                                                              \
+        const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
+        if (globalLevel != kvalog::LogLevel::Off) {                                                                    \
+            if (globalLevel <= kvalog::LogLevel::Warning) {                                                            \
+                doca::logging::GetLogger().warning(__VA_ARGS__);                                                       \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
 #define DOCA_CPP_LOG_ERROR(...)                                                                                        \
     do {                                                                                                               \
-        if (doca::logging::globalLogLevel.load(std::memory_order_relaxed) <= kvalog::LogLevel::Error) {                \
-            doca::logging::GetLogger().error(__VA_ARGS__);                                                             \
+        const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
+        if (globalLevel != kvalog::LogLevel::Off) {                                                                    \
+            if (globalLevel <= kvalog::LogLevel::Error) {                                                              \
+                doca::logging::GetLogger().error(__VA_ARGS__);                                                         \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
 #define DOCA_CPP_LOG_CRITICAL(...)                                                                                     \
     do {                                                                                                               \
-        if (doca::logging::globalLogLevel.load(std::memory_order_relaxed) <= kvalog::LogLevel::Critical) {             \
-            doca::logging::GetLogger().critical(__VA_ARGS__);                                                          \
+        const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
+        if (globalLevel != kvalog::LogLevel::Off) {                                                                    \
+            if (globalLevel <= kvalog::LogLevel::Critical) {                                                           \
+                doca::logging::GetLogger().critical(__VA_ARGS__);                                                      \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 

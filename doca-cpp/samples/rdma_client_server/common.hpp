@@ -8,11 +8,14 @@
 #include <map>
 #include <string>
 
+#include "doca-cpp/logging/logging.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 
 // Sample configs namespace
 namespace configs
 {
+
+inline const auto loggingLevel = doca::logging::LogLevel::Trace;
 
 inline const std::string configsFilename = "rdma_client_server_configs.yaml";
 

@@ -4,6 +4,7 @@
 
 #include "common.hpp"
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/logging/logging.hpp"
 #include "doca-cpp/rdma/rdma_client.hpp"
 #include "service.hpp"
 
@@ -12,6 +13,10 @@ int main()
     std::println("==================================");
     std::println("   DOCA-CPP RDMA Client Sample");
     std::println("==================================\n");
+
+    std::println("[Client Sample] Setting doca-cpp logging level");
+
+    doca::logging::SetLogLevel(configs::loggingLevel);
 
     std::println("[Client Sample] Parsing configs from {}", configs::configsFilename);
 

@@ -67,7 +67,7 @@ option(ENABLE_LOGGING "Enable logging" ON)
 
 if(ENABLE_LOGGING)
     target_compile_definitions(${TARGET_NAME}
-        PRIVATE
+        PUBLIC
             DOCA_CPP_ENABLE_LOGGING
     )
 endif()
