@@ -271,7 +271,7 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
 
     // Wait for connection to be established
     const auto desiredState = RdmaConnection::State::established;
-    err = this->waitForConnectionState(desiredState, connectionState);
+    err = this->waitForConnectionState(desiredState, connectionState, 5000ms);
     if (err) {
         if (errors::Is(err, ErrorType::TimeoutExpired)) {
             return errors::Wrap(err, "Failed to wait for RDMA connection establishment due to timeout");
