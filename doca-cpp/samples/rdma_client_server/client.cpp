@@ -10,7 +10,7 @@
 int main()
 {
     std::println("==================================");
-    std::println("DOCA-CPP RDMA Client Sample");
+    std::println("   DOCA-CPP RDMA Client Sample");
     std::println("==================================\n");
 
     // Parse sample configs

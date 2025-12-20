@@ -101,17 +101,14 @@ inline std::tuple<SampleConfigPtr, error> ParseSampleConfigs(const std::string &
 // Prints parsed configs (for debugging)
 inline void PrintSampleConfigs(const SampleConfigPtr cfg)
 {
-    std::println("  ========== Parsed configs =========");
-
+    std::println("========= Parsed configs =========");
     std::println("  Server:");
     std::println("    Device:          {}", cfg->serverCfg.deviceServerIbName);
     std::println("    IPv4:            {}", cfg->serverCfg.serverAddress);
     std::println("    Port:            {}", cfg->serverCfg.serverPort);
-
     std::println("  Client:");
     std::println("    Device:          {}", cfg->clientCfg.deviceClientIbName);
-
-    std::println("  ===================================");
+    std::println("==================================");
 }
 
 }  // namespace configs
