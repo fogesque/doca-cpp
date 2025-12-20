@@ -84,8 +84,8 @@ private:
 
     RdmaExecutorPtr executor = nullptr;
 
-    // Poll interval for RDMA operation completions
-    std::chrono::milliseconds completionPollInterval = 1ms;
+    // Timeout for RDMA operation completions
+    const std::chrono::milliseconds operationTimeout = 2000ms;
 
     // Serving control for graceful shutdown
     std::atomic_bool continueServing = true;

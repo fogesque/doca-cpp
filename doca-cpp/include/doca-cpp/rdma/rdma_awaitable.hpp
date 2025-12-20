@@ -25,23 +25,16 @@ public:
         return this->taskFuture.get();
     }
 
-    // Await with timeout and shutdown support
-    OperationResponce AwaitWithShutdown(const std::chrono::milliseconds pollInterval,
-                                        const std::atomic_bool & shutdownFlag)
+    // Blocking await for operation completion with timeout
+    OperationResponce AwaitWithTimeout(const std::chrono::milliseconds timeout)
     {
-        while (!shutdownFlag.load()) {
-            auto status = this->taskFuture.wait_for(pollInterval);
+        auto status = this->taskFuture.wait_for(timeout);
 
-            if (status == std::future_status::ready) {
-                // Operation completed
-                return this->taskFuture.get();
-            }
-
-            // status == timeout or deferred, continue polling
+        if (status == std::future_status::ready) {
+            return this->taskFuture.get();
         }
 
-        // Shutdown requested
-        return { nullptr, errors::New("Operation aborted due to shutdown") };
+        return { nullptr, errors::New("Operation timed out") };
     }
 
     // Blocking await for connection retrieval

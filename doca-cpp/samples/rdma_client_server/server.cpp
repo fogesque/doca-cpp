@@ -1,11 +1,26 @@
+#include <atomic>
+#include <csignal>
 #include <iomanip>
 #include <print>
 #include <sstream>
+#include <thread>
+#include <vector>
 
 #include "common.hpp"
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/rdma/rdma_server.hpp"
 #include "service.hpp"
+
+namespace global
+{
+std::atomic_bool shutdownSignalReceived = false;
+}
+
+void SignalHandler(int signum)
+{
+    std::println("[Server Sample] Caught signal {}. Initiating shutdown...", signum);
+    global::shutdownSignalReceived.store(true);
+}
 
 int main()
 {
@@ -87,12 +102,38 @@ int main()
 
     std::println("[Server Sample] Starting to serve requests");
 
-    // Start port listening and RDMA requests handling
-    auto serveErr = server->Serve();
-    if (serveErr) {
-        std::println("[Server Sample] Server error: {}", serveErr->What());
-        return 1;
+    // Launch Serve() in a separate thread
+    std::thread serverThread([&server]() {
+        auto serveErr = server->Serve();
+        if (serveErr) {
+            std::println("[Server Sample] Failed to serve: {}", serveErr->What());
+            std::exit(1);
+        }
+    });
+
+    // Main thread handles signals
+    std::signal(SIGINT, SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
+
+    // Wait for shutdown signal
+    auto WaitForShutdownSignal = []() {
+        while (!global::shutdownSignalReceived.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    };
+    WaitForShutdownSignal();
+
+    std::println("[Server Sample] Shutting down gracefully...");
+
+    // Call Shutdown with timeout
+    const auto shutdownTimeout = 5000ms;
+    err = server->Shutdown(shutdownTimeout);
+    if (err) {
+        std::println("[Server Sample] Shutdown error: {}", err->What());
     }
+
+    // Wait for server thread to complete
+    serverThread.join();
 
     std::println("==================================");
     std::println("   End Of Server Sample");

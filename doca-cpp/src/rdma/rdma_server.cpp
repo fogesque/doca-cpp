@@ -117,7 +117,7 @@ error RdmaServer::Serve()
     // Call user's service Handle() function to process data in RDMA buffer
 
     while (this->continueServing.load()) {
-        // Check shutdown before blocking operation
+        // Check shutdown requested
         if (this->shutdownRequested.load()) {
             break;
         }
@@ -138,12 +138,16 @@ error RdmaServer::Serve()
         }
 
         // Wait for request to come
-        auto [requestBuffer, reqErr] =
-            requestAwaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
+        auto [requestBuffer, reqErr] = requestAwaitable.AwaitWithTimeout(this->operationTimeout);
         if (reqErr) {
             return errors::Wrap(reqErr, "Failed to execute receive operation");
         }
         auto requestConnection = requestAwaitable.GetConnection();
+
+        // Check shutdown requested
+        if (this->shutdownRequested.load()) {
+            break;
+        }
 
         // Fetch endpoint from request
         auto [requestMemoryRange, mrErr] = requestBuffer->GetMemoryRange();
@@ -314,7 +318,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleSendRequest(const RdmaEndpoin
         return { nullptr, errors::Wrap(err, "Failed to execute operation") };
     }
 
-    return awaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
+    return awaitable.AwaitWithTimeout(this->operationTimeout);
 }
 
 std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
@@ -339,7 +343,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndp
         return { nullptr, errors::Wrap(err, "Failed to execute operation") };
     }
 
-    return awaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
+    return awaitable.AwaitWithTimeout(this->operationTimeout);
 }
 
 std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEndpointId & endpointId,
@@ -373,7 +377,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
         return { nullptr, errors::Wrap(err, "Failed to submit operation") };
     }
 
-    auto [_, sendErr] = awaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
+    auto [_, sendErr] = awaitable.AwaitWithTimeout(this->operationTimeout);
     if (sendErr) {
         return { nullptr, errors::Wrap(sendErr, "Failed to send exported descriptor") };
     }
@@ -393,7 +397,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
         return { nullptr, errors::Wrap(ackOpErr, "Failed to execute operation") };
     }
 
-    auto [__, ackErr] = ackAwaitable.AwaitWithShutdown(this->completionPollInterval, this->shutdownRequested);
+    auto [__, ackErr] = ackAwaitable.AwaitWithTimeout(this->operationTimeout);
     if (ackErr) {
         return { nullptr, errors::Wrap(ackErr, "Failed to receive acknowledge") };
     }
