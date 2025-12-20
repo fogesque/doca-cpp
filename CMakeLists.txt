@@ -65,10 +65,12 @@ target_link_libraries(${TARGET_NAME}
 # Enable logging option
 option(ENABLE_LOGGING "Enable logging" ON)
 
-target_compile_definitions(${TARGET_NAME}
-    PRIVATE
-        DOCA_CPP_ENABLE_LOGGING
-)
+if(ENABLE_LOGGING)
+    target_compile_definitions(${TARGET_NAME}
+        PRIVATE
+            DOCA_CPP_ENABLE_LOGGING
+    )
+endif()
 
 # Build samples and tests (optional, controlled by option)
 option(BUILD_TESTS "Build tests" OFF)
