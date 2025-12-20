@@ -64,6 +64,8 @@ public:
 
     explicit RdmaServer(doca::DevicePtr initialDevice, uint16_t port);
 
+    ~RdmaServer();
+
 private:
     std::map<RdmaEndpointId, RdmaEndpointPtr> endpoints;
 

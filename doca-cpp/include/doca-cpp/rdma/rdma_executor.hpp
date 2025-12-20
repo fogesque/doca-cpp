@@ -106,6 +106,8 @@ public:
 
     error Start();
 
+    void Stop();
+
     error ConnectToAddress(const std::string & serverAddress, uint16_t serverPort);
     error ListenToPort(uint16_t port);
 

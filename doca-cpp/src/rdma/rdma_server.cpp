@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/rdma_server.hpp"
 
+#include "rdma_server.hpp"
+
 using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
@@ -47,6 +49,14 @@ RdmaServer::Builder RdmaServer::Create()
 }
 
 RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : device(initialDevice), port(port) {}
+
+doca::rdma::RdmaServer::~RdmaServer()
+{
+    this->continueServing.store(false);
+    if (this->executor != nullptr) {
+        this->executor->Stop();
+    }
+}
 
 error RdmaServer::Serve()
 {

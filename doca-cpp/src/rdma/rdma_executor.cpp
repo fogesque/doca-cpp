@@ -248,6 +248,33 @@ error doca::rdma::RdmaExecutor::Start()
     return nullptr;
 }
 
+void RdmaExecutor::Stop()
+{
+    if (!this->running.load()) {
+        return;
+    }
+
+    // Stop worker loop
+    {
+        std::scoped_lock lock(this->queueMutex);
+        this->running.store(false);
+    }
+    this->queueCondVar.notify_one();
+
+    // Wait for worker thread to finish
+    if (this->workerThread->joinable()) {
+        this->workerThread->join();
+    }
+
+    // Clear operation queue
+    {
+        std::scoped_lock lock(this->queueMutex);
+        while (!this->operationQueue.empty()) {
+            this->operationQueue.pop();
+        }
+    }
+}
+
 error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t serverPort)
 {
     if (this->rdmaEngine == nullptr) {
