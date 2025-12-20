@@ -15,7 +15,7 @@ std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
     doca_pe * pe = nullptr;
     auto err = FromDocaError(doca_pe_create(&pe));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create progress engine") };
+        return { nullptr, errors::Wrap(err, "Failed to create progress engine") };
     }
     auto managedPe = std::make_shared<ProgressEngine>(pe, std::make_shared<Deleter>());
     return { managedPe, nullptr };
@@ -43,7 +43,7 @@ doca::ProgressEngine::~ProgressEngine()
 std::tuple<uint32_t, error> ProgressEngine::Progress()
 {
     if (!this->progressEngine) {
-        return { 0, errors::New("progress engine is null") };
+        return { 0, errors::New("Progress engine is null") };
     }
     auto processed = doca_pe_progress(this->progressEngine);
     return { processed, nullptr };
@@ -52,11 +52,11 @@ std::tuple<uint32_t, error> ProgressEngine::Progress()
 error ProgressEngine::ConnectContext(ContextPtr ctx)
 {
     if (!this->progressEngine) {
-        return errors::New("progress engine is null");
+        return errors::New("Progress engine is null");
     }
     auto err = FromDocaError(doca_pe_connect_ctx(this->progressEngine, ctx->GetNative()));
     if (err) {
-        return errors::Wrap(err, "failed to connect context to progress engine");
+        return errors::Wrap(err, "Failed to connect context to progress engine");
     }
     return nullptr;
 }
@@ -69,12 +69,12 @@ doca_pe * ProgressEngine::GetNative() const
 std::tuple<std::size_t, error> ProgressEngine::GetNumInflightTasks() const
 {
     if (!this->progressEngine) {
-        return { 0, errors::New("progress engine is null") };
+        return { 0, errors::New("Progress engine is null") };
     }
     size_t numInflightTasks = 0;
     auto err = FromDocaError(doca_pe_get_num_inflight_tasks(this->progressEngine, &numInflightTasks));
     if (err) {
-        return { 0, errors::Wrap(err, "failed to get number of inflight tasks in progress engine") };
+        return { 0, errors::Wrap(err, "Failed to get number of inflight tasks in progress engine") };
     }
     return { numInflightTasks, nullptr };
 }
@@ -82,11 +82,11 @@ std::tuple<std::size_t, error> ProgressEngine::GetNumInflightTasks() const
 error ProgressEngine::SetEventMode(ProgressEngineEventMode mode)
 {
     if (!this->progressEngine) {
-        return errors::New("progress engine is null");
+        return errors::New("Progress engine is null");
     }
     auto err = FromDocaError(doca_pe_set_event_mode(this->progressEngine, static_cast<doca_pe_event_mode>(mode)));
     if (err) {
-        return errors::Wrap(err, "failed to set progress engine event mode");
+        return errors::Wrap(err, "Failed to set progress engine event mode");
     }
     return nullptr;
 }

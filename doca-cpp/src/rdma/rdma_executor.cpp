@@ -30,7 +30,7 @@ std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialD
                                  .SetMaxNumConnections(16)
                                  .Build();
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RDMA Engine") };
+        return { nullptr, errors::Wrap(err, "Failed to create RDMA Engine") };
     }
 
     auto executorConfig = Config{
@@ -49,7 +49,6 @@ RdmaExecutor::RdmaExecutor(const Config & initialConfig)
 
 RdmaExecutor::~RdmaExecutor()
 {
-    std::println("[RdmaExecutor] Shutting down...");
     {
         std::scoped_lock lock(this->queueMutex);
         this->running.store(false);
@@ -59,44 +58,43 @@ RdmaExecutor::~RdmaExecutor()
     if (this->workerThread->joinable()) {
         this->workerThread->join();
     }
-    std::println("[RdmaExecutor] Shutdown complete");
 }
 
 error doca::rdma::RdmaExecutor::Start()
 {
     if (this->running.load()) {
-        return errors::New("RdmaExecutor is already running");
+        return errors::New("Executor is already running");
     }
 
     if (this->rdmaEngine == nullptr) {
-        return errors::New("RdmaEngine is not initialized");
+        return errors::New("RDMA engine is not initialized");
     }
 
     // Create ProgressEngine
     auto [engine, peErr] = doca::ProgressEngine::Create();
     if (peErr) {
-        return errors::Wrap(peErr, "failed to create RDMA progress engine");
+        return errors::Wrap(peErr, "Failed to create RDMA progress engine");
     }
     this->progressEngine = engine;
 
     // Create RDMA Context
     auto [context, ctxErr] = this->rdmaEngine->AsContext();
     if (ctxErr) {
-        return errors::Wrap(ctxErr, "failed to get RDMA context");
+        return errors::Wrap(ctxErr, "Failed to get RDMA context");
     }
     this->rdmaContext = context;
 
     // Connect RDMA Context to ProgressEngine
     auto err = this->progressEngine->ConnectContext(this->rdmaContext);
     if (err) {
-        return errors::Wrap(err, "failed to connect RDMA context to progress engine");
+        return errors::Wrap(err, "Failed to connect RDMA context to progress engine");
     }
 
     // Set RDMA Context user data to this RdmaExecutor
     auto userData = doca::Data(static_cast<void *>(this));
     err = this->rdmaContext->SetUserData(userData);
     if (err) {
-        return errors::Wrap(err, "failed to set executor to user data of RDMA context");
+        return errors::Wrap(err, "Failed to set executor to user data of RDMA context");
     }
 
     // Set RDMA Context state change callback
@@ -106,7 +104,7 @@ error doca::rdma::RdmaExecutor::Start()
     };
     err = this->rdmaContext->SetContextStateChangedCallback(ctxCallback);
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA context state change callback");
+        return errors::Wrap(err, "Failed to set RDMA context state change callback");
     }
 
     // Set RDMA Receive Task state change callbacks
@@ -122,7 +120,7 @@ error doca::rdma::RdmaExecutor::Start()
     };
     err = this->rdmaEngine->SetReceiveTaskCompletionCallbacks(taskReceiveSuccessCallback, taskReceiveErrorCallback);
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA receive task state change callback");
+        return errors::Wrap(err, "Failed to set RDMA receive task state change callback");
     }
 
     // Set RDMA Send Task state change callbacks
@@ -138,7 +136,7 @@ error doca::rdma::RdmaExecutor::Start()
     };
     err = this->rdmaEngine->SetSendTaskCompletionCallbacks(taskSendSuccessCallback, taskSendErrorCallback);
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA send task state change callback");
+        return errors::Wrap(err, "Failed to set RDMA send task state change callback");
     }
 
     // Set RDMA Read Task state change callbacks
@@ -154,7 +152,7 @@ error doca::rdma::RdmaExecutor::Start()
     };
     err = this->rdmaEngine->SetReadTaskCompletionCallbacks(taskReadSuccessCallback, taskReadErrorCallback);
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA read task state change callback");
+        return errors::Wrap(err, "Failed to set RDMA read task state change callback");
     }
 
     // Set RDMA Write Task state change callbacks
@@ -170,7 +168,7 @@ error doca::rdma::RdmaExecutor::Start()
     };
     err = this->rdmaEngine->SetWriteTaskCompletionCallbacks(taskWriteSuccessCallback, taskWriteErrorCallback);
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA write task state change callback");
+        return errors::Wrap(err, "Failed to set RDMA write task state change callback");
     }
 
     // Set Connection callbacks
@@ -215,13 +213,13 @@ error doca::rdma::RdmaExecutor::Start()
                                                                 .disconnectCallback = disconnectCallback };
     err = this->rdmaEngine->SetConnectionStateChangedCallbacks(connectionCallbacks);
     if (err) {
-        return errors::Wrap(err, "failed to set RDMA connection state change callback");
+        return errors::Wrap(err, "Failed to set RDMA connection state change callback");
     }
 
     // Create BufferInventory
     auto [inventory, invErr] = doca::BufferInventory::Create(constants::initialBufferInventorySize).Start();
     if (err) {
-        return errors::Wrap(err, "failed to create and start buffer inventory");
+        return errors::Wrap(err, "Failed to create and start buffer inventory");
     }
     this->bufferInventory = inventory;
 
@@ -230,7 +228,7 @@ error doca::rdma::RdmaExecutor::Start()
     // Start RDMA Context
     err = this->rdmaContext->Start();
     if (err) {
-        return errors::Wrap(err, "failed to start RDMA context");
+        return errors::Wrap(err, "Failed to start RDMA context");
     }
 
     // Wait for Context::State is Running
@@ -238,9 +236,9 @@ error doca::rdma::RdmaExecutor::Start()
     err = this->waitForContextState(desiredState);
     if (err) {
         if (errors::Is(err, ErrorType::TimeoutExpired)) {
-            return errors::Wrap(err, "failed to wait for desired context state due to timeout");
+            return errors::Wrap(err, "Failed to wait for desired context state due to timeout");
         }
-        return errors::Wrap(err, "failed to wait for desired context state");
+        return errors::Wrap(err, "Failed to wait for desired context state");
     }
 
     // Start worker thread
@@ -449,7 +447,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     if (request.sourceBuffer) {
         auto [buffer, err] = this->getDocaBuffer(request.sourceBuffer);
         if (err) {
-            return { nullptr, errors::Wrap(err, "Failed to get get doca buffer") };
+            return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
         srcBuf = buffer;
     }
@@ -460,23 +458,23 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     auto activeConnection = this->activeConnections.at(connectionId);
     auto [sendTask, taskErr] = this->rdmaEngine->AllocateSendTask(activeConnection, srcBuf, taskUserData);
     if (taskErr) {
-        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA Send Task") };
+        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA send task") };
     }
 
     // Submit RdmaSendTask to RdmaEngine
     taskState = RdmaTaskInterface::State::submitted;
     auto err = sendTask->Submit();
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to submit RDMA Send Task") };
+        return { nullptr, errors::Wrap(err, "Failed to submit RDMA send task") };
     }
 
     // Wait for task completion
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState);
     if (err) {
         if (errors::Is(err, ErrorType::TimeoutExpired)) {
-            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA Send Task completion due to timeout") };
+            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion due to timeout") };
         }
-        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA Send Task completion") };
+        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion") };
     }
 
     // Free RdmaSendTask
@@ -485,7 +483,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     // Decrement buffer reference count in BufferInventory
     auto [refcount, rcErr] = srcBuf->DecRefcount();
     if (rcErr) {
-        return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in BufferInventory") };
+        return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in buffer inventory") };
     }
 
     return { request.sourceBuffer, nullptr };
@@ -511,7 +509,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     if (request.destinationBuffer) {
         auto [buffer, err] = this->getDocaBuffer(request.destinationBuffer);
         if (err) {
-            return { nullptr, errors::Wrap(err, "Failed to get get doca buffer") };
+            return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
         destBuf = buffer;
     }
@@ -521,46 +519,46 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     auto taskUserData = doca::Data(static_cast<void *>(&taskState));
     auto [receiveTask, taskErr] = this->rdmaEngine->AllocateReceiveTask(destBuf, taskUserData);
     if (taskErr) {
-        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA Receive Task") };
+        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA receive task") };
     }
 
     // Submit RdmaReceiveTask to RdmaEngine
     taskState = RdmaTaskInterface::State::submitted;
     auto err = receiveTask->Submit();
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to submit RDMA Receive Task") };
+        return { nullptr, errors::Wrap(err, "Failed to submit RDMA receive task") };
     }
 
     // Wait for task completion: if it will complete with error, function will return it
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState);
     if (err) {
         if (errors::Is(err, ErrorType::TimeoutExpired)) {
-            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA Receive Task completion due to timeout") };
+            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion due to timeout") };
         }
-        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA Receive Task completion") };
+        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion") };
     }
 
     // Get connection from task
     auto [connection, connErr] = receiveTask->GetTaskConnection();
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to get connection from RDMA Receive Task") };
+        return { nullptr, errors::Wrap(err, "Failed to get connection from RDMA receive task") };
     }
 
     // Set affected bytes
     auto [destBuffer, getErr] = receiveTask->GetBuffer(RdmaBuffer::Type::destination);
     if (getErr) {
-        return { nullptr, errors::Wrap(getErr, "Failed to get destination buffer from RDMA Receive Task") };
+        return { nullptr, errors::Wrap(getErr, "Failed to get destination buffer from RDMA receive task") };
     }
     auto [length, lenErr] = destBuffer->GetLength();
     if (lenErr) {
-        return { nullptr, errors::Wrap(lenErr, "Failed to get length of destination buffer from RDMA Receive Task") };
+        return { nullptr, errors::Wrap(lenErr, "Failed to get length of destination buffer from RDMA receive task") };
     }
     request.bytesAffected = length;
     auto [_, dstRcErr] = destBuffer->DecRefcount();
     if (dstRcErr) {
         return { nullptr,
                  errors::Wrap(err,
-                              "Failed to decrement reference count of destination buffer from RDMA Receive Task") };
+                              "Failed to decrement reference count of destination buffer from RDMA receive task") };
     }
 
     // Free RdmaSendTask
@@ -569,7 +567,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     // Decrement buffer reference count in BufferInventory
     auto [__, rcErr] = destBuf->DecRefcount();
     if (rcErr) {
-        return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in BufferInventory") };
+        return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in buffer inventory") };
     }
 
     request.connectionPromise->set_value(connection);
@@ -636,11 +634,11 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     // Decrement buffers references count in BufferInventory
     auto [_, srcRcErr] = srcBuf->DecRefcount();
     if (srcRcErr) {
-        return { nullptr, errors::Wrap(srcRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+        return { nullptr, errors::Wrap(srcRcErr, "Failed to decrement buffer reference count in buffer inventory") };
     }
     auto [__, dstRcErr] = dstBuf->DecRefcount();
     if (dstRcErr) {
-        return { nullptr, errors::Wrap(dstRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+        return { nullptr, errors::Wrap(dstRcErr, "Failed to decrement buffer reference count in buffer inventory") };
     }
 
     return { request.destinationBuffer, nullptr };
@@ -705,11 +703,11 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     // Decrement buffers references count in BufferInventory
     auto [_, srcRcErr] = srcBuf->DecRefcount();
     if (srcRcErr) {
-        return { nullptr, errors::Wrap(srcRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+        return { nullptr, errors::Wrap(srcRcErr, "Failed to decrement buffer reference count in buffer inventory") };
     }
     auto [__, dstRcErr] = dstBuf->DecRefcount();
     if (dstRcErr) {
-        return { nullptr, errors::Wrap(dstRcErr, "Failed to decrement buffer reference count in BufferInventory") };
+        return { nullptr, errors::Wrap(dstRcErr, "Failed to decrement buffer reference count in buffer inventory") };
     }
 
     return { request.destinationBuffer, nullptr };
@@ -725,7 +723,7 @@ error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::
 
     auto [initialState, stateErr] = this->rdmaContext->GetState();
     if (stateErr) {
-        return errors::Wrap(stateErr, "failed to get context state");
+        return errors::Wrap(stateErr, "Failed to get context state");
     }
 
     const auto startTime = std::chrono::steady_clock::now();
@@ -737,7 +735,7 @@ error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::
         std::this_thread::sleep_for(10us);
         auto [newState, err] = this->rdmaContext->GetState();
         if (err) {
-            return errors::Wrap(err, "failed to get context state");
+            return errors::Wrap(err, "Failed to get context state");
         }
         currState = newState;
     }
@@ -750,7 +748,7 @@ error doca::rdma::RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desire
                                                  std::chrono::milliseconds waitTimeout)
 {
     if (this->progressEngine == nullptr) {
-        return errors::New("ProgressEngine is null");
+        return errors::New("Progress engine is null");
     }
 
     const auto startTime = std::chrono::steady_clock::now();
@@ -774,7 +772,7 @@ error doca::rdma::RdmaExecutor::waitForConnectionState(RdmaConnection::State des
                                                        std::chrono::milliseconds waitTimeout)
 {
     if (this->progressEngine == nullptr) {
-        return errors::New("ProgressEngine is null");
+        return errors::New("Progress engine is null");
     }
 
     const auto startTime = std::chrono::steady_clock::now();
@@ -812,7 +810,7 @@ std::tuple<doca::BufferPtr, error> doca::rdma::RdmaExecutor::getDocaBuffer(RdmaB
     auto [buffer, bufErr] =
         this->bufferInventory->AllocBuffer(memoryMap, static_cast<void *>(memorySpan.data()), memorySpan.size());
     if (bufErr) {
-        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from BufferInventory") };
+        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
     }
 
     return { buffer, nullptr };
