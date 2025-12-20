@@ -75,7 +75,7 @@ int main()
     client->RegisterEndpoints(endpoints);
 
     // Connect to server
-    auto err = client->Connect(cfg->serverCfg.serverAddress, cfg->serverCfg.serverPort);
+    err = client->Connect(cfg->serverCfg.serverAddress, cfg->serverCfg.serverPort);
     if (err) {
         std::println("Failed to connect to RDMA server: {}", err->What());
         return 1;
