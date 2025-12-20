@@ -87,6 +87,12 @@ error RdmaServer::Serve()
         return errors::Wrap(bufErr, "Failed to create RDMA request buffer");
     }
 
+    // Map request buffer's memory
+    err = requestRdmaBuffer->MapMemory(this->device, doca::AccessFlags::localReadWrite);
+    if (err) {
+        return errors::Wrap(err, "Failed to map memory of RDMA request buffer");
+    }
+
     // Serving is:
     // 1. Receive request from client's connection
     // 2. Parse request to fetch endpoint ID
