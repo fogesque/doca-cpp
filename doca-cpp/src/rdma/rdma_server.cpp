@@ -1,6 +1,15 @@
 #include "doca-cpp/rdma/rdma_server.hpp"
 
-#include "rdma_server.hpp"
+#ifndef DOCA_CPP_ENABLE_LOGGING
+#include "doca-cpp/logging/logging.hpp"
+
+inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
+inline const auto loggerContext = kvalog::Logger::Context{
+    .appName = "doca-cpp",
+    .moduleName = "rdma::server",
+};
+DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
+#endif
 
 using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
@@ -52,6 +61,7 @@ RdmaServer::RdmaServer(doca::DevicePtr initialDevice, uint16_t port) : device(in
 
 doca::rdma::RdmaServer::~RdmaServer()
 {
+    DOCA_CPP_LOG_DEBUG("RdmaServer destructor called, shutting down server if running");
     this->continueServing.store(false);
     if (this->executor != nullptr) {
         this->executor->Stop();
@@ -60,6 +70,8 @@ doca::rdma::RdmaServer::~RdmaServer()
 
 error RdmaServer::Serve()
 {
+    DOCA_CPP_LOG_INFO(std::format("RdmaServer starting to serve on port {}", this->port));
+
     // Ensure only one Serve() is running
     {
         std::lock_guard<std::mutex> lock(this->serveMutex);
@@ -94,17 +106,25 @@ error RdmaServer::Serve()
     }
     this->executor = executor;
 
+    DOCA_CPP_LOG_INFO("RdmaServer executor created successfully");
+
     // Start Executor
     err = this->executor->Start();
     if (err) {
         return errors::Wrap(err, "Failed to start RDMA executor");
     }
 
+    DOCA_CPP_LOG_INFO("RdmaServer executor started successfully");
+
+    DOCA_CPP_LOG_INFO(std::format("RdmaServer listening on port {}", this->port));
+
     // Start listen to port and accept connection
     err = this->executor->ListenToPort(this->port);
     if (err) {
         return errors::Wrap(err, "Failed to listen to port");
     }
+
+    DOCA_CPP_LOG_INFO("RdmaServer is now listening for incoming connections");
 
     // Prepare Buffer for EndpointMessage (aka RdmaRequest payload)
     auto requestPayload = std::make_shared<MemoryRange>(RdmaRequestMessageFormat::messageBufferSize);
@@ -113,11 +133,15 @@ error RdmaServer::Serve()
         return errors::Wrap(bufErr, "Failed to create RDMA request buffer");
     }
 
+    DOCA_CPP_LOG_INFO("RdmaServer request buffer created successfully");
+
     // Map request buffer's memory
     err = requestRdmaBuffer->MapMemory(this->device, doca::AccessFlags::localReadWrite);
     if (err) {
         return errors::Wrap(err, "Failed to map memory of RDMA request buffer");
     }
+
+    DOCA_CPP_LOG_INFO("RdmaServer request buffer memory mapped successfully");
 
     // Serving is:
     // 1. Receive request from client's connection
@@ -141,11 +165,15 @@ error RdmaServer::Serve()
             .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
         };
 
+        DOCA_CPP_LOG_INFO("RdmaServer submitting receive operation for incoming request");
+
         // Submit receive task for getting request
         auto [requestAwaitable, err] = this->executor->SubmitOperation(receiveOperationRequest);
         if (err) {
             return errors::Wrap(err, "Failed to submit receive operation");
         }
+
+        DOCA_CPP_LOG_INFO("RdmaServer waiting for incoming RDMA request");
 
         // Wait for request to come
         auto [requestBuffer, reqErr] = requestAwaitable.AwaitWithTimeout(this->operationTimeout);
@@ -159,6 +187,8 @@ error RdmaServer::Serve()
             break;
         }
 
+        DOCA_CPP_LOG_INFO("RdmaServer received RDMA request, processing...");
+
         // Fetch endpoint from request
         auto [requestMemoryRange, mrErr] = requestBuffer->GetMemoryRange();
         if (mrErr) {
@@ -171,6 +201,8 @@ error RdmaServer::Serve()
             return errors::Wrap(idErr, "Failed to parse endpoint ID");
         }
 
+        DOCA_CPP_LOG_INFO(std::format("RdmaServer parsed endpoint ID: {}", endpointId));
+
         // Check if this endpoint exists
         if (!this->endpoints.contains(endpointId)) {
             // TODO: If there is no endpoint, we just continue to process another request
@@ -178,6 +210,8 @@ error RdmaServer::Serve()
             continue;
         }
         auto endpoint = this->endpoints.at(endpointId);
+
+        DOCA_CPP_LOG_INFO("RdmaServer found requested endpoint, invoking user service if applicable");
 
         // Server -> Client endpoint, so call user service before transferring
         if (endpoint->Type() == RdmaEndpointType::read || endpoint->Type() == RdmaEndpointType::receive) {
@@ -187,11 +221,15 @@ error RdmaServer::Serve()
             }
         }
 
+        DOCA_CPP_LOG_INFO("RdmaServer launching request processing with requested endpoint");
+
         // Launch request processing with requested endpoint
         auto [processedBuffer, procErr] = this->handleRequest(endpointId, requestConnection);
         if (procErr) {
             return errors::Wrap(procErr, "Failed to handle RDMA request");
         }
+
+        DOCA_CPP_LOG_INFO("RdmaServer request processed successfully");
 
         // Server <- Client endpoint, so call user service after transferring
         if (endpoint->Type() == RdmaEndpointType::write || endpoint->Type() == RdmaEndpointType::send) {
@@ -207,6 +245,8 @@ error RdmaServer::Serve()
 
 void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
 {
+    DOCA_CPP_LOG_INFO("RdmaServer registering endpoints");
+
     for (auto & endpoint : endpoints) {
         auto endpointId = doca::rdma::MakeEndpointId(endpoint);
         this->endpoints.insert({ endpointId, endpoint });
@@ -215,6 +255,8 @@ void RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
 
 error RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)
 {
+    DOCA_CPP_LOG_INFO("RdmaServer shutdown requested");
+
     // Signal stop serving but don't request shutdown yet
     this->continueServing.store(false);
     this->shutdownRequested.store(false);
@@ -227,9 +269,13 @@ error RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)
     if (!shutdownComplete) {
         // Timeout expired - force shutdown
         this->shutdownRequested.store(true);  // Force interrupt
+
+        DOCA_CPP_LOG_INFO("RdmaServer shutdown timeout expired, forcing server to stop");
+
         return errors::New("Shutdown timeout: server forced to stop");
     }
 
+    DOCA_CPP_LOG_INFO("RdmaServer shutdown completed successfully");
     // Clean shutdown completed
     return nullptr;
 }

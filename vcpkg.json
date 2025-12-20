@@ -15,6 +15,9 @@
         },
         {
             "name": "errors"
+        },
+        {
+            "name": "kvalog"
         }
     ],
     "features": {

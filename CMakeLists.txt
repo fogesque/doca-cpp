@@ -15,6 +15,9 @@ find_package(DOCA REQUIRED)
 # Find errors
 find_package(errors CONFIG REQUIRED)
 
+# Find kvalog
+find_package(kvalog CONFIG REQUIRED)
+
 # Library sources
 set(DOCA_CPP_SOURCES
     # Core
@@ -53,9 +56,18 @@ target_include_directories(${TARGET_NAME}
 target_link_libraries(${TARGET_NAME}
     PRIVATE
         errors::errors
+        kvalog::kvalog
         DOCA::common
         DOCA::rdma
         # Add other DOCA libs as needed
+)
+
+# Enable logging option
+option(ENABLE_LOGGING "Enable logging" ON)
+
+target_compile_definitions(${TARGET_NAME}
+    PRIVATE
+        DOCA_CPP_ENABLE_LOGGING
 )
 
 # Build samples and tests (optional, controlled by option)
