@@ -1,8 +1,8 @@
 #include "doca-cpp/rdma/rdma_server.hpp"
 
-#ifndef DOCA_CPP_ENABLE_LOGGING
 #include "doca-cpp/logging/logging.hpp"
 
+#ifdef DOCA_CPP_ENABLE_LOGGING
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -82,11 +82,11 @@ error RdmaServer::Serve()
     }
 
     // Cleanup guard to reset isServing on exit
-    auto deferredCleanup = [this]() {
+    auto deferredCleanup = [this](void *) {
         this->isServing.store(false);
         this->shutdownCondVar.notify_all();
     };
-    std::unique_ptr<void, decltype(deferredCleanup)> cleanupGuard(nullptr, deferredCleanup);
+    std::unique_ptr<void, decltype(deferredCleanup)> cleanupGuard(nullptr, std::move(deferredCleanup));
 
     // Check if there are registered endpoints
     if (this->endpoints.empty()) {

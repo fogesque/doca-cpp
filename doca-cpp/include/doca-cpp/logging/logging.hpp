@@ -1,6 +1,6 @@
 #pragma once
 
-#ifndef DOCA_CPP_ENABLE_LOGGING
+#ifdef DOCA_CPP_ENABLE_LOGGING
 
 #include <atomic>
 
