@@ -13,29 +13,37 @@ int main()
     std::println("   DOCA-CPP RDMA Client Sample");
     std::println("==================================\n");
 
+    std::println("[Client Sample] Parsing configs from {}", configs::configsFilename);
+
     // Parse sample configs
-    auto [cfg, err] = configs::ParseSampleConfigs("rdma_client_server_configs.yaml");
+    auto [cfg, err] = configs::ParseSampleConfigs(configs::configsFilename);
     if (err) {
-        std::println("Failed to parse configs: {}", err->What());
+        std::println("[Client Sample] Failed to parse configs: {}", err->What());
         return 1;
     }
 
     // Print sample configs
     configs::PrintSampleConfigs(cfg);
 
+    std::println("[Client Sample] Opening InfiniBand device {}", cfg->clientCfg.deviceClientIbName);
+
     // Open InfiniBand device
     auto [device, openErr] = doca::OpenIbDevice(cfg->clientCfg.deviceClientIbName);
     if (openErr) {
-        std::println("Failed to open client device: {}", openErr->What());
+        std::println("[Client Sample] Failed to open client device: {}", openErr->What());
         return 1;
     }
+
+    std::println("[Client Sample] Creating RDMA client");
 
     // Create RDMA client
     auto [client, createErr] = doca::rdma::RdmaClient::Create(device);
     if (createErr) {
-        std::println("Failed to create client: {}", createErr->What());
+        std::println("[Client Sample] Failed to create client: {}", createErr->What());
         return 1;
     }
+
+    std::println("[Client Sample] Creating RDMA endpoints");
 
     // Create server endpoints
     const auto configs =
@@ -43,11 +51,13 @@ int main()
 
     auto [endpoints, epErr] = endpoints::CreateEndpoints(device, configs);
     if (epErr) {
-        std::println("Failed to create endpoints for client: {}", epErr->What());
+        std::println("[Client Sample] Failed to create endpoints for client: {}", epErr->What());
         return 1;
     }
 
     // Attach User's handlers to endpoints
+
+    std::println("[Client Sample] Registering example services to RDMA endpoints");
 
     auto userWriteService = std::make_shared<UserWriteService>();
     auto userReadService = std::make_shared<UserReadService>();
@@ -57,7 +67,7 @@ int main()
             endpoint->Type() == doca::rdma::RdmaEndpointType::write) {
             auto err = endpoint->RegisterService(userWriteService);
             if (err) {
-                std::println("Failed to register user service for endpoint: {}", err->What());
+                std::println("[Client Sample] Failed to register user service for endpoint: {}", err->What());
                 return 1;
             }
         }
@@ -65,7 +75,7 @@ int main()
             endpoint->Type() == doca::rdma::RdmaEndpointType::read) {
             auto err = endpoint->RegisterService(userReadService);
             if (err) {
-                std::println("Failed to register user service for endpoint: {}", err->What());
+                std::println("[Client Sample] Failed to register user service for endpoint: {}", err->What());
                 return 1;
             }
         }
@@ -74,22 +84,33 @@ int main()
     // Register endpoints to client
     client->RegisterEndpoints(endpoints);
 
+    std::println("[Client Sample] Connecting client to RDMA server: IPv4 {} Port {}", cfg->serverCfg.serverAddress,
+                 cfg->serverCfg.serverPort);
+
     // Connect to server
     err = client->Connect(cfg->serverCfg.serverAddress, cfg->serverCfg.serverPort);
     if (err) {
-        std::println("Failed to connect to RDMA server: {}", err->What());
+        std::println("[Client Sample] Failed to connect to RDMA server: {}", err->What());
         return 1;
     }
 
+    std::println("[Client Sample] Requesting server to process every endpoint");
+
     // Request RDMA operation for every endpoint
     for (auto & endpoint : endpoints) {
-        // TODO: make call for every endpoint or call by endpoint path with type
-        err = client->RequestEndpointProcessing(doca::rdma::MakeEndpointId(endpoint));
+        const auto endpointId = doca::rdma::MakeEndpointId(endpoint);
+        std::println("[Client Sample] Requesting server to process endpoint with ID: {}", endpointId);
+        // TODO: make methods for every endpoint or call by endpoint path with type
+        err = client->RequestEndpointProcessing(endpointId);
         if (err) {
-            std::println("Failed to process client's request: {}", err->What());
+            std::println("[Client Sample] Failed to process client's request: {}", err->What());
             return 1;
         }
     }
+
+    std::println("==================================");
+    std::println("   End Of Client Sample");
+    std::println("==================================\n");
 
     return 0;
 }

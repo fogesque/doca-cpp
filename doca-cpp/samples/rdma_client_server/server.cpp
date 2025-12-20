@@ -10,33 +10,41 @@
 int main()
 {
     std::println("==================================");
-    std::println("   DOCA-CPP RDMA Client Sample");
+    std::println("   DOCA-CPP RDMA Server Sample");
     std::println("==================================\n");
 
+    std::println("[Server Sample] Parsing configs from {}", configs::configsFilename);
+
     // Parse sample configs
-    auto [cfg, err] = configs::ParseSampleConfigs("rdma_client_server_configs.yaml");
+    auto [cfg, err] = configs::ParseSampleConfigs(configs::configsFilename);
     if (err) {
-        std::println("Failed to parse configs: {}", err->What());
+        std::println("[Server Sample] Failed to parse configs: {}", err->What());
         return 1;
     }
 
     // Print sample configs
     configs::PrintSampleConfigs(cfg);
 
+    std::println("[Server Sample] Opening InfiniBand device {}", cfg->serverCfg.deviceServerIbName);
+
     // Open InfiniBand device
     auto [device, openErr] = doca::OpenIbDevice(cfg->serverCfg.deviceServerIbName);
     if (openErr) {
-        std::println("Failed to open server device: {}", openErr->What());
+        std::println("[Server Sample] Failed to open server device: {}", openErr->What());
         return 1;
     }
+
+    std::println("[Server Sample] Creating RDMA server");
 
     // Create RDMA server
     auto [server, createErr] =
         doca::rdma::RdmaServer::Create().SetDevice(device).SetListenPort(cfg->serverCfg.serverPort).Build();
     if (createErr) {
-        std::println("Failed to create server: {}", createErr->What());
+        std::println("[Server Sample] Failed to create server: {}", createErr->What());
         return 1;
     }
+
+    std::println("[Server Sample] Creating RDMA endpoints");
 
     // Create server endpoints
     const auto configs =
@@ -44,11 +52,13 @@ int main()
 
     auto [endpoints, epErr] = endpoints::CreateEndpoints(device, configs);
     if (epErr) {
-        std::println("Failed to create endpoints for server: {}", epErr->What());
+        std::println("[Server Sample] Failed to create endpoints for server: {}", epErr->What());
         return 1;
     }
 
     // Attach User's handlers to endpoints
+
+    std::println("[Server Sample] Registering example services to RDMA endpoints");
 
     auto userWriteService = std::make_shared<UserWriteService>();
     auto userReadService = std::make_shared<UserReadService>();
@@ -58,7 +68,7 @@ int main()
             endpoint->Type() == doca::rdma::RdmaEndpointType::write) {
             auto err = endpoint->RegisterService(userWriteService);
             if (err) {
-                std::println("Failed to register user service for endpoint: {}", err->What());
+                std::println("[Server Sample] Failed to register user service for endpoint: {}", err->What());
                 return 1;
             }
         }
@@ -66,7 +76,7 @@ int main()
             endpoint->Type() == doca::rdma::RdmaEndpointType::read) {
             auto err = endpoint->RegisterService(userReadService);
             if (err) {
-                std::println("Failed to register user service for endpoint: {}", err->What());
+                std::println("[Server Sample] Failed to register user service for endpoint: {}", err->What());
                 return 1;
             }
         }
@@ -75,12 +85,18 @@ int main()
     // Register endpoints to server
     server->RegisterEndpoints(endpoints);
 
+    std::println("[Server Sample] Starting to serve requests");
+
     // Start port listening and RDMA requests handling
     auto serveErr = server->Serve();
     if (serveErr) {
-        std::println("Server error: {}", serveErr->What());
+        std::println("[Server Sample] Server error: {}", serveErr->What());
         return 1;
     }
+
+    std::println("==================================");
+    std::println("   End Of Server Sample");
+    std::println("==================================\n");
 
     return 0;
 }

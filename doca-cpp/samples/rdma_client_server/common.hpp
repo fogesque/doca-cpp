@@ -14,6 +14,8 @@
 namespace configs
 {
 
+inline const std::string configsFilename = "rdma_client_server_configs.yaml";
+
 // Sample configs for server and client
 struct SampleConfig {
     struct ServerConfig {
@@ -101,6 +103,7 @@ inline std::tuple<SampleConfigPtr, error> ParseSampleConfigs(const std::string &
 // Prints parsed configs (for debugging)
 inline void PrintSampleConfigs(const SampleConfigPtr cfg)
 {
+    std::println();
     std::println("========= Parsed configs =========");
     std::println("  Server:");
     std::println("    Device:          {}", cfg->serverCfg.deviceServerIbName);
@@ -109,6 +112,7 @@ inline void PrintSampleConfigs(const SampleConfigPtr cfg)
     std::println("  Client:");
     std::println("    Device:          {}", cfg->clientCfg.deviceClientIbName);
     std::println("==================================");
+    std::println();
 }
 
 }  // namespace configs
