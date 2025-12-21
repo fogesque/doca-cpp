@@ -19,18 +19,31 @@ namespace doca::rdma
 class RdmaServer;
 using RdmaServerPtr = std::shared_ptr<RdmaServer>;
 
-// ----------------------------------------------------------------------------
-// RdmaServer
-// ----------------------------------------------------------------------------
+///
+/// @brief RdmaServer class
+///
+/// RdmaServer processes RDMA requests from clients. All requests are made within RDMA endpoints that contain info about
+/// permitted RDMA operations, resources (RDMA memory buffers) paths and sizes.
+///
 class RdmaServer
 {
 public:
+    /// @brief Method starts server to listen to port and process requests. Can be called in thread. Returns error
+    /// if called second time. At least one registered RDMA endpoint required.
+    /// @return Error pointer if error, nullptr otherwise.
     error Serve();
 
+    /// @brief Method stores user provided RDMA endpoints in server's internal map object.
+    /// @param endpoints Vector of RDMA endpoints.
     void RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
 
+    /// @brief Method is used to shutdown server gracefuly. It gives server timeout to shutdown then forces it to stop
+    /// if timeout expires.
+    /// @param shutdownTimeout Timeout for shutdown.
+    /// @return Error pointer if error, nullptr otherwise.
     error Shutdown(const std::chrono::milliseconds shutdownTimeout);
 
+    /// @brief Builder class for building RdmaServer object
     class Builder
     {
     public:
@@ -74,8 +87,6 @@ private:
 
     error mapEndpointsMemory();
 
-    std::tuple<RdmaEndpointId, error> parseEndpointIdFromRequestPayload(const MemoryRangePtr requestMemoreRange);
-
     std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
 
     std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId);
@@ -84,6 +95,7 @@ private:
     std::tuple<RdmaBufferPtr, error> handleOperationRequest(const RdmaEndpointId & endpointId,
                                                             RdmaConnectionPtr connection);
 
+    // Executor to process RDMA operations
     RdmaExecutorPtr executor = nullptr;
 
     // Timeout for RDMA operation completions

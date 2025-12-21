@@ -19,8 +19,8 @@ inline LoggerConfig GetDefaultLoggerConfig()
     kvalog::Logger::Config config;
     config.format = kvalog::OutputFormat::Terminal;
     config.fields = kvalog::LogFieldConfig{ .includeAppName = true,
-                                            .includeProcessId = true,
-                                            .includeThreadId = true,
+                                            .includeProcessId = false,
+                                            .includeThreadId = false,
                                             .includeModuleName = true,
                                             .includeLogLevel = true,
                                             .includeFile = true,
