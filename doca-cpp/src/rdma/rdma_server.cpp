@@ -3,11 +3,14 @@
 #include "doca-cpp/logging/logging.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
     .moduleName = "rdma::server",
 };
+}  // namespace
 DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
 #endif
 
