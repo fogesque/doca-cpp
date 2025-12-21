@@ -347,6 +347,7 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
         return errors::New("RDMA engine is not initialized");
     }
 
+    // Create server address object
     auto [address, err] = RdmaAddress::Create(RdmaAddress::Type::ipv4, serverAddress, serverPort);
     if (err) {
         return errors::Wrap(err, "Failed to create server RDMA address");
@@ -354,9 +355,8 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
 
     DOCA_CPP_LOG_DEBUG("Created RDMA address");
 
-    // Set connection user data
-    auto connectionState = RdmaConnection::State::idle;
-    auto connectionUserData = doca::Data(static_cast<void *>(&connectionState));
+    // Connect to server address
+    auto connectionUserData = doca::Data();
     err = this->rdmaEngine->ConnectToAddress(address, connectionUserData);
     if (err) {
         return errors::Wrap(err, "Failed to connect to server RDMA address");
@@ -367,13 +367,9 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
     DOCA_CPP_LOG_DEBUG("Waiting for connection to get to established state...");
 
     // Wait for connection to be established
-    const auto desiredState = RdmaConnection::State::established;
-    err = this->waitForConnectionState(desiredState, connectionState, 5000ms);
-    if (err) {
-        if (errors::Is(err, ErrorType::TimeoutExpired)) {
-            return errors::Wrap(err, "Failed to wait for RDMA connection establishment due to timeout");
-        }
-        return errors::Wrap(err, "Failed to wait for RDMA connection establishment");
+    while (this->activeConnections.empty()) {
+        std::this_thread::sleep_for(10us);
+        std::ignore = this->progressEngine->Progress();
     }
 
     DOCA_CPP_LOG_DEBUG("Connection was established");
