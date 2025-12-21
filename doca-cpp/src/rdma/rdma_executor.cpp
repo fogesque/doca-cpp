@@ -484,7 +484,7 @@ void RdmaExecutor::AddActiveConnection(RdmaConnectionPtr connection)
 void RdmaExecutor::RemoveActiveConnection(RdmaConnectionId connectionId)
 {
     this->activeConnections.erase(connectionId);
-    DOCA_CPP_LOG_DEBUG(std::format("Moved requested connection (ID: {}) to active connections list", connectionId));
+    DOCA_CPP_LOG_DEBUG(std::format("Removed connection (ID: {}) from active connections list", connectionId));
 }
 
 // FIXME: Temporary function for getting active connection for client
