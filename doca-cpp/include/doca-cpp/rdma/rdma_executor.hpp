@@ -52,7 +52,7 @@ using namespace std::chrono_literals;
 namespace doca::rdma
 {
 
-// ----------------------------------------------------------------------------
+// --------------------------------------------------operation type is send, write, or read--------------------------
 // Forward declarations
 // ----------------------------------------------------------------------------
 class RdmaExecutor;
@@ -80,12 +80,20 @@ struct OperationRequest {
         write,
     };
 
+    // Operation type
     Type type;
+    // Operation source buffer
     RdmaBufferPtr sourceBuffer = nullptr;
+    // Operation destination buffer
     RdmaBufferPtr destinationBuffer = nullptr;
+    // Operation affected bytes
     std::size_t bytesAffected = 0;
+    // Operation connection: used only with every operation types except receive
+    RdmaConnectionPtr requestConnection = nullptr;
 
+    // Responce promise
     OperationRequestPromise responcePromise = nullptr;
+    // Connection promise: used only when operation type is receive
     OperationConnectionPromise connectionPromise = nullptr;
 };
 
@@ -100,8 +108,6 @@ inline auto TimeoutExpired = errors::New("Timeout expired");
 class RdmaExecutor
 {
 public:
-    const std::size_t TasksQueueSizeThreshold = 20;
-
     static std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr initialDevice);
 
     error Start();

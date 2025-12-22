@@ -126,10 +126,10 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
         .type = OperationRequest::Type::send,
         .sourceBuffer = requestBuffer,
         .destinationBuffer = nullptr,
+        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    sendOperationRequest.connectionPromise->set_value(connection);
 
     // Submit send task for sending request
     auto [requestAwaitable, err] = this->executor->SubmitOperation(sendOperationRequest);
@@ -209,11 +209,10 @@ std::tuple<RdmaBufferPtr, error> RdmaClient::handleSendRequest(const RdmaEndpoin
         .type = OperationRequest::Type::send,
         .sourceBuffer = endpointBuffer,
         .destinationBuffer = nullptr,
+        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    // Set promise connection to use it in executor
-    sendOperation.connectionPromise->set_value(connection);
 
     auto [awaitable, err] = this->executor->SubmitOperation(sendOperation);
     if (err) {
@@ -232,6 +231,7 @@ std::tuple<RdmaBufferPtr, error> RdmaClient::handleReceiveRequest(const RdmaEndp
         .type = OperationRequest::Type::receive,
         .sourceBuffer = endpointBuffer,
         .destinationBuffer = nullptr,
+        .requestConnection = nullptr,  // not needed in receive operation
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
@@ -266,6 +266,7 @@ std::tuple<RdmaBufferPtr, error> RdmaClient::handleOperationRequest(const Operat
         .type = OperationRequest::Type::receive,
         .sourceBuffer = nullptr,
         .destinationBuffer = this->remoteDescriptorBuffer,
+        .requestConnection = nullptr,  // not needed in receive operation
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
@@ -307,10 +308,10 @@ std::tuple<RdmaBufferPtr, error> RdmaClient::handleOperationRequest(const Operat
         .type = type,
         .sourceBuffer = sourceBuffer,
         .destinationBuffer = destinationBuffer,
+        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    rdmaOperation.connectionPromise->set_value(connection);
 
     auto [awaitable, submErr] = this->executor->SubmitOperation(rdmaOperation);
     if (submErr) {
@@ -327,10 +328,10 @@ std::tuple<RdmaBufferPtr, error> RdmaClient::handleOperationRequest(const Operat
         .type = OperationRequest::Type::send,
         .sourceBuffer = nullptr,  // empty message
         .destinationBuffer = nullptr,
+        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    ackOperation.connectionPromise->set_value(connection);
 
     auto [ackAwaitable, ackErr] = this->executor->SubmitOperation(ackOperation);
     if (ackErr) {

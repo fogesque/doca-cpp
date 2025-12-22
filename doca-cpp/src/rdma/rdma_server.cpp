@@ -163,6 +163,7 @@ error RdmaServer::Serve()
             .type = OperationRequest::Type::receive,
             .sourceBuffer = nullptr,
             .destinationBuffer = requestRdmaBuffer,
+            .requestConnection = nullptr,  // not needed in receive operation
             .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
             .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
         };
@@ -328,6 +329,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleSendRequest(const RdmaEndpoin
         .type = OperationRequest::Type::receive,
         .sourceBuffer = nullptr,
         .destinationBuffer = endpointBuffer,
+        .requestConnection = nullptr,  // not needed in receive operation
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
@@ -353,11 +355,10 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndp
         .type = OperationRequest::Type::send,
         .sourceBuffer = endpointBuffer,
         .destinationBuffer = nullptr,
+        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    // Set promise connection to use it in executor
-    sendOperation.connectionPromise->set_value(connection);
 
     auto [awaitable, err] = this->executor->SubmitOperation(sendOperation);
     if (err) {
@@ -392,11 +393,10 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
         .type = OperationRequest::Type::send,
         .sourceBuffer = bufferDescriptor,
         .destinationBuffer = nullptr,
+        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
-    // Set promise connection to use it in executor
-    sendOperation.connectionPromise->set_value(connection);
 
     auto [awaitable, err] = this->executor->SubmitOperation(sendOperation);
     if (err) {
@@ -418,6 +418,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
         .type = OperationRequest::Type::receive,
         .sourceBuffer = nullptr,
         .destinationBuffer = nullptr,  // empty message
+        .requestConnection = nullptr,  // not needed in receive operation
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
