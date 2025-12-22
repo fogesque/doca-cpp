@@ -100,8 +100,11 @@ public:
 
     static Builder Create(size_t numElements);
 
-    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, void * address, size_t length);
-    std::tuple<BufferPtr, error> AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data);
+    // "Nice" API design from NVIDIA DOCA:
+    // This methods is probably used for creating buffer that points to remote memory 
+    std::tuple<BufferPtr, error> AllocBufferByAddress(MemoryMapPtr mmap, void * address, size_t length);
+    // This methods is probably used for creating buffer that points to local memory
+    std::tuple<BufferPtr, error> AllocBufferByData(MemoryMapPtr mmap, void * data, size_t length);
 
     error Stop();
     doca_buf_inventory * GetNative() const;

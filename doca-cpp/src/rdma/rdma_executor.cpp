@@ -79,7 +79,7 @@ RdmaExecutor::~RdmaExecutor()
     DOCA_CPP_LOG_DEBUG("Executor destroyed successfully");
 }
 
-error doca::rdma::RdmaExecutor::Start()
+error RdmaExecutor::Start()
 {
     DOCA_CPP_LOG_DEBUG("Starting RDMA executor...");
 
@@ -490,6 +490,7 @@ std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection()
 void RdmaExecutor::workerLoop()
 {
     while (true) {
+        // Get operation request from operations queue
         OperationRequest request;
         {
             std::unique_lock lock(this->queueMutex);
@@ -504,6 +505,7 @@ void RdmaExecutor::workerLoop()
             this->operationQueue.pop();
             DOCA_CPP_LOG_DEBUG("Worker thread took operation from queue");
         }
+        // Execute operation from queue
         auto responce = this->executeOperation(request);
 
         // If error occured, connection promise won't have value, so set it to null
@@ -565,7 +567,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     if (request.sourceBuffer) {
-        auto [buffer, err] = this->getDocaBuffer(request.sourceBuffer);
+        auto [buffer, err] = this->getLocalDocaBuffer(request.sourceBuffer);
         if (err) {
             return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
@@ -642,7 +644,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
 
     // If destination buffer is nullptr, Receive empty message
     if (request.destinationBuffer) {
-        auto [buffer, err] = this->getDocaBuffer(request.destinationBuffer);
+        auto [buffer, err] = this->getLocalDocaBuffer(request.destinationBuffer);
         if (err) {
             return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
@@ -744,13 +746,13 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
-    auto [srcBuf, srcBufErr] = this->getDocaBuffer(request.sourceBuffer);
+    auto [srcBuf, srcBufErr] = this->getRemoteDocaBuffer(request.sourceBuffer);
     if (srcBufErr) {
         return { nullptr, errors::Wrap(srcBufErr, "Failed to get doca buffer") };
     }
 
     // Get DOCA buffer for destination RDMA buffer
-    auto [dstBuf, dstBufErr] = this->getDocaBuffer(request.destinationBuffer);
+    auto [dstBuf, dstBufErr] = this->getLocalDocaBuffer(request.destinationBuffer);
     if (dstBufErr) {
         return { nullptr, errors::Wrap(dstBufErr, "Failed to get doca buffer") };
     }
@@ -831,13 +833,13 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
-    auto [srcBuf, srcBufErr] = this->getDocaBuffer(request.sourceBuffer);
+    auto [srcBuf, srcBufErr] = this->getLocalDocaBuffer(request.sourceBuffer);
     if (srcBufErr) {
         return { nullptr, errors::Wrap(srcBufErr, "Failed to get doca buffer") };
     }
 
     // Get DOCA buffer for destination RDMA buffer
-    auto [dstBuf, dstBufErr] = this->getDocaBuffer(request.destinationBuffer);
+    auto [dstBuf, dstBufErr] = this->getRemoteDocaBuffer(request.destinationBuffer);
     if (dstBufErr) {
         return { nullptr, errors::Wrap(dstBufErr, "Failed to get doca buffer") };
     }
@@ -927,9 +929,8 @@ error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::
     return nullptr;
 }
 
-error doca::rdma::RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desiredState,
-                                                 RdmaTaskInterface::State & changingState,
-                                                 std::chrono::milliseconds waitTimeout)
+error RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desiredState, RdmaTaskInterface::State & changingState,
+                                     std::chrono::milliseconds waitTimeout)
 {
     if (this->progressEngine == nullptr) {
         return errors::New("Progress engine is null");
@@ -951,9 +952,8 @@ error doca::rdma::RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desire
     return nullptr;
 }
 
-error doca::rdma::RdmaExecutor::waitForConnectionState(RdmaConnection::State desiredState,
-                                                       RdmaConnection::State & changingState,
-                                                       std::chrono::milliseconds waitTimeout)
+error RdmaExecutor::waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
+                                           std::chrono::milliseconds waitTimeout)
 {
     if (this->progressEngine == nullptr) {
         return errors::New("Progress engine is null");
@@ -971,7 +971,7 @@ error doca::rdma::RdmaExecutor::waitForConnectionState(RdmaConnection::State des
     return nullptr;
 }
 
-std::tuple<doca::BufferPtr, error> doca::rdma::RdmaExecutor::getDocaBuffer(RdmaBufferPtr rdmaBuffer)
+std::tuple<doca::BufferPtr, error> RdmaExecutor::getLocalDocaBuffer(RdmaBufferPtr rdmaBuffer)
 {
     if (rdmaBuffer == nullptr) {
         return { nullptr, errors::New("RDMA buffer is null") };
@@ -982,7 +982,6 @@ std::tuple<doca::BufferPtr, error> doca::rdma::RdmaExecutor::getDocaBuffer(RdmaB
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
     }
-    auto & memorySpan = *memoryRange;
 
     // Get MemoryMap from buffer
     auto [memoryMap, mapErr] = rdmaBuffer->GetMemoryMap();
@@ -991,8 +990,36 @@ std::tuple<doca::BufferPtr, error> doca::rdma::RdmaExecutor::getDocaBuffer(RdmaB
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] =
-        this->bufferInventory->AllocBuffer(memoryMap, static_cast<void *>(memorySpan.data()), memorySpan.size());
+    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByData(
+        memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
+    if (bufErr) {
+        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
+    }
+
+    return { buffer, nullptr };
+}
+
+std::tuple<doca::BufferPtr, error> RdmaExecutor::getRemoteDocaBuffer(RdmaBufferPtr rdmaBuffer)
+{
+    if (rdmaBuffer == nullptr) {
+        return { nullptr, errors::New("RDMA buffer is null") };
+    }
+
+    // Get buffer memory range
+    auto [memoryRange, err] = rdmaBuffer->GetMemoryRange();
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
+    }
+
+    // Get MemoryMap from buffer
+    auto [memoryMap, mapErr] = rdmaBuffer->GetMemoryMap();
+    if (mapErr) {
+        return { nullptr, errors::Wrap(mapErr, "Failed to get memory map from buffer") };
+    }
+
+    // Get doca::Buffer from BufferInventory
+    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
+        memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
     }

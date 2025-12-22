@@ -257,34 +257,34 @@ void doca::BufferInventory::Deleter::Delete(doca_buf_inventory * inv)
     }
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, void * addr, size_t length)
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(MemoryMapPtr mmap, void * addr, size_t length)
 {
     if (!this->inventory) {
-        return { nullptr, errors::New("inventory is null") };
+        return { nullptr, errors::New("Buffer inventory is null") };
     }
 
     doca_buf * buf = nullptr;
     auto err =
         FromDocaError(doca_buf_inventory_buf_get_by_addr(this->inventory, mmap->GetNative(), addr, length, &buf));
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to allocate buffer from inventory") };
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by address from inventory") };
     }
 
     auto managedBuffer = Buffer::CreateRef(buf);
     return { managedBuffer, nullptr };
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data)
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(MemoryMapPtr mmap, void * data, size_t length)
 {
     if (!this->inventory) {
-        return { nullptr, errors::New("inventory is null") };
+        return { nullptr, errors::New("Buffer inventory is null") };
     }
 
     doca_buf * buf = nullptr;
-    auto err = FromDocaError(doca_buf_inventory_buf_get_by_data(
-        this->inventory, mmap->GetNative(), static_cast<void *>(data.data()), data.size_bytes(), &buf));
+    auto err =
+        FromDocaError(doca_buf_inventory_buf_get_by_data(this->inventory, mmap->GetNative(), data, length, &buf));
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to allocate buffer from inventory") };
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by data from inventory") };
     }
 
     auto managedBuffer = Buffer::CreateRef(buf);

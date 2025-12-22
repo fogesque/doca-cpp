@@ -20,7 +20,7 @@ namespace doca::rdma
  */
 namespace RdmaRequestMessageFormat
 {
-constexpr auto messageBufferSize = 1024;  // 1024 bytes: 2 for path size, 1020 for path, 2 for operation code
+constexpr auto messageBufferSize = 4096;  // 1024 bytes: 2 for path size, 1020 for path, 2 for operation code
 
 constexpr auto messageEndpointSizeOffset = 0x0000;
 constexpr auto messageEndpointSizeLength = 2;  // bytes
