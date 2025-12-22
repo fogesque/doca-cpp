@@ -97,10 +97,10 @@ struct OperationRequest {
     OperationConnectionPromise connectionPromise = nullptr;
 };
 
-namespace ErrorType
+namespace ErrorTypes
 {
 inline auto TimeoutExpired = errors::New("Timeout expired");
-}  // namespace ErrorType
+}  // namespace ErrorTypes
 
 // ----------------------------------------------------------------------------
 // RdmaExecutor

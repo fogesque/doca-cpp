@@ -99,7 +99,7 @@ private:
     RdmaExecutorPtr executor = nullptr;
 
     // Timeout for RDMA operation completions
-    const std::chrono::milliseconds operationTimeout = 2000ms;
+    const std::chrono::milliseconds operationTimeout = 10000ms;
 
     // Serving control for graceful shutdown
     std::atomic_bool continueServing = true;

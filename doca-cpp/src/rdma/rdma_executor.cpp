@@ -291,7 +291,7 @@ error doca::rdma::RdmaExecutor::Start()
     const auto desiredState = Context::State::running;
     err = this->waitForContextState(desiredState);
     if (err) {
-        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return errors::Wrap(err, "Failed to wait for desired context state due to timeout");
         }
         return errors::Wrap(err, "Failed to wait for desired context state");
@@ -599,7 +599,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     const auto waitTimeout = 5000ms;
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
     if (err) {
-        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion due to timeout") };
         }
         return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion") };
@@ -675,7 +675,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     const auto waitTimeout = 5000ms;
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
     if (err) {
-        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion due to timeout") };
         }
         return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion") };
@@ -783,7 +783,7 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     const auto waitTimeout = 5000ms;
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
     if (err) {
-        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA read task completion due to timeout") };
         }
         return { nullptr, errors::Wrap(err, "Failed to wait for RDMA read task completion") };
@@ -870,7 +870,7 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     const auto waitTimeout = 5000ms;
     err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
     if (err) {
-        if (errors::Is(err, ErrorType::TimeoutExpired)) {
+        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA write task completion due to timeout") };
         }
         return { nullptr, errors::Wrap(err, "Failed to wait for RDMA write task completion") };
@@ -914,7 +914,7 @@ error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::
     auto currState = initialState;
     while (currState != desiredState) {
         if (this->timeoutExpired(startTime, waitTimeout)) {
-            return ErrorType::TimeoutExpired;
+            return ErrorTypes::TimeoutExpired;
         }
         std::this_thread::sleep_for(10us);
         auto [newState, err] = this->rdmaContext->GetState();
@@ -938,7 +938,7 @@ error doca::rdma::RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desire
     const auto startTime = std::chrono::steady_clock::now();
     while (changingState != desiredState) {
         if (this->timeoutExpired(startTime, waitTimeout)) {
-            return ErrorType::TimeoutExpired;
+            return ErrorTypes::TimeoutExpired;
         }
         std::this_thread::sleep_for(10us);
         this->progressEngine->Progress();
@@ -962,7 +962,7 @@ error doca::rdma::RdmaExecutor::waitForConnectionState(RdmaConnection::State des
     const auto startTime = std::chrono::steady_clock::now();
     while (changingState != desiredState) {
         if (this->timeoutExpired(startTime, waitTimeout)) {
-            return ErrorType::TimeoutExpired;
+            return ErrorTypes::TimeoutExpired;
         }
         std::this_thread::sleep_for(10us);
         this->progressEngine->Progress();

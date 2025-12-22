@@ -179,6 +179,11 @@ error RdmaServer::Serve()
         // Wait for request to come
         auto [requestBuffer, reqErr] = requestAwaitable.AwaitWithTimeout(this->operationTimeout);
         if (reqErr) {
+            // If no request was received after timeout, server will create new receive task and wait again
+            if (errors::Is(reqErr, ErrorTypes::TimeoutExpired)) {
+                DOCA_CPP_LOG_DEBUG("Receive task timeout expired, server will continue with new receive task");
+                continue;
+            }
             return errors::Wrap(reqErr, "Failed to execute receive operation");
         }
         auto requestConnection = requestAwaitable.GetConnection();
