@@ -77,9 +77,9 @@ option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_SAMPLES "Build samples" OFF)
 
 if(BUILD_TESTS)
-    add_subdirectory(doca-cpp/tests)
+    add_subdirectory(tests)
 endif()
 
 if(BUILD_SAMPLES)
-    add_subdirectory(doca-cpp/samples)
+    add_subdirectory(samples)
 endif()
