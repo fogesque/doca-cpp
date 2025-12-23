@@ -20,7 +20,7 @@ namespace doca::rdma
  */
 namespace RdmaRequestMessageFormat
 {
-constexpr auto messageBufferSize = 4096;  // 1024 bytes: 2 for path size, 1020 for path, 2 for operation code
+constexpr auto messageBufferSize = 1024;  // 1024 bytes: 2 for path size, 1020 for path, 2 for operation code
 
 constexpr auto messageEndpointSizeOffset = 0x0000;
 constexpr auto messageEndpointSizeLength = 2;  // bytes
@@ -67,7 +67,7 @@ inline std::tuple<RdmaEndpointId, error> ParseEndpointIdFromPayload(const std::s
     // Extract path string
     const auto pathOffset = RdmaRequestMessageFormat::messageEndpointPathOffset;
     const char * pathPtr = reinterpret_cast<const char *>(ptr + pathOffset);
-    std::string path(pathPtr, pathLen);
+    std::string epPath(pathPtr, pathLen);
 
     // Read opcode located immediately after the path
     const size_t opcodeOffset = RdmaRequestMessageFormat::messageEndpointPathOffset + pathLen;
@@ -75,15 +75,29 @@ inline std::tuple<RdmaEndpointId, error> ParseEndpointIdFromPayload(const std::s
 
     // Convert opcode to RdmaEndpointType and build endpoint id
     RdmaEndpointType epType = static_cast<RdmaEndpointType>(opcode);
-    RdmaEndpointId endpointId = path + doca::rdma::EndpointTypeToString(epType);
+    RdmaEndpointId endpointId = doca::rdma::MakeEndpointId(epPath, epType);
 
     return { endpointId, nullptr };
 }
 
-inline std::tuple<RdmaBufferPtr, error> MakeRequestBuffer(const RdmaEndpointPath endpointPath,
-                                                          const RdmaEndpointType endpointType)
+inline std::tuple<RdmaBufferPtr, error> FillRequestBufferPayload(RdmaBufferPtr requestBuffer,
+                                                                 const RdmaEndpointPath endpointPath,
+                                                                 const RdmaEndpointType endpointType)
 {
-    auto requestPayload = std::make_shared<MemoryRange>(RdmaRequestMessageFormat::messageBufferSize, 0);
+    const auto requestPayloadSize = requestBuffer->MemoryRangeSize();
+
+    if (requestPayloadSize > RdmaRequestMessageFormat::messageBufferSize) {
+        return { nullptr, errors::New("Request buffer size is bigger than maximum request message buffer size") };
+    }
+
+    if (requestPayloadSize < RdmaRequestMessageFormat::messageBufferSize) {
+        return { nullptr, errors::New("Request buffer size is smaller than minimum request message buffer size") };
+    }
+
+    auto [requestPayload, err] = requestBuffer->GetMemoryRange();
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to get memory range of RDMA request buffer") };
+    }
 
     auto * ptr = requestPayload->data();
 
@@ -104,11 +118,6 @@ inline std::tuple<RdmaBufferPtr, error> MakeRequestBuffer(const RdmaEndpointPath
     const size_t opcodeOffset = RdmaRequestMessageFormat::messageEndpointPathOffset + pathLen;
     ptr[opcodeOffset] = static_cast<uint8_t>((opcode >> 8u) & 0xFFu);
     ptr[opcodeOffset + 1] = static_cast<uint8_t>(opcode & 0xFFu);
-
-    auto [requestBuffer, bufErr] = RdmaBuffer::FromMemoryRange(requestPayload);
-    if (bufErr) {
-        return { nullptr, errors::Wrap(bufErr, "Failed to create RDMA request buffer") };
-    }
 
     return { requestBuffer, nullptr };
 }
