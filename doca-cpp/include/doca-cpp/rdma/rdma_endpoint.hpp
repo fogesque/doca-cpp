@@ -152,6 +152,8 @@ std::string EndpointTypeToString(const RdmaEndpointType & type);
 
 RdmaEndpointId MakeEndpointId(const RdmaEndpointPtr endpoint);
 
+RdmaEndpointId MakeEndpointId(const RdmaEndpointPath & endpointPath, const RdmaEndpointType & type);
+
 doca::AccessFlags GetEndpointAccessFlags(const RdmaEndpointType & type);
 
 }  // namespace doca::rdma
