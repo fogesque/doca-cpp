@@ -177,7 +177,7 @@ error RdmaServer::Serve()
         DOCA_CPP_LOG_INFO("Submited receive operation for incoming request");
 
         // Wait for request to come
-        auto [requestBuffer, reqErr] = requestAwaitable.AwaitWithTimeout(this->operationTimeout);
+        auto [requestBuffer, reqErr] = requestAwaitable.Await();
         if (reqErr) {
             // If no request was received after timeout, server will create new receive task and wait again
             if (errors::Is(reqErr, ErrorTypes::TimeoutExpired)) {
@@ -346,7 +346,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleSendRequest(const RdmaEndpoin
 
     DOCA_CPP_LOG_INFO("Submitted RDMA receive operation to executor");
 
-    return awaitable.AwaitWithTimeout(this->operationTimeout);
+    return awaitable.Await();
 }
 
 std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
@@ -372,7 +372,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndp
 
     DOCA_CPP_LOG_INFO("Submitted RDMA send operation to executor");
 
-    return awaitable.AwaitWithTimeout(this->operationTimeout);
+    return awaitable.Await();
 }
 
 std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEndpointId & endpointId,
@@ -410,7 +410,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
 
     DOCA_CPP_LOG_DEBUG("Submitted RDMA send operation to send memory descriptor to client");
 
-    auto [_, sendErr] = awaitable.AwaitWithTimeout(this->operationTimeout);
+    auto [_, sendErr] = awaitable.Await();
     if (sendErr) {
         return { nullptr, errors::Wrap(sendErr, "Failed to send exported descriptor") };
     }
@@ -435,7 +435,7 @@ std::tuple<RdmaBufferPtr, error> RdmaServer::handleOperationRequest(const RdmaEn
 
     DOCA_CPP_LOG_DEBUG("Submitted RDMA receive operation to receive acknowledge from client");
 
-    auto [__, ackErr] = ackAwaitable.AwaitWithTimeout(this->operationTimeout);
+    auto [__, ackErr] = ackAwaitable.Await();
     if (ackErr) {
         return { nullptr, errors::Wrap(ackErr, "Failed to receive acknowledge") };
     }

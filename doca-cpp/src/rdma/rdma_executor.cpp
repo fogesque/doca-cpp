@@ -424,26 +424,6 @@ error RdmaExecutor::ListenToPort(uint16_t port)
     return nullptr;
 }
 
-std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
-{
-    auto operationFuture = request.responcePromise->get_future();
-    auto connectionFuture = request.connectionPromise->get_future();
-    auto awaitable = RdmaAwaitable(operationFuture, connectionFuture);
-    {
-        std::scoped_lock lock(this->queueMutex);
-        if (!this->running) {
-            auto err = errors::New("Executor is shut down");
-            request.responcePromise->set_value({ nullptr, err });
-            request.connectionPromise->set_value(nullptr);
-            return { std::move(awaitable), err };
-        }
-        this->operationQueue.push(std::move(request));
-        DOCA_CPP_LOG_DEBUG("Pushed RDMA operation to executor operations queue");
-    }
-    this->queueCondVar.notify_one();
-    return { std::move(awaitable), nullptr };
-}
-
 void RdmaExecutor::AddRequestedConnection(RdmaConnectionPtr connection)
 {
     const auto & [id, err] = connection->GetId();
@@ -487,6 +467,26 @@ std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection()
     return { this->activeConnections.begin()->second, nullptr };
 }
 
+std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
+{
+    auto operationFuture = request.responcePromise->get_future();
+    auto connectionFuture = request.connectionPromise->get_future();
+    auto awaitable = RdmaAwaitable(operationFuture, connectionFuture);
+    {
+        std::scoped_lock lock(this->queueMutex);
+        if (!this->running) {
+            auto err = errors::New("Executor is shut down");
+            request.responcePromise->set_value({ nullptr, err });
+            request.connectionPromise->set_value(nullptr);
+            return { std::move(awaitable), err };
+        }
+        this->operationQueue.push(std::move(request));
+        DOCA_CPP_LOG_DEBUG("Pushed RDMA operation to executor operations queue");
+    }
+    this->queueCondVar.notify_one();
+    return { std::move(awaitable), nullptr };
+}
+
 void RdmaExecutor::workerLoop()
 {
     while (true) {
@@ -527,6 +527,9 @@ OperationResponce RdmaExecutor::executeOperation(OperationRequest & request)
 {
     switch (request.type) {
         case OperationRequest::Type::send:
+            // FIXME: Temp testing shit
+            std::print("Enter: ");
+            getchar();
             return this->executeSend(request);
         case OperationRequest::Type::receive:
             return this->executeReceive(request);
@@ -598,8 +601,8 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread is waiting for task to complete...");
 
     // Wait for task completion
-    const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
+    // const auto waitTimeout = 5000ms;
+    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion due to timeout") };
@@ -644,7 +647,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
 
     // If destination buffer is nullptr, Receive empty message
     if (request.destinationBuffer) {
-        auto [buffer, err] = this->getLocalDocaBuffer(request.destinationBuffer);
+        auto [buffer, err] = this->getRemoteDocaBuffer(request.destinationBuffer);
         if (err) {
             return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
@@ -674,8 +677,8 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread is waiting for task to complete...");
 
     // Wait for task completion: if it will complete with error, function will return it
-    const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
+    // const auto waitTimeout = 5000ms;
+    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion due to timeout") };
@@ -713,10 +716,10 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     receiveTask->Free();
 
     // Decrement buffer reference count in BufferInventory
-    auto [__, rcErr] = destBuf->DecRefcount();
-    if (rcErr) {
-        return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in buffer inventory") };
-    }
+    // auto [__, rcErr] = destBuf->DecRefcount();
+    // if (rcErr) {
+    //     return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in buffer inventory") };
+    // }
 
     DOCA_CPP_LOG_DEBUG("Worker thread decreased plain doca source and destination buffers reference counts");
 
@@ -782,8 +785,8 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread is waiting for task to complete...");
 
     // Wait for task completion
-    const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
+    // const auto waitTimeout = 5000ms;
+    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA read task completion due to timeout") };
@@ -869,8 +872,8 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread is waiting for task to complete...");
 
     // Wait for task completion
-    const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState, waitTimeout);
+    // const auto waitTimeout = 5000ms;
+    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA write task completion due to timeout") };

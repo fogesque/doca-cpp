@@ -21,7 +21,8 @@ public:
             memory[i] = this->writePattern;
         }
 
-        std::println("User write service's handler called; filled buffer with pattern: {:#x}", this->writePattern);
+        std::println("[User Service] User write service's handler called; filled buffer with pattern: {:#x}",
+                     this->writePattern);
 
         this->writePattern += 0x11;
         return nullptr;
@@ -57,7 +58,7 @@ public:
             outStr << std::setw(2) << static_cast<int>(memory[i]) << " ";
         }
 
-        std::println("User read service's handler called; buffer data: {}", outStr.str());
+        std::println("[User Service] User read service's handler called; buffer data: {}", outStr.str());
         return nullptr;
     }
 

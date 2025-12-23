@@ -187,13 +187,10 @@ inline std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> CreateEndpoin
     std::map<RdmaEndpointPath, RdmaBufferPtr> buffers;
 
     for (const auto & config : configs) {
-        RdmaBufferPtr uniqueBuffer = nullptr;
-
-        // Same paths refer to one buffer
+        // Same paths refer to one unique buffer
         if (!buffers.contains(config.path)) {
             // So if there is new unique path met, allocate buffer
-            auto data = std::make_shared<std::vector<std::uint8_t>>(config.size);
-            auto memrange = std::make_shared<doca::MemoryRange>(data->begin(), data->end());
+            auto memrange = std::make_shared<doca::MemoryRange>(config.size);
             auto buffer = std::make_shared<doca::rdma::RdmaBuffer>();
 
             // Won't return error here
@@ -203,7 +200,7 @@ inline std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> CreateEndpoin
         }
 
         // This will be buffer just created early or from endpoint with same path
-        uniqueBuffer = buffers[config.path];
+        auto uniqueBuffer = buffers[config.path];
 
         auto [ep, err] = doca::rdma::RdmaEndpoint::Create()
                              .SetDevice(device)
