@@ -77,6 +77,21 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
         return errors::Wrap(err, "Failed to map RDMA memory descriptor buffer");
     }
 
+    // Prepare request buffer payload
+    const auto initValues = 0;
+    auto requestMemrange = std::make_shared<MemoryRange>(RdmaRequestMessageFormat::messageBufferSize, initValues);
+    auto [requestBuffer, prepErr] = RdmaBuffer::FromMemoryRange(requestMemrange);
+    if (prepErr) {
+        return errors::Wrap(prepErr, "Failed to prepare request buffer");
+    }
+    this->requestBuffer = requestBuffer;
+
+    // Map request buffer memory
+    err = requestBuffer->MapMemory(this->device, doca::AccessFlags::localReadWrite);
+    if (err) {
+        return errors::Wrap(err, "Failed to map request buffer memory");
+    }
+
     return nullptr;
 }
 
@@ -109,22 +124,17 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
         return errors::Wrap(connErr, "Failed to get active RDMA connection");
     }
 
-    // Prepare request buffer payload
-    auto [requestBuffer, prepErr] = doca::rdma::RdmaRequest::MakeRequestBuffer(endpoint->Path(), endpoint->Type());
-    if (prepErr) {
-        return errors::Wrap(prepErr, "Failed to prepare request buffer");
-    }
-
-    // Map request buffer memory
-    auto mapErr = requestBuffer->MapMemory(this->device, doca::AccessFlags::localReadWrite);
-    if (mapErr) {
-        return errors::Wrap(mapErr, "Failed to map request buffer memory");
+    // Fill request payload
+    auto [filledRequestBuffer, fillErr] =
+        RdmaRequest::FillRequestBufferPayload(this->requestBuffer, endpoint->Path(), endpoint->Type());
+    if (fillErr) {
+        return errors::Wrap(fillErr, "Failed to fill request buffer payload");
     }
 
     // Create send task for executor
     auto sendOperationRequest = OperationRequest{
         .type = OperationRequest::Type::send,
-        .sourceBuffer = requestBuffer,
+        .sourceBuffer = filledRequestBuffer,
         .destinationBuffer = nullptr,
         .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),

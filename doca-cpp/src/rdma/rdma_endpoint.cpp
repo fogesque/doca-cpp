@@ -121,6 +121,11 @@ RdmaEndpointId doca::rdma::MakeEndpointId(const RdmaEndpointPtr endpoint)
     return doca::rdma::EndpointTypeToString(endpoint->Type()) + ":" + endpoint->Path();
 }
 
+RdmaEndpointId doca::rdma::MakeEndpointId(const RdmaEndpointPath & endpointPath, const RdmaEndpointType & type)
+{
+    return doca::rdma::EndpointTypeToString(type) + ":" + endpointPath;
+}
+
 doca::AccessFlags doca::rdma::GetEndpointAccessFlags(const RdmaEndpointType & type)
 {
     switch (type) {
