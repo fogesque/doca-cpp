@@ -19,13 +19,17 @@
     Encapsulates memory mapping to device, buffer management
 */
 
+#include <atomic>
 #include <errors/errors.hpp>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <tuple>
 
 #include "doca-cpp/core/mmap.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
+#include "doca-cpp/rdma/rdma_service_interface.hpp"
 
 namespace doca::rdma
 {
@@ -33,6 +37,8 @@ namespace doca::rdma
 // Forward declarations
 class RdmaEndpoint;
 using RdmaEndpointPtr = std::shared_ptr<RdmaEndpoint>;
+struct RdmaEndpointStorage;
+using RdmaEndpointStoragePtr = std::shared_ptr<RdmaEndpointStorage>;
 
 // Endpoint structures
 
@@ -49,14 +55,6 @@ enum class RdmaEndpointType {
 
 using RdmaEndpointBuffer = RdmaBuffer;
 using RdmaEndpointBufferPtr = RdmaBufferPtr;
-
-// RdmaServiceInterface
-class RdmaServiceInterface
-{
-public:
-    virtual error Handle(RdmaBufferPtr buffer) = 0;
-};
-using RdmaServiceInterfacePtr = std::shared_ptr<RdmaServiceInterface>;
 
 // ----------------------------------------------------------------------------
 // RdmaEndpoint
@@ -119,6 +117,45 @@ private:
     RdmaEndpoint::Config config = {};
 
     RdmaServiceInterfacePtr service = nullptr;
+};
+
+// ----------------------------------------------------------------------------
+// RdmaEndpointStorage
+// ----------------------------------------------------------------------------
+class RdmaEndpointStorage
+{
+public:
+    struct StoredEndpoint {
+        RdmaEndpointPtr endpoint = nullptr;
+        std::atomic_bool endpointLocked = false;
+        std::mutex endpointMutex;
+    };
+
+    static RdmaEndpointStoragePtr Create();
+
+    error RegisterEndpoint(RdmaEndpointPtr endpoint);
+
+    bool Contains(const RdmaEndpointId & endpointId) const;
+    bool Empty() const;
+
+    std::tuple<RdmaEndpointPtr, error> GetEndpoint(const RdmaEndpointId & endpointId);
+
+    std::tuple<bool, error> TryLockEndpoint(const RdmaEndpointId & endpointId);
+    error UnlockEndpoint(const RdmaEndpointId & endpointId);
+
+    error MapEndpointsMemory(doca::DevicePtr device);
+
+    RdmaEndpointStorage() = default;
+    ~RdmaEndpointStorage() = default;
+
+    // Move-only type
+    RdmaEndpointStorage(const RdmaEndpointStorage &) = delete;
+    RdmaEndpointStorage & operator=(const RdmaEndpointStorage &) = delete;
+    RdmaEndpointStorage(RdmaEndpointStorage && other) noexcept = default;
+    RdmaEndpointStorage & operator=(RdmaEndpointStorage && other) = default;
+
+private:
+    std::map<RdmaEndpointId, StoredEndpoint> endpointsMap;
 };
 
 std::string EndpointTypeToString(const RdmaEndpointType & type);
