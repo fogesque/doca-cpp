@@ -151,6 +151,9 @@ error RdmaServer::Serve()
                     // Accept new client
                     asio::ip::tcp::socket socket = co_await acceptor.async_accept(asio::use_awaitable);
 
+                    // Enable TCP keepalive to detect dead connections
+                    socket.set_option(asio::socket_base::keep_alive(true));
+
                     // Create a new session for this client
                     auto session = CommunicationSession::Create(std::move(socket));
 
