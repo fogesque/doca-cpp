@@ -12,6 +12,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Find DOCA (system dependency)
 find_package(DOCA REQUIRED)
 
+# Find Asio
+find_package(asio CONFIG REQUIRED)
+
 # Find errors
 find_package(errors CONFIG REQUIRED)
 
@@ -55,6 +58,7 @@ target_include_directories(${TARGET_NAME}
 
 target_link_libraries(${TARGET_NAME}
     PRIVATE
+        asio::asio
         errors::errors
         kvalog::kvalog
         DOCA::common
