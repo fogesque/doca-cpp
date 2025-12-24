@@ -52,7 +52,7 @@ public:
 
     std::tuple<MemoryMapPtr, error> GetMemoryMap();
 
-    std::tuple<RdmaBufferPtr, error> ExportMemoryDescriptor(doca::DevicePtr device);
+    std::tuple<MemoryRangePtr, error> ExportMemoryDescriptor(doca::DevicePtr device);
 
     std::tuple<MemoryRangePtr, error> GetMemoryRange();
 

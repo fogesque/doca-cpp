@@ -1,5 +1,6 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
+using doca::MemoryRangePtr;
 using doca::rdma::RdmaBuffer;
 using doca::rdma::RdmaBufferPtr;
 
@@ -91,7 +92,7 @@ std::tuple<doca::MemoryMapPtr, error> RdmaBuffer::GetMemoryMap()
     return { this->memoryMap, nullptr };
 }
 
-std::tuple<RdmaBufferPtr, error> RdmaBuffer::ExportMemoryDescriptor(doca::DevicePtr device)
+std::tuple<MemoryRangePtr, error> RdmaBuffer::ExportMemoryDescriptor(doca::DevicePtr device)
 {
     if (this->memoryMap == nullptr) {
         return { nullptr, errors::New("Memory map is null") };
@@ -107,24 +108,10 @@ std::tuple<RdmaBufferPtr, error> RdmaBuffer::ExportMemoryDescriptor(doca::Device
     auto descriptorData = std::make_shared<doca::MemoryRange>(descriptor.size());
     std::ignore = std::copy(descriptor.begin(), descriptor.end(), descriptorData->begin());
 
-    // Create RdmaBuffer for descriptor
-
-    auto descriptorBuffer = std::make_shared<RdmaBuffer>();
-
-    err = descriptorBuffer->RegisterMemoryRange(descriptorData);
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to register memory range to descriptor buffer") };
-    }
-
-    err = descriptorBuffer->MapMemory(device, doca::AccessFlags::localReadWrite);
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to map memory for descriptor buffer") };
-    }
-
-    return { descriptorBuffer, nullptr };
+    return { descriptorData, nullptr };
 }
 
-std::tuple<doca::MemoryRangePtr, error> RdmaBuffer::GetMemoryRange()
+std::tuple<MemoryRangePtr, error> RdmaBuffer::GetMemoryRange()
 {
     if (this->memoryRange == nullptr) {
         return { nullptr, ErrorTypes::MemoryRangeNotRegistered };
@@ -132,7 +119,7 @@ std::tuple<doca::MemoryRangePtr, error> RdmaBuffer::GetMemoryRange()
     return { this->memoryRange, nullptr };
 }
 
-error doca::rdma::RdmaBuffer::SetExportedMemoryMap(MemoryMapPtr memoryMap)
+error RdmaBuffer::SetExportedMemoryMap(MemoryMapPtr memoryMap)
 {
     if (this->memoryMap != nullptr) {
         return errors::New("RdmaBuffer already has a memory map assigned");
