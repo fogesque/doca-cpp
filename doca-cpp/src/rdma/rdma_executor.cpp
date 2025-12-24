@@ -467,6 +467,11 @@ std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection()
     return { this->activeConnections.begin()->second, nullptr };
 }
 
+doca::DevicePtr doca::rdma::RdmaExecutor::GetDevice()
+{
+    return this->device;
+}
+
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
 {
     auto operationFuture = request.responcePromise->get_future();

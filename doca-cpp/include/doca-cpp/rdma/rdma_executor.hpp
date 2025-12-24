@@ -110,6 +110,8 @@ public:
     // FIXME: Temporary function for getting active connection for client
     std::tuple<RdmaConnectionPtr, error> GetActiveConnection();
 
+    doca::DevicePtr GetDevice();
+
     struct Config {
         RdmaEnginePtr initialRdmaEngine = nullptr;
         doca::DevicePtr initialDevice = nullptr;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <asio.hpp>
+#include <asio/experimental/awaitable_operators.hpp>
 #include <errors/errors.hpp>
 #include <map>
 #include <memory>
@@ -7,10 +9,11 @@
 #include <tuple>
 
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/rdma/internal/rdma_request.hpp"
+#include "doca-cpp/rdma/internal/rdma_session.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 #include "doca-cpp/rdma/rdma_executor.hpp"
-#include "doca-cpp/rdma/rdma_request.hpp"
 
 namespace doca::rdma
 {
@@ -35,7 +38,8 @@ public:
 
     /// @brief Method stores user provided RDMA endpoints in server's internal map object.
     /// @param endpoints Vector of RDMA endpoints.
-    void RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
+    /// @return Error pointer if error, nullptr otherwise.
+    error RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
 
     /// @brief Method is used to shutdown server gracefuly. It gives server timeout to shutdown then forces it to stop
     /// if timeout expires.
@@ -80,20 +84,18 @@ public:
     ~RdmaServer();
 
 private:
-    std::map<RdmaEndpointId, RdmaEndpointPtr> endpoints;
+    RdmaEndpointStoragePtr endpointsStorage = nullptr;
 
     doca::DevicePtr device = nullptr;
-    uint16_t port = 12345;
+    uint16_t port = 0;
 
-    error mapEndpointsMemory();
+    asio::awaitable<communication::CommunicationSessionPtr> acceptSession();
 
     std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
 
     std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId);
     std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId,
                                                           RdmaConnectionPtr connection);
-    std::tuple<RdmaBufferPtr, error> handleOperationRequest(const RdmaEndpointId & endpointId,
-                                                            RdmaConnectionPtr connection);
 
     // Executor to process RDMA operations
     RdmaExecutorPtr executor = nullptr;
@@ -103,10 +105,10 @@ private:
 
     // Serving control for graceful shutdown
     std::atomic_bool continueServing = true;
-    std::atomic_bool isServing = false;          // Track if Serve() is running
-    std::mutex serveMutex;                       // Ensure only one Serve() call
-    std::condition_variable shutdownCondVar;     // For timeout coordination
-    std::atomic_bool shutdownRequested = false;  // Signal to exit Await()
+    std::atomic_bool isServing = false;       // Track if Serve() is running
+    std::mutex serveMutex;                    // Ensure only one Serve() call
+    std::condition_variable shutdownCondVar;  // For timeout coordination
+    std::atomic_bool shutdownForced = false;  // Signal to exit server loop immediately
 };
 
 }  // namespace doca::rdma
