@@ -1,7 +1,6 @@
 #include "doca-cpp/rdma/rdma_server.hpp"
 
 #include "doca-cpp/logging/logging.hpp"
-#include "rdma_server.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 namespace
@@ -106,6 +105,8 @@ error RdmaServer::Serve()
         return errors::Wrap(mapErr, "Failed to map endpoints memory");
     }
 
+    DOCA_CPP_LOG_DEBUG("Mapped all endpoint buffers");
+
     // Create Executor
     auto [executor, err] = RdmaExecutor::Create(this->device);
     if (err) {
@@ -128,6 +129,8 @@ error RdmaServer::Serve()
     if (err) {
         return errors::Wrap(err, "Failed to listen to port");
     }
+
+    DOCA_CPP_LOG_DEBUG("Server started to listen to port");
 
     // Spawn communication server coroutines
     try {
@@ -152,6 +155,8 @@ error RdmaServer::Serve()
                     // Accept new client
                     asio::ip::tcp::socket socket = co_await acceptor.async_accept(asio::use_awaitable);
 
+                    DOCA_CPP_LOG_DEBUG("Accepted connection via socket");
+
                     // Enable TCP keepalive to detect dead connections
                     socket.set_option(asio::socket_base::keep_alive(true));
 
@@ -165,9 +170,13 @@ error RdmaServer::Serve()
                                        serverInternalError = handleError;
                                        return;
                                    });
+
+                    DOCA_CPP_LOG_DEBUG("Spawned handling coroutine");
                 }
             },
             asio::detached);
+
+        DOCA_CPP_LOG_DEBUG("Spawned coroutine with sessions management");
 
         DOCA_CPP_LOG_INFO("Server is now listening for incoming requests");
 
@@ -197,6 +206,7 @@ error RdmaServer::Serve()
         }
 
     } catch (const std::exception & exception) {
+        DOCA_CPP_LOG_ERROR("Server got exception");
         return errors::New("Caught exception from communication handler: " + std::string(exception.what()));
     }
 

@@ -1,5 +1,19 @@
 #include "doca-cpp/rdma/rdma_client.hpp"
 
+#include "doca-cpp/logging/logging.hpp"
+
+#ifdef DOCA_CPP_ENABLE_LOGGING
+namespace
+{
+inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
+inline const auto loggerContext = kvalog::Logger::Context{
+    .appName = "doca-cpp",
+    .moduleName = "rdma::client",
+};
+}  // namespace
+DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
+#endif
+
 using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
@@ -44,6 +58,8 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
         return errors::Wrap(mapErr, "Failed to map endpoints memory");
     }
 
+    DOCA_CPP_LOG_DEBUG("Mapped all endpoint buffers");
+
     // Create Executor
     auto [executor, err] = RdmaExecutor::Create(this->device);
     if (err) {
@@ -51,17 +67,23 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
     }
     this->executor = executor;
 
+    DOCA_CPP_LOG_DEBUG("Executor was created successfully");
+
     // Start Executor
     err = this->executor->Start();
     if (err) {
         return errors::Wrap(err, "Failed to start RDMA executor");
     }
 
+    DOCA_CPP_LOG_DEBUG("Executor was started successfully");
+
     // Connect to server
     err = this->executor->ConnectToAddress(serverAddress, serverPort);
     if (err) {
         return errors::Wrap(err, "Failed to connect to RDMA server");
     }
+
+    DOCA_CPP_LOG_INFO("Client connected to server");
 
     this->serverAddress = serverAddress;
 
@@ -80,10 +102,14 @@ error RdmaClient::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
             return errors::Wrap(err, "Failed to register RDMA endpoint");
         }
     }
+
+    DOCA_CPP_LOG_INFO("Registered RDMA endpoints");
 }
 
 error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
 {
+    DOCA_CPP_LOG_DEBUG("Endpoint processing requested");
+
     if (this->executor == nullptr) {
         return errors::New("RDMA executor is null");
     }
@@ -99,6 +125,8 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
         return errors::New("Endpoint with given ID is not registered in client");
     }
 
+    DOCA_CPP_LOG_DEBUG("Fetched endpoint from storage");
+
     // Get active connection
     // FIXME: temporary solution: think how to manage client connections
     const auto connectionId = RdmaConnectionId{ 0 };
@@ -107,11 +135,15 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
         return errors::Wrap(connErr, "Failed to get active RDMA connection");
     }
 
+    DOCA_CPP_LOG_DEBUG("Fetched active connection");
+
     // Create Asio io_context (event loop)
     asio::io_context ioContext;
 
     // Create communication session
     auto session = RdmaSessionClient::Create(std::move(asio::ip::tcp::socket{ ioContext }));
+
+    DOCA_CPP_LOG_DEBUG("Created communication session via socket");
 
     // Capture required variables
     auto rdmaExecutor = this->executor;
@@ -129,19 +161,25 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
                 co_return;
             }
 
+            DOCA_CPP_LOG_DEBUG("Connected to communication session");
+
             // Spawn session handler for RDMA performing
             asio::co_spawn(co_await asio::this_coro::executor,
                            doca::rdma::HandleClientSession(session, endpoint, rdmaExecutor, connectionId),
                            [&processingError](std::exception_ptr exception, error handleError) -> void {
                                processingError = handleError;
+                               DOCA_CPP_LOG_ERROR("Session ended with failure");
                                return;
                            });
         },
         asio::detached);
 
+    DOCA_CPP_LOG_DEBUG("Spawned handling coroutine");
+
     ioContext.run();
 
     if (processingError) {
+        DOCA_CPP_LOG_ERROR("Endpoint processing failed");
         return errors::Wrap(processingError, "Failed to process endpoint");
     }
 
