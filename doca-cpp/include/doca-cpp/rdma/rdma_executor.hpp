@@ -103,12 +103,14 @@ public:
 
     // This functions must be considered as private. Due to DOCA fucking callbacks
     // limitations, they are public for now.
-    void AddRequestedConnection(RdmaConnectionPtr connection);
-    void AddActiveConnection(RdmaConnectionPtr connection);
-    void RemoveActiveConnection(RdmaConnectionId connectionId);
+    void OnConnectionRequested(RdmaConnectionPtr connection);
+    void OnConnectionEstablished(RdmaConnectionPtr connection);
+    void OnConnectionClosed(RdmaConnectionId connectionId);
 
-    // FIXME: Temporary function for getting active connection for client
-    std::tuple<RdmaConnectionPtr, error> GetActiveConnection();
+    std::tuple<RdmaConnectionPtr, error> GetActiveConnection(RdmaConnectionId connectionId);
+
+    // Runs event loop iteration with progress engine
+    void Progress();
 
     doca::DevicePtr GetDevice();
 
@@ -137,8 +139,8 @@ private:
     error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
                                  std::chrono::milliseconds waitTimeout = 0ms);
 
-    std::tuple<doca::BufferPtr, error> getLocalDocaBuffer(RdmaBufferPtr rdmaBuffer);
-    std::tuple<doca::BufferPtr, error> getRemoteDocaBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getSourceDocaBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getDestinationDocaBuffer(RdmaBufferPtr rdmaBuffer);
 
     std::atomic<bool> running;
     std::unique_ptr<std::thread> workerThread = nullptr;

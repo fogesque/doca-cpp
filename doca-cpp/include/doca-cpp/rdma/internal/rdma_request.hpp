@@ -16,6 +16,9 @@
 namespace doca::rdma::communication
 {
 
+/// Port where out-of-band communication is handled
+inline constexpr uint16_t Port = 41007;
+
 ///
 /// @brief RDMA operation request message format
 ///
@@ -39,7 +42,36 @@ struct Responce {
         operationRejected = 0x01,
         operationPermitted,
         operationEndpointNotFound,
+        operationEndpointLocked,
+        operationInternalError,
+        operationServiceError,
     };
+
+    static std::string CodeDescription(const Code & code)
+    {
+        switch (code) {
+            case Code::operationRejected:
+                return "Operation rejected";
+                break;
+            case Code::operationPermitted:
+                return "Operation permitted";
+                break;
+            case Code::operationEndpointNotFound:
+                return "Operation endpoint not found";
+                break;
+            case Code::operationEndpointLocked:
+                return "Operation endpoint locked by other session";
+                break;
+            case Code::operationInternalError:
+                return "Operation caused server internal error";
+                break;
+            case Code::operationServiceError:
+                return "Operation service failed";
+                break;
+            default:
+                return "Unknown responce code";
+        }
+    }
 
     using RemoteMemoryDescriptor = std::vector<std::uint8_t>;
 
