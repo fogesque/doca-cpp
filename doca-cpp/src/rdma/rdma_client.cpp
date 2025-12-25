@@ -104,6 +104,8 @@ error RdmaClient::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
     }
 
     DOCA_CPP_LOG_INFO("Registered RDMA endpoints");
+
+    return nullptr;
 }
 
 error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
@@ -176,7 +178,10 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
 
     DOCA_CPP_LOG_DEBUG("Spawned handling coroutine");
 
-    ioContext.run();
+    while (!ioContext.stopped()) {
+        this->executor->Progress();
+        ioContext.poll();
+    }
 
     if (processingError) {
         DOCA_CPP_LOG_ERROR("Endpoint processing failed");

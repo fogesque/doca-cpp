@@ -166,8 +166,11 @@ error RdmaEndpointStorage::RegisterEndpoint(RdmaEndpointPtr endpoint)
         return errors::New("RDMA endpoint with the same ID already registered: " + endpointId);
     }
 
-    auto [_, inserted] = this->endpointsMap.emplace(
-        endpointId, std::move(StoredEndpoint{ .endpoint = endpoint, .endpointLocked = false }));
+    auto storedEndpoint = std::make_shared<StoredEndpoint>();
+    storedEndpoint->endpoint = endpoint;
+    storedEndpoint->endpointLocked.store(false);
+
+    auto [_, inserted] = this->endpointsMap.emplace(endpointId, storedEndpoint);
     if (!inserted) {
         return errors::New("Failed to insert RDMA endpoint to internal storage");
     }
@@ -182,7 +185,7 @@ std::tuple<RdmaEndpointPtr, error> RdmaEndpointStorage::GetEndpoint(const RdmaEn
     }
 
     auto & storedEndpoint = this->endpointsMap.at(endpointId);
-    return { storedEndpoint.endpoint, nullptr };
+    return { storedEndpoint->endpoint, nullptr };
 }
 
 bool RdmaEndpointStorage::Contains(const RdmaEndpointId & endpointId) const
@@ -198,8 +201,8 @@ bool RdmaEndpointStorage::Empty() const
 error RdmaEndpointStorage::MapEndpointsMemory(doca::DevicePtr device)
 {
     {
-        for (auto & [_, endpoint] : this->endpointsMap) {
-            auto err = endpoint.endpoint->Buffer()->MapMemory(
+        for (auto & [_, element] : this->endpointsMap) {
+            auto err = element->endpoint->Buffer()->MapMemory(
                 device, doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite);
             if (err) {
                 return errors::Wrap(err, "Failed to map endpoint memory");
@@ -217,11 +220,11 @@ std::tuple<bool, error> RdmaEndpointStorage::TryLockEndpoint(const RdmaEndpointI
 
     auto & storedEndpoint = this->endpointsMap.at(endpointId);
 
-    std::lock_guard<std::mutex> lock(storedEndpoint.endpointMutex);
-    if (storedEndpoint.endpointLocked.load()) {
+    std::lock_guard<std::mutex> lock(storedEndpoint->endpointMutex);
+    if (storedEndpoint->endpointLocked.load()) {
         return { false, nullptr };
     }
-    storedEndpoint.endpointLocked.store(true);
+    storedEndpoint->endpointLocked.store(true);
     return { true, nullptr };
 }
 
@@ -233,10 +236,10 @@ error RdmaEndpointStorage::UnlockEndpoint(const RdmaEndpointId & endpointId)
 
     auto & storedEndpoint = this->endpointsMap.at(endpointId);
 
-    std::lock_guard<std::mutex> lock(storedEndpoint.endpointMutex);
-    if (!storedEndpoint.endpointLocked.load()) {
+    std::lock_guard<std::mutex> lock(storedEndpoint->endpointMutex);
+    if (!storedEndpoint->endpointLocked.load()) {
         return nullptr;  // already unlocked; do nothing
     }
-    storedEndpoint.endpointLocked.store(false);
+    storedEndpoint->endpointLocked.store(false);
     return nullptr;
 }

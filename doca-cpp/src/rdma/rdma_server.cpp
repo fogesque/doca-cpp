@@ -189,7 +189,7 @@ error RdmaServer::Serve()
                 return errors::Wrap(serverInternalError, "Server internal error");
             }
             this->executor->Progress();
-            ioContext.run_for(std::chrono::milliseconds(100));
+            ioContext.poll();
         }
 
         DOCA_CPP_LOG_INFO("Shutting down server");
@@ -229,6 +229,8 @@ error RdmaServer::RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints)
     }
 
     DOCA_CPP_LOG_INFO("Registered RDMA endpoints");
+
+    return nullptr;
 }
 
 error RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)

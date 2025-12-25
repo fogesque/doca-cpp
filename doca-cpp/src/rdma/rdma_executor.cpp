@@ -387,36 +387,6 @@ error RdmaExecutor::ListenToPort(uint16_t port)
 
     DOCA_CPP_LOG_DEBUG("Started to listen to port");
 
-    DOCA_CPP_LOG_DEBUG("Waiting for connection request...");
-
-    // Wait for connection request
-    while (this->requestedConnections.empty()) {
-        std::this_thread::sleep_for(10us);
-        this->progressEngine->Progress();
-    }
-
-    DOCA_CPP_LOG_DEBUG("Connection was requested");
-
-    // Accept the first requested connection
-    auto it = this->requestedConnections.begin();
-    auto connection = it->second;
-    err = connection->Accept();
-    if (err) {
-        return errors::Wrap(err, "Failed to accept RDMA connection request");
-    }
-
-    DOCA_CPP_LOG_DEBUG("Accepted requested connection");
-
-    DOCA_CPP_LOG_DEBUG("Waiting for connection to be established...");
-
-    // Wait for connection to be established
-    while (this->activeConnections.empty()) {
-        std::this_thread::sleep_for(10us);
-        this->progressEngine->Progress();
-    }
-
-    DOCA_CPP_LOG_DEBUG("Connection is established");
-
     return nullptr;
 }
 
@@ -429,6 +399,8 @@ void RdmaExecutor::OnConnectionRequested(RdmaConnectionPtr connection)
         return;
     }
     this->requestedConnections[id] = connection;
+
+    std::ignore = this->requestedConnections[id]->Accept();
 
     DOCA_CPP_LOG_DEBUG(std::format("Add requested connection (ID: {}) to requested connections list", id));
 }

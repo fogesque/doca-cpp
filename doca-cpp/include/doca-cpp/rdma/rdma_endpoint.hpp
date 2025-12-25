@@ -130,6 +130,7 @@ public:
         std::atomic_bool endpointLocked = false;
         std::mutex endpointMutex;
     };
+    using StoredEndpointPtr = std::shared_ptr<StoredEndpoint>;
 
     static RdmaEndpointStoragePtr Create();
 
@@ -155,7 +156,7 @@ public:
     RdmaEndpointStorage & operator=(RdmaEndpointStorage && other) = default;
 
 private:
-    std::map<RdmaEndpointId, StoredEndpoint> endpointsMap;
+    std::map<RdmaEndpointId, StoredEndpointPtr> endpointsMap;
 };
 
 std::string EndpointTypeToString(const RdmaEndpointType & type);

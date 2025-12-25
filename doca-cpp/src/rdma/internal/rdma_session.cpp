@@ -64,8 +64,8 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
         Responce response;
 
         // Get requested endpoint
-        auto [endpoint, err] = endpointsStorage->GetEndpoint(requestedEndpointId);
-        if (err) {
+        auto [endpoint, epErr] = endpointsStorage->GetEndpoint(requestedEndpointId);
+        if (epErr) {
             response.responceCode = Responce::Code ::operationEndpointNotFound;
             auto err = co_await session->SendResponse(response);
             if (err) {
@@ -244,14 +244,16 @@ asio::awaitable<std::tuple<Request, error>> RdmaSessionServer::ReceiveRequest()
     auto [err0, _] = co_await asio::async_read(this->socket, asio::buffer(&requestLength, sizeof(requestLength)),
                                                asio::as_tuple(asio::use_awaitable));
     if (err0) {
-        co_return errors::New("Failed to read request length from socket: " + err0.message());
+        co_return std::make_tuple(Request(),
+                                  errors::New("Failed to read request length from socket: " + err0.message()));
     }
 
     std::vector<uint8_t> requestBuffer(requestLength);
     auto [err1, __] =
         co_await asio::async_read(this->socket, asio::buffer(requestBuffer), asio::as_tuple(asio::use_awaitable));
     if (err1) {
-        co_return errors::New("Failed to read request payload from socket: " + err1.message());
+        co_return std::make_tuple(Request(),
+                                  errors::New("Failed to read request payload from socket: " + err1.message()));
     }
 
     Request request = MessageSerializer::DeserializeRequest(requestBuffer);
@@ -381,7 +383,7 @@ asio::awaitable<std::tuple<Responce, error>> RdmaSessionClient::SendRequest(cons
             co_return;
         }
 
-        auto [err1, _] =
+        auto [err1, __] =
             co_await asio::async_write(this->socket, asio::buffer(requestBuffer), asio::as_tuple(asio::use_awaitable));
         if (err1) {
             requestError = errors::New("Failed to write request payload to socket: " + err1.message());
@@ -389,15 +391,15 @@ asio::awaitable<std::tuple<Responce, error>> RdmaSessionClient::SendRequest(cons
         }
 
         uint32_t responseLength = 0;
-        auto [err2, _] = co_await asio::async_read(this->socket, asio::buffer(&responseLength, sizeof(responseLength)),
-                                                   asio::as_tuple(asio::use_awaitable));
+        auto [err2, ___] = co_await asio::async_read(
+            this->socket, asio::buffer(&responseLength, sizeof(responseLength)), asio::as_tuple(asio::use_awaitable));
         if (err2) {
             requestError = errors::New("Failed to read responce length from socket: " + err2.message());
             co_return;
         }
 
         std::vector<uint8_t> responseBuffer(responseLength);
-        auto [err3, _] =
+        auto [err3, ____] =
             co_await asio::async_read(this->socket, asio::buffer(responseBuffer), asio::as_tuple(asio::use_awaitable));
         if (err3) {
             requestError = errors::New("Failed to read responce payload from socket: " + err3.message());
@@ -423,7 +425,7 @@ asio::awaitable<std::tuple<Responce, error>> RdmaSessionClient::SendRequest(cons
 asio::awaitable<error> RdmaSessionClient::SendAcknowledge(const Acknowledge & ack, const std::chrono::seconds & timeout)
 {
     if (!this->isConnected) {
-        co_return std::make_tuple(Responce(), errors::New("No session with server via socket; connect first"));
+        co_return errors::New("No session with server via socket; connect first");
     }
 
     auto executor = co_await asio::this_coro::executor;
@@ -442,7 +444,7 @@ asio::awaitable<error> RdmaSessionClient::SendAcknowledge(const Acknowledge & ac
             co_return;
         }
 
-        auto [err1, _] =
+        auto [err1, __] =
             co_await asio::async_write(this->socket, asio::buffer(ackBuffer), asio::as_tuple(asio::use_awaitable));
         if (err1) {
             ackError = errors::New("Failed to write acknowledge payload to socket: " + err1.message());
@@ -457,7 +459,7 @@ asio::awaitable<error> RdmaSessionClient::SendAcknowledge(const Acknowledge & ac
 
     co_await (doAck() || ackTimeout());
     if (ackError) {
-        co_return std::make_tuple(Responce(), errors::Wrap(ackError, "Failed to send acknowledge via socket"));
+        co_return errors::Wrap(ackError, "Failed to send acknowledge via socket");
     }
 
     co_return nullptr;
@@ -474,15 +476,25 @@ asio::awaitable<error> RdmaSessionServer::PerformRdmaOperation(RdmaExecutorPtr e
     const auto endpointType = endpoint->Type();
     switch (endpointType) {
         case RdmaEndpointType::send:
-            co_return RdmaSessionServer::PerformRdmaReceive(executor, endpoint);
+            {
+                auto err = co_await RdmaSessionServer::PerformRdmaReceive(executor, endpoint);
+                co_return err;
+            }
         case RdmaEndpointType::receive:
-            co_return RdmaSessionServer::PerformRdmaSend(executor, endpoint, connection);
+            {
+                auto err = co_await RdmaSessionServer::PerformRdmaSend(executor, endpoint, connection);
+                co_return err;
+            }
         case RdmaEndpointType::write:
-            // Server does nothing when write is performed
-            co_return nullptr;
+            {
+                // Server does nothing when write is performed
+                co_return nullptr;
+            }
         case RdmaEndpointType::read:
-            // Server does nothing when read is performed
-            co_return nullptr;
+            {
+                // Server does nothing when read is performed
+                co_return nullptr;
+            }
         default:
             co_return errors::New("Unknown endpoint type in request");
     }
@@ -500,13 +512,25 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaOperation(RdmaExecutorPtr e
     const auto endpointType = endpoint->Type();
     switch (endpointType) {
         case RdmaEndpointType::send:
-            co_return RdmaSessionClient::PerformRdmaSend(executor, endpoint, connection);
+            {
+                auto err = co_await RdmaSessionClient::PerformRdmaSend(executor, endpoint, connection);
+                co_return err;
+            }
         case RdmaEndpointType::receive:
-            co_return RdmaSessionClient::PerformRdmaReceive(executor, endpoint);
+            {
+                auto err = co_await RdmaSessionClient::PerformRdmaReceive(executor, endpoint);
+                co_return err;
+            }
         case RdmaEndpointType::write:
-            co_return RdmaSessionClient::PerformRdmaWrite(executor, endpoint, remoteBuffer, connection);
+            {
+                auto err = co_await RdmaSessionClient::PerformRdmaWrite(executor, endpoint, remoteBuffer, connection);
+                co_return err;
+            }
         case RdmaEndpointType::read:
-            co_return RdmaSessionClient::PerformRdmaRead(executor, endpoint, remoteBuffer, connection);
+            {
+                auto err = co_await RdmaSessionClient::PerformRdmaRead(executor, endpoint, remoteBuffer, connection);
+                co_return err;
+            }
         default:
             co_return errors::New("Unknown endpoint type in request");
     }

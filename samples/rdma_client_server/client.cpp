@@ -52,7 +52,7 @@ int main()
 
     // Create server endpoints
     const auto configs =
-        std::vector<endpoints::Config>({ endpoints::cfg0, endpoints::cfg1, endpoints::cfg2, endpoints::cfg3 });
+        std::vector<endpoints::Config>({ /*endpoints::cfg0, endpoints::cfg1,*/ endpoints::cfg2 /*, endpoints::cfg3*/ });
 
     auto [endpoints, epErr] = endpoints::CreateEndpoints(device, configs);
     if (epErr) {

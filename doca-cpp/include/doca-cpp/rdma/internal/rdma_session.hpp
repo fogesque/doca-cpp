@@ -72,13 +72,13 @@ public:
     ~RdmaSessionServer() = default;
 
     // Receive request from client
-    asio::awaitable<std::tuple<Request, error>> ReceiveRequest();
+    asio::awaitable<std::tuple<communication::Request, error>> ReceiveRequest();
 
     // Send response to client
-    asio::awaitable<error> SendResponse(const Responce & response);
+    asio::awaitable<error> SendResponse(const communication::Responce & response);
 
     // Wait for acknowledgment with timeout
-    asio::awaitable<std::tuple<Acknowledge, error>> ReceiveAcknowledge(std::chrono::seconds timeout);
+    asio::awaitable<std::tuple<communication::Acknowledge, error>> ReceiveAcknowledge(std::chrono::seconds timeout);
 
     // Performs RDMA operation by submitting task to executor
     static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
@@ -97,11 +97,12 @@ public:
     asio::awaitable<error> Connect(const std::string & serverAddress, uint16_t serverPort);
 
     // Send request to server
-    asio::awaitable<std::tuple<Responce, error>> SendRequest(const Request & request,
-                                                             const std::chrono::seconds & timeout);
+    asio::awaitable<std::tuple<communication::Responce, error>> SendRequest(const communication::Request & request,
+                                                                            const std::chrono::seconds & timeout);
 
     // Send acknowledge to server
-    asio::awaitable<error> SendAcknowledge(const Acknowledge & ack, const std::chrono::seconds & timeout);
+    asio::awaitable<error> SendAcknowledge(const communication::Acknowledge & ack,
+                                           const std::chrono::seconds & timeout);
 
     // Performs RDMA operation by submitting task to executor
     static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
