@@ -14,35 +14,62 @@
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 #include "doca-cpp/rdma/rdma_executor.hpp"
 
-namespace doca::rdma::communication
+namespace doca::rdma
 {
 
-inline constexpr uint16_t CommunicationServerPort = 41007;
+namespace constants
+{
+// Timeout for waiting for RDMA operation completion
+inline constexpr std::chrono::milliseconds RdmaOperationTimeout = 5000ms;
+
+}  // namespace constants
 
 // Forward declaration
-class CommunicationSession;
-using CommunicationSessionPtr = std::shared_ptr<CommunicationSession>;
-class CommunicationServer;
-using CommunicationServerPtr = std::shared_ptr<CommunicationServer>;
+class RdmaSession;
+using RdmaSessionPtr = std::shared_ptr<RdmaSession>;
+class RdmaSessionServer;
+using RdmaSessionServerPtr = std::shared_ptr<RdmaSessionServer>;
+class RdmaSessionClient;
+using RdmaSessionClientPtr = std::shared_ptr<RdmaSessionClient>;
 
 using namespace asio::experimental::awaitable_operators;
 using namespace std::chrono_literals;
 
-// Coroutine to handle a communication session
-asio::awaitable<void> HandleServerSession(communication::CommunicationSessionPtr session,
-                                          RdmaEndpointStoragePtr endpointsStorage, RdmaExecutorPtr executor);
+// Coroutine to handle a communication session on server side
+asio::awaitable<error> HandleServerSession(RdmaSessionServerPtr session, RdmaEndpointStoragePtr endpointsStorage,
+                                           RdmaExecutorPtr executor);
 
-class CommunicationSession
+// Coroutine to handle a communication session on client side
+asio::awaitable<error> HandleClientSession(RdmaSessionClientPtr session, RdmaEndpointPtr endpoint,
+                                           RdmaExecutorPtr executor, RdmaConnectionId connectionId);
+
+class RdmaSession
 {
 public:
-    CommunicationSessionPtr static Create(asio::ip::tcp::socket socket)
-    {
-        auto session = std::make_shared<CommunicationSession>(std::move(socket));
-        return session;
-    }
+    RdmaSession(asio::ip::tcp::socket socket);
+    ~RdmaSession();
 
-    CommunicationSession(asio::ip::tcp::socket socket) : socket(std::move(socket)) {}
-    ~CommunicationSession();
+    // Check session is open
+    bool IsOpen() const;
+
+    // Submits RDMA send to given executor
+    static asio::awaitable<error> PerformRdmaSend(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
+                                                  RdmaConnectionPtr connection);
+
+    // Submits RDMA receive to given executor
+    static asio::awaitable<error> PerformRdmaReceive(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint);
+
+protected:
+    asio::ip::tcp::socket socket;
+};
+
+class RdmaSessionServer : public RdmaSession
+{
+public:
+    RdmaSessionServerPtr static Create(asio::ip::tcp::socket socket);
+
+    RdmaSessionServer(asio::ip::tcp::socket socket);
+    ~RdmaSessionServer() = default;
 
     // Receive request from client
     asio::awaitable<std::tuple<Request, error>> ReceiveRequest();
@@ -53,15 +80,43 @@ public:
     // Wait for acknowledgment with timeout
     asio::awaitable<std::tuple<Acknowledge, error>> ReceiveAcknowledge(std::chrono::seconds timeout);
 
-    // Check session is open
-    bool IsOpen() const;
-
-private:
-    asio::ip::tcp::socket socket;
+    // Performs RDMA operation by submitting task to executor
+    static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
+                                                       RdmaConnectionId connectionId);
 };
 
-// Coroutine to handle a communication session
-asio::awaitable<void> HandleClientSession(communication::CommunicationSessionPtr session,
-                                          RdmaEndpointStoragePtr endpointsStorage, RdmaExecutorPtr executor);
+class RdmaSessionClient : public RdmaSession
+{
+public:
+    RdmaSessionClientPtr static Create(asio::ip::tcp::socket socket);
 
-}  // namespace doca::rdma::communication
+    RdmaSessionClient(asio::ip::tcp::socket socket);
+    ~RdmaSessionClient() = default;
+
+    // Connect to server
+    asio::awaitable<error> Connect(const std::string & serverAddress, uint16_t serverPort);
+
+    // Send request to server
+    asio::awaitable<std::tuple<Responce, error>> SendRequest(const Request & request,
+                                                             const std::chrono::seconds & timeout);
+
+    // Send acknowledge to server
+    asio::awaitable<error> SendAcknowledge(const Acknowledge & ack, const std::chrono::seconds & timeout);
+
+    // Performs RDMA operation by submitting task to executor
+    static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
+                                                       RdmaBufferPtr remoteBuffer, RdmaConnectionId connectionId);
+
+    // Submits RDMA write to given executor
+    static asio::awaitable<error> PerformRdmaWrite(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
+                                                   RdmaBufferPtr remoteBuffer, RdmaConnectionPtr connection);
+
+    // Submits RDMA read to given executor
+    static asio::awaitable<error> PerformRdmaRead(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
+                                                  RdmaBufferPtr remoteBuffer, RdmaConnectionPtr connection);
+
+private:
+    bool isConnected = false;
+};
+
+}  // namespace doca::rdma
