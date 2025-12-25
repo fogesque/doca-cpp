@@ -24,8 +24,8 @@ using doca::rdma::RdmaServerPtr;
 
 using doca::rdma::RdmaBufferPtr;
 
-using doca::rdma::communication::CommunicationSession;
-using doca::rdma::communication::CommunicationSessionPtr;
+using doca::rdma::RdmaSession;
+using doca::rdma::RdmaSessionPtr;
 
 // ----------------------------------------------------------------------------
 // RdmaServer::Builder
@@ -123,7 +123,7 @@ error RdmaServer::Serve()
 
     DOCA_CPP_LOG_DEBUG("Executor was started successfully");
 
-    // Start listen to port and accept connection
+    // Start listen to port and accept RDMA connection
     err = this->executor->ListenToPort(this->port);
     if (err) {
         return errors::Wrap(err, "Failed to listen to port");
@@ -136,17 +136,18 @@ error RdmaServer::Serve()
 
         // Create acceptor to listen for incoming connections
         auto acceptor = asio::ip::tcp::acceptor(
-            ioContext,
-            asio::ip::tcp::endpoint(asio::ip::tcp::v4(), doca::rdma::communication::CommunicationServerPort));
+            ioContext, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), doca::rdma::communication::Port));
 
         // Capture required variables
         auto rdmaEndpoints = this->endpointsStorage;
         auto rdmaExecutor = this->executor;
 
+        error serverInternalError = nullptr;
+
         // Spawn server accept loop as coroutine
         asio::co_spawn(
             ioContext,
-            [&acceptor, &rdmaEndpoints, &rdmaExecutor]() -> asio::awaitable<void> {
+            [&]() -> asio::awaitable<void> {
                 while (true) {
                     // Accept new client
                     asio::ip::tcp::socket socket = co_await acceptor.async_accept(asio::use_awaitable);
@@ -155,29 +156,39 @@ error RdmaServer::Serve()
                     socket.set_option(asio::socket_base::keep_alive(true));
 
                     // Create a new session for this client
-                    auto session = CommunicationSession::Create(std::move(socket));
+                    auto session = RdmaSessionServer::Create(std::move(socket));
 
                     // Spawn session handler for this client
                     asio::co_spawn(co_await asio::this_coro::executor,
-                                   doca::rdma::communication::HandleServerSession(session, rdmaEndpoints, rdmaExecutor),
-                                   asio::detached);
+                                   doca::rdma::HandleServerSession(session, rdmaEndpoints, rdmaExecutor),
+                                   [&serverInternalError](std::exception_ptr exception, error handleError) -> void {
+                                       serverInternalError = handleError;
+                                       return;
+                                   });
                 }
             },
             asio::detached);
 
-        DOCA_CPP_LOG_INFO("Server is now listening for incoming connections");
+        DOCA_CPP_LOG_INFO("Server is now listening for incoming requests");
 
         // Run event loop iteration
         while (this->continueServing.load()) {
+            if (serverInternalError) {
+                DOCA_CPP_LOG_ERROR("Server got internal error in session handler");
+                acceptor.close();
+                ioContext.stop();
+                return errors::Wrap(serverInternalError, "Server internal error");
+            }
+            this->executor->Progress();
             ioContext.run_for(std::chrono::milliseconds(100));
         }
 
         DOCA_CPP_LOG_INFO("Shutting down server");
 
         // Shutdown process began: run io context to process remaining events till shutdown is forced
+        acceptor.close();
+        ioContext.stop();
         while (!this->shutdownForced.load()) {
-            acceptor.close();
-            ioContext.stop();
             if (ioContext.stopped()) {
                 break;
             }
@@ -185,8 +196,8 @@ error RdmaServer::Serve()
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-    } catch (const std::exception & expt) {
-        return errors::New("Caught exception from communication handler: " + std::string(expt.what()));
+    } catch (const std::exception & exception) {
+        return errors::New("Caught exception from communication handler: " + std::string(exception.what()));
     }
 
     DOCA_CPP_LOG_INFO("Stopped serving. No errors occured");
@@ -236,72 +247,3 @@ error RdmaServer::Shutdown(const std::chrono::milliseconds shutdownTimeout)
     // Clean shutdown completed
     return nullptr;
 }
-
-// std::tuple<RdmaBufferPtr, error> RdmaServer::handleRequest(const RdmaEndpointId & endpointId,
-//                                                            RdmaConnectionPtr connection)
-// {
-//     const auto endpointType = this->endpoints.at(endpointId)->Type();
-//     switch (endpointType) {
-//         case RdmaEndpointType::send:
-//             return this->handleSendRequest(endpointId);
-//         case RdmaEndpointType::receive:
-//             return this->handleReceiveRequest(endpointId, connection);
-//         case RdmaEndpointType::write:
-//             return this->handleOperationRequest(endpointId, connection);
-//         case RdmaEndpointType::read:
-//             return this->handleOperationRequest(endpointId, connection);
-//         default:
-//             return { nullptr, errors::New("Unknown endpoint type in request") };
-//     }
-// }
-
-// std::tuple<RdmaBufferPtr, error> RdmaServer::handleSendRequest(const RdmaEndpointId & endpointId)
-// {
-//     auto endpoint = this->endpoints.at(endpointId);
-//     auto endpointBuffer = endpoint->Buffer();
-
-//     // Since client requested Send, server must submit Receive task
-//     auto receiveOperation = OperationRequest{
-//         .type = OperationRequest::Type::receive,
-//         .sourceBuffer = nullptr,
-//         .destinationBuffer = endpointBuffer,
-//         .requestConnection = nullptr,  // not needed in receive operation
-//         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
-//         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
-//     };
-
-//     auto [awaitable, err] = this->executor->SubmitOperation(receiveOperation);
-//     if (err) {
-//         return { nullptr, errors::Wrap(err, "Failed to execute operation") };
-//     }
-
-//     DOCA_CPP_LOG_INFO("Submitted RDMA receive operation to executor");
-
-//     return awaitable.Await();
-// }
-
-// std::tuple<RdmaBufferPtr, error> RdmaServer::handleReceiveRequest(const RdmaEndpointId & endpointId,
-//                                                                   RdmaConnectionPtr connection)
-// {
-//     auto endpoint = this->endpoints.at(endpointId);
-//     auto endpointBuffer = endpoint->Buffer();
-
-//     // Since client requested Receive, server must submit Send task
-//     auto sendOperation = OperationRequest{
-//         .type = OperationRequest::Type::send,
-//         .sourceBuffer = endpointBuffer,
-//         .destinationBuffer = nullptr,
-//         .requestConnection = connection,
-//         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
-//         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
-//     };
-
-//     auto [awaitable, err] = this->executor->SubmitOperation(sendOperation);
-//     if (err) {
-//         return { nullptr, errors::Wrap(err, "Failed to execute operation") };
-//     }
-
-//     DOCA_CPP_LOG_INFO("Submitted RDMA send operation to executor");
-
-//     return awaitable.Await();
-// }

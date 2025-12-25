@@ -84,30 +84,20 @@ public:
     ~RdmaServer();
 
 private:
+    // Storage of registered RDMA endpoints
     RdmaEndpointStoragePtr endpointsStorage = nullptr;
 
     doca::DevicePtr device = nullptr;
     uint16_t port = 0;
 
-    asio::awaitable<communication::CommunicationSessionPtr> acceptSession();
-
-    std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
-
-    std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId);
-    std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId,
-                                                          RdmaConnectionPtr connection);
-
     // Executor to process RDMA operations
     RdmaExecutorPtr executor = nullptr;
-
-    // Timeout for RDMA operation completions
-    const std::chrono::milliseconds operationTimeout = 10000ms;
 
     // Serving control for graceful shutdown
     std::atomic_bool continueServing = true;
     std::atomic_bool isServing = false;       // Track if Serve() is running
     std::mutex serveMutex;                    // Ensure only one Serve() call
-    std::condition_variable shutdownCondVar;  // For timeout coordination
+    std::condition_variable shutdownCondVar;  // For shutdown timeout coordination
     std::atomic_bool shutdownForced = false;  // Signal to exit server loop immediately
 };
 
