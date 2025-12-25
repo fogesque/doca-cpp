@@ -1,5 +1,7 @@
 #pragma once
 
+#include <asio.hpp>
+#include <asio/experimental/awaitable_operators.hpp>
 #include <errors/errors.hpp>
 #include <map>
 #include <memory>
@@ -7,10 +9,11 @@
 #include <tuple>
 
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/rdma/internal/rdma_request.hpp"
+#include "doca-cpp/rdma/internal/rdma_session.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
 #include "doca-cpp/rdma/rdma_executor.hpp"
-#include "doca-cpp/rdma/rdma_request.hpp"
 
 namespace doca::rdma
 {
@@ -29,7 +32,7 @@ public:
 
     error Connect(const std::string & serverAddress, uint16_t serverPort);
 
-    void RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
+    error RegisterEndpoints(std::vector<RdmaEndpointPtr> & endpoints);
 
     error RequestEndpointProcessing(const RdmaEndpointId & endpointId);
 
@@ -42,24 +45,14 @@ public:
     explicit RdmaClient(doca::DevicePtr initialDevice);
 
 private:
-    std::map<RdmaEndpointId, RdmaEndpointPtr> endpoints;
+    // Storage of registered RDMA endpoints
+    RdmaEndpointStoragePtr endpointsStorage = nullptr;
 
     doca::DevicePtr device = nullptr;
 
-    error mapEndpointsMemory();
-
-    std::tuple<RdmaBufferPtr, error> handleRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
-
-    std::tuple<RdmaBufferPtr, error> handleSendRequest(const RdmaEndpointId & endpointId, RdmaConnectionPtr connection);
-    std::tuple<RdmaBufferPtr, error> handleReceiveRequest(const RdmaEndpointId & endpointId);
-    std::tuple<RdmaBufferPtr, error> handleOperationRequest(const OperationRequest::Type type,
-                                                            const RdmaEndpointId & endpointId,
-                                                            RdmaConnectionPtr connection);
-
     RdmaExecutorPtr executor = nullptr;
 
-    RdmaBufferPtr requestBuffer = nullptr;
-    RdmaBufferPtr remoteDescriptorBuffer = nullptr;
+    std::string serverAddress;
 };
 
 }  // namespace doca::rdma
