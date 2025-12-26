@@ -51,7 +51,7 @@ inline LoggerConfig GetDefaultLoggerConfig()
                                             .includeLogLevel = true,
                                             .includeFile = true,
                                             .includeMessage = true,
-                                            .includeTime = true };
+                                            .includeTime = false };
     config.asyncMode = kvalog::Logger::Mode::Sync;
     config.logToConsole = true;
     config.logFilePath = std::nullopt;
