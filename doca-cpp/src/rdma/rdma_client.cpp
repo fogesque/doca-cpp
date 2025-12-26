@@ -85,6 +85,10 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
 
     DOCA_CPP_LOG_INFO("Client connected to server");
 
+    // FIXME: Testing shit
+    DOCA_CPP_LOG_DEBUG("Press enter");
+    getchar();
+
     this->serverAddress = serverAddress;
 
     return nullptr;
