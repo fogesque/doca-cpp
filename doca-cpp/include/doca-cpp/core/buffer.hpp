@@ -7,6 +7,7 @@
 #include <memory>
 #include <span>
 #include <tuple>
+#include <vector>
 
 #include "doca-cpp/core/error.hpp"
 #include "doca-cpp/core/mmap.hpp"
@@ -39,10 +40,10 @@ public:
     std::tuple<size_t, error> GetLength() const;
     std::tuple<size_t, error> GetDataLength() const;
     std::tuple<void *, error> GetData() const;
-    std::tuple<std::span<std::byte>, error> GetBytes() const;
+    std::tuple<std::vector<std::byte>, error> GetBytes() const;
 
     error SetData(void * data, size_t dataLen);
-    error SetData(std::span<std::byte> data);
+    error SetData(std::vector<std::byte> data);
     error ResetData();
 
     std::tuple<uint16_t, error> IncRefcount();
@@ -100,11 +101,11 @@ public:
 
     static Builder Create(size_t numElements);
 
-    // "Nice" API design from NVIDIA DOCA:
-    // This methods is probably used for creating buffer that points to remote memory 
     std::tuple<BufferPtr, error> AllocBufferByAddress(MemoryMapPtr mmap, void * address, size_t length);
-    // This methods is probably used for creating buffer that points to local memory
+
     std::tuple<BufferPtr, error> AllocBufferByData(MemoryMapPtr mmap, void * data, size_t length);
+
+    std::tuple<BufferPtr, error> AllocBufferByAddress(RemoteMemoryMapPtr mmap, void * address, size_t length);
 
     error Stop();
     doca_buf_inventory * GetNative() const;
