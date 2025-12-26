@@ -1,5 +1,19 @@
 #include "doca-cpp/rdma/internal/rdma_session.hpp"
 
+#include "doca-cpp/logging/logging.hpp"
+
+#ifdef DOCA_CPP_ENABLE_LOGGING
+namespace
+{
+inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
+inline const auto loggerContext = kvalog::Logger::Context{
+    .appName = "doca-cpp",
+    .moduleName = "rdma::session",
+};
+}  // namespace
+DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
+#endif
+
 using doca::rdma::RdmaSession;
 using doca::rdma::RdmaSessionClient;
 using doca::rdma::RdmaSessionClientPtr;
@@ -55,13 +69,18 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
         //  Receive request from client
         auto [request, err] = co_await session->ReceiveRequest();
         if (err) {
-            co_return errors::Wrap(err, "Failed to receive request");
+            // Continue handle requests
+            continue;
         }
+
+        DOCA_CPP_LOG_DEBUG("Received request via socket");
 
         const auto requestedEndpointId = doca::rdma::MakeEndpointId(request.endpointPath, request.endpointType);
         const auto requestorConnectionId = request.connectionId;
 
         Responce response;
+
+        DOCA_CPP_LOG_DEBUG(std::format("Requested endpoint: {}", requestedEndpointId));
 
         // Get requested endpoint
         auto [endpoint, epErr] = endpointsStorage->GetEndpoint(requestedEndpointId);
@@ -74,6 +93,8 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
             // No endpoint, continue handle other requests
             continue;
         }
+
+        DOCA_CPP_LOG_DEBUG("Fetched endpoint");
 
         // If endpoint is read/write, prepare memory descriptor
         if (endpoint->Type() == RdmaEndpointType::read || endpoint->Type() == RdmaEndpointType::write) {
@@ -88,6 +109,7 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
                 co_return errors::Wrap(err, "Failed to export memory descriptor");
             }
             response.memoryDescriptor = *descriptor;
+            DOCA_CPP_LOG_DEBUG(std::format("Descriptor created, size {}", response.memoryDescriptor.size()));
         }
 
         // Try to lock requested endpoint
@@ -111,6 +133,8 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
             // Endpoint locked, continue handle other requests
             continue;
         }
+
+        DOCA_CPP_LOG_DEBUG("Endpoint locked");
 
         // Endpoint locked successfully
 
@@ -136,11 +160,15 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
             co_return errors::Wrap(err, "Failed to send responce");
         }
 
+        DOCA_CPP_LOG_DEBUG("Sent permission");
+
         // Perform RDMA operation
         err = co_await RdmaSessionServer::PerformRdmaOperation(executor, endpoint, requestorConnectionId);
         if (err) {
             co_return errors::Wrap(err, "Failed to perform RDMA operation");
         }
+
+        DOCA_CPP_LOG_DEBUG("Performed RDMA");
 
         // Wait for acknowledgment with timeout (5 seconds)
         const auto ackTimeout = 5s;
@@ -150,6 +178,8 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
             std::ignore = endpointsStorage->UnlockEndpoint(requestedEndpointId);
             continue;
         }
+
+        DOCA_CPP_LOG_DEBUG("Ack received");
 
         // If endpoint is write/send, call user service after performing RDMA operation and receiving ack from
         // client
@@ -167,6 +197,8 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 
         // Unlock endpoint after successful RDMA completion
         std::ignore = endpointsStorage->UnlockEndpoint(requestedEndpointId);
+
+        DOCA_CPP_LOG_DEBUG("Unlocked endpoint");
     }
 
     co_return nullptr;
@@ -178,26 +210,37 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
     Request request;
     request.endpointType = endpoint->Type();
     request.endpointPath = endpoint->Path();
+    request.connectionId = connectionId;
+
+    DOCA_CPP_LOG_DEBUG("Requested endpoint path: " + request.endpointPath);
+    DOCA_CPP_LOG_DEBUG(std::format("Requested endpoint type: {}", static_cast<int>(request.endpointType)));
 
     // Send request
     const auto timeout = 5s;
-    auto [response, err] = co_await session->SendRequest(request, timeout);
+    auto [responce, err] = co_await session->SendRequest(request, timeout);
     if (err) {
         co_return errors::Wrap(err, "Failed to send request via socket");
     }
 
+    DOCA_CPP_LOG_DEBUG(std::format("Got responce: code {}, desc_size {}",
+                                   Responce::CodeDescription(responce.responceCode), responce.memoryDescriptor.size()));
+
     // Check if operation permitted
-    if (response.responceCode != Responce::Code::operationPermitted) {
-        auto status = Responce::CodeDescription(response.responceCode);
+    if (responce.responceCode != Responce::Code::operationPermitted) {
+        auto status = Responce::CodeDescription(responce.responceCode);
         co_return errors::New("Operation was not permitted by server; responce message: " + status);
     }
 
+    DOCA_CPP_LOG_DEBUG("RDMA permitted");
+
     // Form remote RDMA buffer from given descriptor
-    auto descriptorSpan = std::span<uint8_t>(response.memoryDescriptor);
-    auto [remoteBuffer, rmErr] = RdmaBuffer::FromExportedRemoteDescriptor(descriptorSpan, executor->GetDevice());
+    auto [remoteBuffer, rmErr] =
+        RdmaRemoteBuffer::FromExportedRemoteDescriptor(responce.memoryDescriptor, executor->GetDevice());
     if (rmErr) {
         co_return errors::Wrap(rmErr, "Failed to make remote RDMA buffer from export descriptor");
     }
+
+    DOCA_CPP_LOG_DEBUG("Made remote buffer");
 
     Acknowledge ack;
     ack.ackCode = Acknowledge::Code::operationCanceled;
@@ -210,6 +253,7 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
             std::ignore = co_await session->SendAcknowledge(ack, timeout);
             co_return errors::Wrap(srvErr, "Service handle failed");
         }
+        DOCA_CPP_LOG_DEBUG("User service called");
     }
 
     // Perform RDMA operation
@@ -220,6 +264,8 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
         co_return errors::Wrap(err, "Failed to perform RDMA operation");
     }
 
+    DOCA_CPP_LOG_DEBUG("RDMA performed");
+
     // Send acknowledge to server
     ack.ackCode = Acknowledge::Code::operationCompleted;
     err = co_await session->SendAcknowledge(ack, timeout);
@@ -227,12 +273,15 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
         co_return errors::Wrap(err, "Failed to send acknowledge to server");
     }
 
+    DOCA_CPP_LOG_DEBUG("Ack sent");
+
     // If endpoint is receive/read, call user service before performing RDMA operation
     if (endpoint->Type() == RdmaEndpointType::receive || endpoint->Type() == RdmaEndpointType::read) {
         auto srvErr = endpoint->Service()->Handle(endpoint->Buffer());
         if (srvErr) {
             co_return errors::Wrap(srvErr, "Service handle failed");
         }
+        DOCA_CPP_LOG_DEBUG("Service called");
     }
 
     co_return nullptr;
@@ -315,6 +364,7 @@ asio::awaitable<std::tuple<Acknowledge, error>> RdmaSessionServer::ReceiveAcknow
 
     auto timeoutHandler = [&]() -> asio::awaitable<void> {
         co_await timer.async_wait(asio::use_awaitable);
+        DOCA_CPP_LOG_DEBUG("Asio timer finished");
 
         err = ErrorTypes::TimeoutExpired;
     };
@@ -327,24 +377,38 @@ asio::awaitable<std::tuple<Acknowledge, error>> RdmaSessionServer::ReceiveAcknow
 
 asio::awaitable<error> RdmaSessionClient::Connect(const std::string & serverAddress, uint16_t serverPort)
 {
-    auto executor = co_await asio::this_coro::executor;
     const auto connectionTimeout = 5s;
+    auto executor = co_await asio::this_coro::executor;
     asio::steady_timer timer(executor, connectionTimeout);
 
     error connectionError = nullptr;
 
+    bool connected = false;
+
     auto doConnect = [&]() -> asio::awaitable<void> {
         asio::ip::tcp::resolver resolver(executor);
-        auto peers = co_await resolver.async_resolve(serverAddress, std::to_string(serverPort), asio::use_awaitable);
-        auto [err, _] = co_await asio::async_connect(this->socket, peers, asio::as_tuple(asio::use_awaitable));
-        if (err) {
-            connectionError = errors::New("Failed to connect to remote peer via socket: " + err.message());
+        auto [err0, peers] = co_await resolver.async_resolve(serverAddress, std::to_string(serverPort),
+                                                             asio::as_tuple(asio::use_awaitable));
+        if (err0) {
+            connectionError = errors::New("Failed to resolve remote connection: " + err0.message());
+            co_return;
         }
+        DOCA_CPP_LOG_DEBUG("Address resolved");
+        auto [err1, _] = co_await asio::async_connect(this->socket, peers, asio::as_tuple(asio::use_awaitable));
+        if (err1) {
+            connectionError = errors::New("Failed to connect to remote peer via socket: " + err1.message());
+            co_return;
+        }
+        DOCA_CPP_LOG_DEBUG("Connected to peer");
+        connected = true;
     };
 
     auto timeout = [&]() -> asio::awaitable<void> {
-        std::ignore = co_await timer.async_wait(asio::as_tuple(asio::use_awaitable));
-        connectionError = ErrorTypes::TimeoutExpired;
+        co_await timer.async_wait(asio::use_awaitable);
+        DOCA_CPP_LOG_DEBUG("Asio timer finished");
+        if (!connected) {
+            connectionError = ErrorTypes::TimeoutExpired;
+        }
     };
 
     co_await (doConnect() || timeout());
@@ -410,7 +474,8 @@ asio::awaitable<std::tuple<Responce, error>> RdmaSessionClient::SendRequest(cons
     };
 
     auto reqTimeout = [&]() -> asio::awaitable<void> {
-        std::ignore = co_await timer.async_wait(asio::as_tuple(asio::use_awaitable));
+        co_await timer.async_wait(asio::use_awaitable);
+        DOCA_CPP_LOG_DEBUG("Asio timer finished");
         requestError = ErrorTypes::TimeoutExpired;
     };
 
@@ -453,7 +518,8 @@ asio::awaitable<error> RdmaSessionClient::SendAcknowledge(const Acknowledge & ac
     };
 
     auto ackTimeout = [&]() -> asio::awaitable<void> {
-        std::ignore = co_await timer.async_wait(asio::as_tuple(asio::use_awaitable));
+        co_await timer.async_wait(asio::use_awaitable);
+        DOCA_CPP_LOG_DEBUG("Asio timer finished");
         ackError = ErrorTypes::TimeoutExpired;
     };
 
@@ -501,7 +567,7 @@ asio::awaitable<error> RdmaSessionServer::PerformRdmaOperation(RdmaExecutorPtr e
 }
 
 asio::awaitable<error> RdmaSessionClient::PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                               RdmaBufferPtr remoteBuffer,
+                                                               RdmaRemoteBufferPtr remoteBuffer,
                                                                RdmaConnectionId connectionId)
 {
     auto [connection, err] = executor->GetActiveConnection(connectionId);
@@ -541,8 +607,8 @@ asio::awaitable<error> RdmaSession::PerformRdmaSend(RdmaExecutorPtr executor, Rd
 {
     auto operation = OperationRequest{
         .type = OperationRequest::Type::send,
-        .sourceBuffer = endpoint->Buffer(),
-        .destinationBuffer = nullptr,
+        .localBuffer = endpoint->Buffer(),
+        .remoteBuffer = nullptr,
         .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
@@ -562,8 +628,8 @@ asio::awaitable<error> RdmaSession::PerformRdmaReceive(RdmaExecutorPtr executor,
 {
     auto operation = OperationRequest{
         .type = OperationRequest::Type::receive,
-        .sourceBuffer = nullptr,
-        .destinationBuffer = endpoint->Buffer(),
+        .localBuffer = endpoint->Buffer(),
+        .remoteBuffer = nullptr,
         .requestConnection = nullptr,  // not needed in receive
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
@@ -580,12 +646,13 @@ asio::awaitable<error> RdmaSession::PerformRdmaReceive(RdmaExecutorPtr executor,
 }
 
 asio::awaitable<error> RdmaSessionClient::PerformRdmaWrite(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                           RdmaBufferPtr remoteBuffer, RdmaConnectionPtr connection)
+                                                           RdmaRemoteBufferPtr remoteBuffer,
+                                                           RdmaConnectionPtr connection)
 {
     auto operation = OperationRequest{
         .type = OperationRequest::Type::write,
-        .sourceBuffer = endpoint->Buffer(),
-        .destinationBuffer = remoteBuffer,
+        .localBuffer = endpoint->Buffer(),
+        .remoteBuffer = remoteBuffer,
         .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
@@ -602,12 +669,13 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaWrite(RdmaExecutorPtr execu
 }
 
 asio::awaitable<error> RdmaSessionClient::PerformRdmaRead(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                          RdmaBufferPtr remoteBuffer, RdmaConnectionPtr connection)
+                                                          RdmaRemoteBufferPtr remoteBuffer,
+                                                          RdmaConnectionPtr connection)
 {
     auto operation = OperationRequest{
         .type = OperationRequest::Type::read,
-        .sourceBuffer = remoteBuffer,
-        .destinationBuffer = endpoint->Buffer(),
+        .localBuffer = endpoint->Buffer(),
+        .remoteBuffer = remoteBuffer,
         .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),

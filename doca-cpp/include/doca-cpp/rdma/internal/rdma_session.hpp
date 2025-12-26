@@ -4,7 +4,6 @@
 #include <asio/experimental/awaitable_operators.hpp>
 #include <chrono>
 #include <errors/errors.hpp>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -106,15 +105,15 @@ public:
 
     // Performs RDMA operation by submitting task to executor
     static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                       RdmaBufferPtr remoteBuffer, RdmaConnectionId connectionId);
+                                                       RdmaRemoteBufferPtr remoteBuffer, RdmaConnectionId connectionId);
 
     // Submits RDMA write to given executor
     static asio::awaitable<error> PerformRdmaWrite(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                   RdmaBufferPtr remoteBuffer, RdmaConnectionPtr connection);
+                                                   RdmaRemoteBufferPtr remoteBuffer, RdmaConnectionPtr connection);
 
     // Submits RDMA read to given executor
     static asio::awaitable<error> PerformRdmaRead(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                  RdmaBufferPtr remoteBuffer, RdmaConnectionPtr connection);
+                                                  RdmaRemoteBufferPtr remoteBuffer, RdmaConnectionPtr connection);
 
 private:
     bool isConnected = false;

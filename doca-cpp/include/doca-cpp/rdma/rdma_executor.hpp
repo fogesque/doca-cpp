@@ -56,10 +56,10 @@ struct OperationRequest {
 
     // Operation type
     Type type;
-    // Operation source buffer
-    RdmaBufferPtr sourceBuffer = nullptr;
-    // Operation destination buffer
-    RdmaBufferPtr destinationBuffer = nullptr;
+    // Operation local buffer
+    RdmaBufferPtr localBuffer = nullptr;
+    // Operation remote buffer
+    RdmaRemoteBufferPtr remoteBuffer = nullptr;
     // Operation affected bytes
     std::size_t bytesAffected = 0;
     // Operation connection: used only with every operation types except receive
@@ -73,7 +73,7 @@ struct OperationRequest {
 
 namespace ErrorTypes
 {
-inline auto TimeoutExpired = errors::New("Timeout expired");
+inline const auto TimeoutExpired = errors::New("Timeout expired");
 }  // namespace ErrorTypes
 
 // ----------------------------------------------------------------------------
@@ -141,6 +141,7 @@ private:
 
     std::tuple<doca::BufferPtr, error> getSourceDocaBuffer(RdmaBufferPtr rdmaBuffer);
     std::tuple<doca::BufferPtr, error> getDestinationDocaBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getRemoteDocaBuffer(RdmaRemoteBufferPtr rdmaBuffer);
 
     std::atomic<bool> running;
     std::unique_ptr<std::thread> workerThread = nullptr;
