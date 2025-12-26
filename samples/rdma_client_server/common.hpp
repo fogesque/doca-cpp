@@ -2,6 +2,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <array>
 #include <cstdint>
 #include <errors/errors.hpp>
 #include <filesystem>
@@ -175,6 +176,8 @@ inline const auto cfg3 = endpoints::Config{
     .size = 4194304,
     .type = doca::rdma::RdmaEndpointType::read,
 };
+
+inline const std::array<endpoints::Config, 1> Configs = { /*cfg0, cfg1, */ cfg2 /*, cfg3 */ };
 
 inline std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> CreateEndpoints(doca::DevicePtr device,
                                                                                    const std::vector<Config> & configs)

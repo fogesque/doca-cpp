@@ -67,8 +67,7 @@ int main()
     std::println("[Server Sample] Creating RDMA endpoints");
 
     // Create server endpoints
-    const auto configs =
-        std::vector<endpoints::Config>({ endpoints::cfg0, endpoints::cfg1, endpoints::cfg2, endpoints::cfg3 });
+    const auto configs = std::vector<endpoints::Config>(endpoints::Configs.begin(), endpoints::Configs.end());
 
     auto [endpoints, epErr] = endpoints::CreateEndpoints(device, configs);
     if (epErr) {
@@ -84,16 +83,16 @@ int main()
     auto userReadService = std::make_shared<UserReadService>();
     for (auto & endpoint : endpoints) {
         const auto type = endpoint->Type();
-        if (endpoint->Type() == doca::rdma::RdmaEndpointType::send ||
-            endpoint->Type() == doca::rdma::RdmaEndpointType::write) {
+        if (endpoint->Type() == doca::rdma::RdmaEndpointType::read ||
+            endpoint->Type() == doca::rdma::RdmaEndpointType::receive) {
             auto err = endpoint->RegisterService(userWriteService);
             if (err) {
                 std::println("[Server Sample] Failed to register user service for endpoint: {}", err->What());
                 return 1;
             }
         }
-        if (endpoint->Type() == doca::rdma::RdmaEndpointType::receive ||
-            endpoint->Type() == doca::rdma::RdmaEndpointType::read) {
+        if (endpoint->Type() == doca::rdma::RdmaEndpointType::write ||
+            endpoint->Type() == doca::rdma::RdmaEndpointType::send) {
             auto err = endpoint->RegisterService(userReadService);
             if (err) {
                 std::println("[Server Sample] Failed to register user service for endpoint: {}", err->What());
