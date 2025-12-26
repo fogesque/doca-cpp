@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <vector>
 
@@ -109,18 +110,22 @@ public:
     static std::vector<uint8_t> SerializeRequest(const Request & request)
     {
         std::vector<uint8_t> buffer;
+        size_t offset = 0;
 
         // Serialize connection ID
         buffer.resize(sizeof(request.connectionId));
         std::memcpy(buffer.data(), &request.connectionId, sizeof(request.connectionId));
+        offset += sizeof(request.connectionId);
 
         // Serialize endpoint type
         buffer.push_back(static_cast<uint8_t>(request.endpointType));
+        offset += sizeof(uint8_t);
 
         // Serialize path length
         uint32_t pathLen = static_cast<uint32_t>(request.endpointPath.size());
         buffer.resize(buffer.size() + sizeof(pathLen));
-        std::memcpy(buffer.data() + 1, &pathLen, sizeof(pathLen));
+        std::memcpy(buffer.data() + offset, &pathLen, sizeof(pathLen));
+        offset += sizeof(pathLen);
 
         // Serialize path
         buffer.insert(buffer.end(), request.endpointPath.begin(), request.endpointPath.end());
