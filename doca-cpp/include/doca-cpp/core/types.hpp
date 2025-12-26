@@ -23,6 +23,29 @@
 #define DOCA_CPP_UNSAFE [[nodiscard("This function may be unsafe and should be used with caution")]]
 #endif
 
+namespace defer
+{
+template <typename Func>
+struct Defer {
+    Defer(Func func) : deferred(std::move(func)) {}
+    ~Defer()
+    {
+        deferred();
+    }
+    Defer(const Defer &) = delete;
+    Defer & operator=(const Defer &) = delete;
+
+private:
+    Func deferred;
+};
+
+template <typename Func>
+Defer<Func> MakeDefer(Func deferred)
+{
+    return Defer<Func>(std::move(deferred));
+}
+}  // namespace defer
+
 namespace doca
 {
 
