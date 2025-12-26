@@ -15,11 +15,17 @@ namespace doca
 {
 
 // Forward declarations
+using MemoryRange = std::vector<std::uint8_t>;
+using MemoryRangePtr = std::shared_ptr<MemoryRange>;
+
 class MemoryMap;
 using MemoryMapPtr = std::shared_ptr<MemoryMap>;
 
-using MemoryRange = std::vector<std::uint8_t>;
-using MemoryRangePtr = std::shared_ptr<MemoryRange>;
+struct RemoteMemoryRange;
+using RemoteMemoryRangePtr = std::shared_ptr<RemoteMemoryRange>;
+
+class RemoteMemoryMap;
+using RemoteMemoryMapPtr = std::shared_ptr<RemoteMemoryMap>;
 
 // ----------------------------------------------------------------------------
 // MemoryMap
@@ -55,7 +61,6 @@ public:
     };
 
     static Builder Create();
-    static Builder CreateFromExport(std::span<std::uint8_t> & exportDesc, DevicePtr device);
 
     // Move-only type
     MemoryMap(const MemoryMap &) = delete;
@@ -65,10 +70,10 @@ public:
 
     error Stop();
     error RemoveDevice();
-    std::tuple<std::span<const std::uint8_t>, error> ExportPci() const;
-    std::tuple<std::span<const std::uint8_t>, error> ExportRdma() const;
+    std::tuple<std::vector<std::uint8_t>, error> ExportPci() const;
+    std::tuple<std::vector<std::uint8_t>, error> ExportRdma() const;
 
-    std::tuple<std::span<uint8_t>, error> GetMemoryRange();
+    std::tuple<std::span<std::uint8_t>, error> GetMemoryRange();
 
     DOCA_CPP_UNSAFE doca_mmap * GetNative() const;
 
@@ -79,6 +84,50 @@ public:
 
     explicit MemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter);
     ~MemoryMap();
+
+private:
+    doca_mmap * memoryMap = nullptr;
+
+    DevicePtr device = nullptr;
+
+    DeleterPtr deleter = nullptr;
+};
+
+struct RemoteMemoryRange {
+    std::uint8_t * memoryAddress = nullptr;
+    std::size_t memorySize = 0;
+};
+
+// ----------------------------------------------------------------------------
+// RemoteMemoryMap
+// ----------------------------------------------------------------------------
+class RemoteMemoryMap
+{
+public:
+    static std::tuple<RemoteMemoryMapPtr, error> CreateFromExport(std::vector<std::uint8_t> & exportDesc,
+                                                                  DevicePtr device);
+
+    // Move-only type
+    RemoteMemoryMap(const RemoteMemoryMap &) = delete;
+    RemoteMemoryMap & operator=(const RemoteMemoryMap &) = delete;
+    RemoteMemoryMap(RemoteMemoryMap && other) noexcept = default;
+    RemoteMemoryMap & operator=(RemoteMemoryMap && other) noexcept = default;
+
+    error Stop();
+    error RemoveDevice();
+
+    std::tuple<RemoteMemoryRangePtr, error> GetRemoteMemoryRange();
+
+    DOCA_CPP_UNSAFE doca_mmap * GetNative();
+
+    struct Deleter {
+        void Delete(doca_mmap * mmap);
+    };
+    using DeleterPtr = std::shared_ptr<Deleter>;
+
+    RemoteMemoryMap() = delete;
+    explicit RemoteMemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter);
+    ~RemoteMemoryMap();
 
 private:
     doca_mmap * memoryMap = nullptr;
