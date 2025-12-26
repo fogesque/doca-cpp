@@ -87,12 +87,11 @@ error RdmaServer::Serve()
         this->isServing.store(true);
     }
 
-    // Cleanup guard to reset isServing on exit
-    auto deferredCleanup = [this](void *) {
+    // Cleanup defer to reset isServing on exit
+    auto deferred = defer::MakeDefer([this]() {
         this->isServing.store(false);
         this->shutdownCondVar.notify_all();
-    };
-    std::unique_ptr<void, decltype(deferredCleanup)> cleanupGuard(nullptr, std::move(deferredCleanup));
+    });
 
     // Check if there are registered endpoints
     if (this->endpointsStorage == nullptr || this->endpointsStorage->Empty()) {
