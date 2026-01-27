@@ -157,49 +157,50 @@ private:
     doca_data data;
 };
 
-/**
- * @brief Type-safe IP address wrapper
- */
-class IpAddress
-{
-public:
-    /**
-     * @brief Create IPv4 address
-     */
-    static IpAddress Ipv4(uint32_t addr)
-    {
-        IpAddress ip;
-        ip.address.is_ipv4 = 1;
-        ip.address.ip[3] = addr;
-        return ip;
-    }
+// Deprecated
+// /**
+//  * @brief Type-safe IP address wrapper
+//  */
+// class IpAddress
+// {
+// public:
+//     /**
+//      * @brief Create IPv4 address
+//      */
+//     static IpAddress Ipv4(uint32_t addr)
+//     {
+//         IpAddress ip;
+//         ip.address.is_ipv4 = 1;
+//         ip.address.ip[3] = addr;
+//         return ip;
+//     }
 
-    /**
-     * @brief Create IPv6 address
-     */
-    static IpAddress Ipv6(const std::array<uint32_t, 4> & addr)
-    {
-        IpAddress ip;
-        ip.address.is_ipv4 = 0;
-        for (size_t i = 0; i < 4; ++i) {
-            ip.address.ip[i] = addr[i];
-        }
-        return ip;
-    }
+//     /**
+//      * @brief Create IPv6 address
+//      */
+//     static IpAddress Ipv6(const std::array<uint32_t, 4> & addr)
+//     {
+//         IpAddress ip;
+//         ip.address.is_ipv4 = 0;
+//         for (size_t i = 0; i < 4; ++i) {
+//             ip.address.ip[i] = addr[i];
+//         }
+//         return ip;
+//     }
 
-    bool IsIpv4() const
-    {
-        return address.is_ipv4 != 0;
-    }
+//     bool IsIpv4() const
+//     {
+//         return address.is_ipv4 != 0;
+//     }
 
-    const doca_ip & ToNative() const
-    {
-        return address;
-    }
+//     const doca_ip & ToNative() const
+//     {
+//         return address;
+//     }
 
-private:
-    doca_ip address{};
-};
+// private:
+//     doca_ip address{};
+// };
 
 /**
  * @brief Size constants for various identifiers

@@ -24,15 +24,16 @@ std::tuple<std::string, error> DeviceInfo::GetPciAddress() const
     return { std::string(pciAddr.data()), nullptr };
 }
 
-std::tuple<PciFuncType, error> DeviceInfo::GetPciFuncType() const
-{
-    doca_pci_func_type type;
-    auto err = FromDocaError(doca_devinfo_get_pci_func_type(this->devInfo, &type));
-    if (err) {
-        return { PciFuncType::physicalFunction, errors::Wrap(err, "Failed to get device PCI function type") };
-    }
-    return { static_cast<PciFuncType>(type), nullptr };
-}
+// Deprecated
+// std::tuple<PciFuncType, error> DeviceInfo::GetPciFuncType() const
+// {
+//     doca_pci_func_type type;
+//     auto err = FromDocaError(doca_devinfo_get_pci_func_type(this->devInfo, &type));
+//     if (err) {
+//         return { PciFuncType::physicalFunction, errors::Wrap(err, "Failed to get device PCI function type") };
+//     }
+//     return { static_cast<PciFuncType>(type), nullptr };
+// }
 
 std::tuple<bool, error> DeviceInfo::HasPciAddress(const std::string & pciAddr) const
 {
@@ -104,15 +105,16 @@ std::tuple<std::string, error> DeviceInfo::GetIbdevName() const
     return { std::string(ibdevName.data()), nullptr };
 }
 
-std::tuple<uint32_t, error> DeviceInfo::GetSubfunctionIndex() const
-{
-    uint32_t sfIndex = 0;
-    auto err = FromDocaError(doca_devinfo_get_sf_index(this->devInfo, &sfIndex));
-    if (err) {
-        return { {}, errors::Wrap(err, "Failed to get subfunction index") };
-    }
-    return { sfIndex, nullptr };
-}
+// Deprecated
+// std::tuple<uint32_t, error> DeviceInfo::GetSubfunctionIndex() const
+// {
+//     uint32_t sfIndex = 0;
+//     auto err = FromDocaError(doca_devinfo_get_sf_index(this->devInfo, &sfIndex));
+//     if (err) {
+//         return { {}, errors::Wrap(err, "Failed to get subfunction index") };
+//     }
+//     return { sfIndex, nullptr };
+// }
 
 std::tuple<uint16_t, error> DeviceInfo::GetPortLogicalId() const
 {
@@ -134,15 +136,16 @@ std::tuple<uint64_t, error> DeviceInfo::GetActiveRate() const
     return { activeRate, nullptr };
 }
 
-std::tuple<uint32_t, error> DeviceInfo::GetInterfaceIndex() const
-{
-    uint32_t interfaceIndex = 0;
-    auto err = FromDocaError(doca_devinfo_get_iface_index(this->devInfo, &interfaceIndex));
-    if (err) {
-        return { {}, errors::Wrap(err, "Failed to get interface index") };
-    }
-    return { interfaceIndex, nullptr };
-}
+// Deprecated
+// std::tuple<uint32_t, error> DeviceInfo::GetInterfaceIndex() const
+// {
+//     uint32_t interfaceIndex = 0;
+//     auto err = FromDocaError(doca_devinfo_get_iface_index(this->devInfo, &interfaceIndex));
+//     if (err) {
+//         return { {}, errors::Wrap(err, "Failed to get interface index") };
+//     }
+//     return { interfaceIndex, nullptr };
+// }
 
 std::tuple<bool, error> DeviceInfo::IsAccelerateResourceReclaimSupported() const
 {
