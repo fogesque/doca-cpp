@@ -107,6 +107,8 @@ public:
 
     std::tuple<BufferPtr, error> AllocBufferByAddress(RemoteMemoryMapPtr mmap, void * address, size_t length);
 
+    std::tuple<BufferPtr, error> AllocBufferByData(RemoteMemoryMapPtr mmap, void * data, size_t length);
+
     error Stop();
     doca_buf_inventory * GetNative() const;
 

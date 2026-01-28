@@ -311,6 +311,23 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(RemoteMemoryM
     return { managedBuffer, nullptr };
 }
 
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(RemoteMemoryMapPtr mmap, void * data, size_t length)
+{
+    if (!this->inventory) {
+        return { nullptr, errors::New("Buffer inventory is null") };
+    }
+
+    doca_buf * buf = nullptr;
+    auto err =
+        FromDocaError(doca_buf_inventory_buf_get_by_data(this->inventory, mmap->GetNative(), data, length, &buf));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by data from inventory") };
+    }
+
+    auto managedBuffer = Buffer::CreateRef(buf);
+    return { managedBuffer, nullptr };
+}
+
 error BufferInventory::Stop()
 {
     if (!this->inventory) {

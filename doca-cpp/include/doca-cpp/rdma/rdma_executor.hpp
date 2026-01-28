@@ -139,9 +139,10 @@ private:
     error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
                                  std::chrono::milliseconds waitTimeout = 0ms);
 
-    std::tuple<doca::BufferPtr, error> getSourceDocaBuffer(RdmaBufferPtr rdmaBuffer);
-    std::tuple<doca::BufferPtr, error> getDestinationDocaBuffer(RdmaBufferPtr rdmaBuffer);
-    std::tuple<doca::BufferPtr, error> getRemoteDocaBuffer(RdmaRemoteBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getSourceLocalBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getDestinationLocalBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getSourceRemoteBuffer(RdmaRemoteBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getDestinationRemoteBuffer(RdmaRemoteBufferPtr rdmaBuffer);
 
     std::atomic<bool> running;
     std::unique_ptr<std::thread> workerThread = nullptr;
