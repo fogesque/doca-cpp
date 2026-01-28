@@ -174,8 +174,10 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
                            doca::rdma::HandleClientSession(session, endpoint, rdmaExecutor, connectionId),
                            [&processingError](std::exception_ptr exception, error handleError) -> void {
                                processingError = handleError;
-                               DOCA_CPP_LOG_ERROR("Session ended with failure");
-                               return;
+                               if (processingError) {
+                                   DOCA_CPP_LOG_ERROR(
+                                       std::format("Session ended with failure: {}", processingError->What()));
+                               }
                            });
         },
         asio::detached);
