@@ -91,7 +91,7 @@ inline LogLevel GetLogLevel()
         const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
         if (globalLevel != doca::logging::LogLevel::Off) {                                                             \
             if (globalLevel <= doca::logging::LogLevel::Trace) {                                                       \
-                GetLogger().trace(__VA_ARGS__);                                                                        \
+                GetLogger().Trace(__VA_ARGS__);                                                                        \
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -101,7 +101,7 @@ inline LogLevel GetLogLevel()
         const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
         if (globalLevel != doca::logging::LogLevel::Off) {                                                             \
             if (globalLevel <= doca::logging::LogLevel::Debug) {                                                       \
-                GetLogger().debug(__VA_ARGS__);                                                                        \
+                GetLogger().Debug(__VA_ARGS__);                                                                        \
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -111,7 +111,7 @@ inline LogLevel GetLogLevel()
         const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
         if (globalLevel != doca::logging::LogLevel::Off) {                                                             \
             if (globalLevel <= doca::logging::LogLevel::Info) {                                                        \
-                GetLogger().info(__VA_ARGS__);                                                                         \
+                GetLogger().Info(__VA_ARGS__);                                                                         \
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -121,7 +121,7 @@ inline LogLevel GetLogLevel()
         const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
         if (globalLevel != doca::logging::LogLevel::Off) {                                                             \
             if (globalLevel <= doca::logging::LogLevel::Warning) {                                                     \
-                GetLogger().warning(__VA_ARGS__);                                                                      \
+                GetLogger().Warning(__VA_ARGS__);                                                                      \
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -131,7 +131,7 @@ inline LogLevel GetLogLevel()
         const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
         if (globalLevel != doca::logging::LogLevel::Off) {                                                             \
             if (globalLevel <= doca::logging::LogLevel::Error) {                                                       \
-                GetLogger().error(__VA_ARGS__);                                                                        \
+                GetLogger().Error(__VA_ARGS__);                                                                        \
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
@@ -141,7 +141,7 @@ inline LogLevel GetLogLevel()
         const auto globalLevel = doca::logging::globalLogLevel.load(std::memory_order_relaxed);                        \
         if (globalLevel != doca::logging::LogLevel::Off) {                                                             \
             if (globalLevel <= doca::logging::LogLevel::Critical) {                                                    \
-                GetLogger().critical(__VA_ARGS__);                                                                     \
+                GetLogger().Critical(__VA_ARGS__);                                                                     \
             }                                                                                                          \
         }                                                                                                              \
     } while (0)
