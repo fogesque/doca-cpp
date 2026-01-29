@@ -177,7 +177,7 @@ inline const auto cfg3 = endpoints::Config{
     .type = doca::rdma::RdmaEndpointType::read,
 };
 
-inline const std::array<endpoints::Config, 1> Configs = { /*cfg0, cfg1, */ cfg2 /*, cfg3 */ };
+inline const std::array<endpoints::Config, 2> Configs = { /*cfg0, cfg1,*/ cfg2, cfg3 /* */ };
 
 inline std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> CreateEndpoints(doca::DevicePtr device,
                                                                                    const std::vector<Config> & configs)
