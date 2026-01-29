@@ -51,8 +51,7 @@ int main()
     std::println("[Client Sample] Creating RDMA endpoints");
 
     // Create server endpoints
-    const auto configs =
-        std::vector<endpoints::Config>({ endpoints::cfg0, endpoints::cfg1, endpoints::cfg2, endpoints::cfg3 });
+    const auto configs = std::vector<endpoints::Config>(endpoints::Configs.begin(), endpoints::Configs.end());
 
     auto [endpoints, epErr] = endpoints::CreateEndpoints(device, configs);
     if (epErr) {

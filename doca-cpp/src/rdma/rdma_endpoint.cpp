@@ -12,6 +12,9 @@ using doca::rdma::RdmaEndpointId;
 using doca::rdma::RdmaEndpointPath;
 using doca::rdma::RdmaEndpointType;
 
+using doca::rdma::RdmaEndpointStorage;
+using doca::rdma::RdmaEndpointStoragePtr;
+
 using doca::rdma::RdmaServiceInterfacePtr;
 
 // ----------------------------------------------------------------------------
@@ -140,4 +143,103 @@ doca::AccessFlags doca::rdma::GetEndpointAccessFlags(const RdmaEndpointType & ty
         default:
             return doca::AccessFlags::localReadOnly;
     }
+}
+
+// ----------------------------------------------------------------------------
+// RdmaEndpointStorage
+// ----------------------------------------------------------------------------
+
+RdmaEndpointStoragePtr RdmaEndpointStorage::Create()
+{
+    return std::make_shared<RdmaEndpointStorage>();
+}
+
+error RdmaEndpointStorage::RegisterEndpoint(RdmaEndpointPtr endpoint)
+{
+    if (endpoint == nullptr) {
+        return errors::New("Cannot register null RDMA endpoint");
+    }
+
+    const RdmaEndpointId endpointId = doca::rdma::MakeEndpointId(endpoint);
+
+    if (this->endpointsMap.contains(endpointId)) {
+        return errors::New("RDMA endpoint with the same ID already registered: " + endpointId);
+    }
+
+    auto storedEndpoint = std::make_shared<StoredEndpoint>();
+    storedEndpoint->endpoint = endpoint;
+    storedEndpoint->endpointLocked.store(false);
+
+    auto [_, inserted] = this->endpointsMap.emplace(endpointId, storedEndpoint);
+    if (!inserted) {
+        return errors::New("Failed to insert RDMA endpoint to internal storage");
+    }
+
+    return nullptr;
+}
+
+std::tuple<RdmaEndpointPtr, error> RdmaEndpointStorage::GetEndpoint(const RdmaEndpointId & endpointId)
+{
+    if (!this->endpointsMap.contains(endpointId)) {
+        return { nullptr, errors::New("RDMA endpoint with given ID is not registered: " + endpointId) };
+    }
+
+    auto & storedEndpoint = this->endpointsMap.at(endpointId);
+    return { storedEndpoint->endpoint, nullptr };
+}
+
+bool RdmaEndpointStorage::Contains(const RdmaEndpointId & endpointId) const
+{
+    return this->endpointsMap.contains(endpointId);
+}
+
+bool RdmaEndpointStorage::Empty() const
+{
+    return this->endpointsMap.empty();
+}
+
+error RdmaEndpointStorage::MapEndpointsMemory(doca::DevicePtr device)
+{
+    {
+        for (auto & [_, element] : this->endpointsMap) {
+            auto err = element->endpoint->Buffer()->MapMemory(
+                device, doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite);
+            if (err) {
+                return errors::Wrap(err, "Failed to map endpoint memory");
+            }
+        }
+        return nullptr;
+    }
+}
+
+std::tuple<bool, error> RdmaEndpointStorage::TryLockEndpoint(const RdmaEndpointId & endpointId)
+{
+    if (!this->endpointsMap.contains(endpointId)) {
+        return { false, errors::New("RDMA endpoint with given ID is not registered: " + endpointId) };
+    }
+
+    auto & storedEndpoint = this->endpointsMap.at(endpointId);
+
+    std::lock_guard<std::mutex> lock(storedEndpoint->endpointMutex);
+    if (storedEndpoint->endpointLocked.load()) {
+        return { false, nullptr };
+    }
+    storedEndpoint->endpointLocked.store(true);
+    return { true, nullptr };
+}
+
+error RdmaEndpointStorage::UnlockEndpoint(const RdmaEndpointId & endpointId)
+{
+    if (!this->endpointsMap.contains(endpointId)) {
+        return errors::New("RDMA endpoint with given ID is not registered: " + endpointId);
+    }
+
+    auto & storedEndpoint = this->endpointsMap.at(endpointId);
+
+    std::lock_guard<std::mutex> lock(storedEndpoint->endpointMutex);
+    if (!storedEndpoint->endpointLocked.load()) {
+        return nullptr;  // already unlocked; do nothing
+    }
+    storedEndpoint->endpointLocked.store(false);
+    return nullptr;
 }

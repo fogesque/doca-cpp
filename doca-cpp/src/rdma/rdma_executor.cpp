@@ -223,8 +223,7 @@ error RdmaExecutor::Start()
         auto connection = RdmaConnection::Create(rdmaConnection);
         auto [connId, err] = connection->GetId();
         std::ignore = err;
-        connection->SetState(RdmaConnection::State::requested);
-        executor->AddRequestedConnection(connection);
+        executor->OnConnectionRequested(connection);
         DOCA_CPP_LOG_DEBUG(std::format("Callback: connection (ID: {}) state is requested", connId));
     };
     auto establishedCallback = [](struct doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
@@ -233,8 +232,7 @@ error RdmaExecutor::Start()
         auto connection = RdmaConnection::Create(rdmaConnection);
         auto [connId, err] = connection->GetId();
         std::ignore = err;
-        connection->SetState(RdmaConnection::State::established);
-        executor->AddActiveConnection(connection);
+        executor->OnConnectionEstablished(connection);
         DOCA_CPP_LOG_DEBUG(std::format("Callback: connection (ID: {}) state is established", connId));
     };
     auto failureCallback = [](struct doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
@@ -243,8 +241,7 @@ error RdmaExecutor::Start()
         auto connection = RdmaConnection::Create(rdmaConnection);
         auto [connId, err] = connection->GetId();
         std::ignore = err;
-        connection->SetState(RdmaConnection::State::failed);
-        executor->RemoveActiveConnection(connId);
+        executor->OnConnectionClosed(connId);
         DOCA_CPP_LOG_DEBUG(std::format("Callback: connection (ID: {}) state is failed", connId));
     };
     auto disconnectCallback = [](struct doca_rdma_connection * rdmaConnection, union doca_data connectionUserData,
@@ -253,8 +250,7 @@ error RdmaExecutor::Start()
         auto connection = RdmaConnection::Create(rdmaConnection);
         auto [connId, err] = connection->GetId();
         std::ignore = err;
-        connection->SetState(RdmaConnection::State::disconnected);
-        executor->RemoveActiveConnection(connId);
+        executor->OnConnectionClosed(connId);
         DOCA_CPP_LOG_DEBUG(std::format("Callback: connection (ID: {}) state is disconnected", connId));
     };
     auto connectionCallbacks = RdmaEngine::ConnectionCallbacks{ .requestCallback = requestCallback,
@@ -391,59 +387,38 @@ error RdmaExecutor::ListenToPort(uint16_t port)
 
     DOCA_CPP_LOG_DEBUG("Started to listen to port");
 
-    DOCA_CPP_LOG_DEBUG("Waiting for connection request...");
-
-    // Wait for connection request
-    while (this->requestedConnections.empty()) {
-        std::this_thread::sleep_for(10us);
-        this->progressEngine->Progress();
-    }
-
-    DOCA_CPP_LOG_DEBUG("Connection was requested");
-
-    // Accept the first requested connection
-    auto it = this->requestedConnections.begin();
-    auto connection = it->second;
-    err = connection->Accept();
-    if (err) {
-        return errors::Wrap(err, "Failed to accept RDMA connection request");
-    }
-
-    DOCA_CPP_LOG_DEBUG("Accepted requested connection");
-
-    DOCA_CPP_LOG_DEBUG("Waiting for connection to be established...");
-
-    // Wait for connection to be established
+    // FIXME: Testing shit
+    DOCA_CPP_LOG_DEBUG("Waiting for established connection........................");
     while (this->activeConnections.empty()) {
-        std::this_thread::sleep_for(10us);
         this->progressEngine->Progress();
-    }
-
-    DOCA_CPP_LOG_DEBUG("Connection is established");
+    };
+    DOCA_CPP_LOG_DEBUG("........................Got it");
 
     return nullptr;
 }
 
-void RdmaExecutor::AddRequestedConnection(RdmaConnectionPtr connection)
+void RdmaExecutor::OnConnectionRequested(RdmaConnectionPtr connection)
 {
     const auto & [id, err] = connection->GetId();
-    // TODO: How to handle error?
-    std::ignore = err;
-
-    if (this->requestedConnections.contains(id)) {
+    if (err || this->requestedConnections.contains(id)) {
         std::ignore = connection->Reject();
         return;
     }
     this->requestedConnections[id] = connection;
 
+    std::ignore = this->requestedConnections[id]->Accept();
+
     DOCA_CPP_LOG_DEBUG(std::format("Add requested connection (ID: {}) to requested connections list", id));
 }
 
-void RdmaExecutor::AddActiveConnection(RdmaConnectionPtr connection)
+void RdmaExecutor::OnConnectionEstablished(RdmaConnectionPtr connection)
 {
     const auto & [id, err] = connection->GetId();
-    // TODO: How to handle error?
-    std::ignore = err;
+
+    if (err || this->activeConnections.contains(id)) {
+        std::ignore = connection->Disconnect();
+        return;
+    }
 
     this->activeConnections[id] = connection;
     this->requestedConnections.erase(id);
@@ -451,20 +426,29 @@ void RdmaExecutor::AddActiveConnection(RdmaConnectionPtr connection)
     DOCA_CPP_LOG_DEBUG(std::format("Moved requested connection (ID: {}) to active connections list", id));
 }
 
-void RdmaExecutor::RemoveActiveConnection(RdmaConnectionId connectionId)
+void RdmaExecutor::OnConnectionClosed(RdmaConnectionId connectionId)
 {
     this->activeConnections.erase(connectionId);
     DOCA_CPP_LOG_DEBUG(std::format("Removed connection (ID: {}) from active connections list", connectionId));
 }
 
-// FIXME: Temporary function for getting active connection for client
-std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection()
+std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection(RdmaConnectionId connectionId)
 {
-    if (this->activeConnections.empty()) {
-        return { nullptr, errors::New("No active RDMA connections available") };
+    if (!this->activeConnections.contains(connectionId)) {
+        return { nullptr, errors::New("No active RDMA connection with requested ID") };
     }
 
-    return { this->activeConnections.begin()->second, nullptr };
+    return { this->activeConnections.at(connectionId), nullptr };
+}
+
+void doca::rdma::RdmaExecutor::Progress()
+{
+    this->progressEngine->Progress();
+}
+
+doca::DevicePtr doca::rdma::RdmaExecutor::GetDevice()
+{
+    return this->device;
 }
 
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
@@ -527,9 +511,6 @@ OperationResponce RdmaExecutor::executeOperation(OperationRequest & request)
 {
     switch (request.type) {
         case OperationRequest::Type::send:
-            // FIXME: Temp testing shit
-            std::print("Enter: ");
-            getchar();
             return this->executeSend(request);
         case OperationRequest::Type::receive:
             return this->executeReceive(request);
@@ -569,8 +550,8 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     // Initialize operation state
     auto taskState = RdmaTaskInterface::State::idle;
 
-    if (request.sourceBuffer) {
-        auto [buffer, err] = this->getLocalDocaBuffer(request.sourceBuffer);
+    if (request.localBuffer) {
+        auto [buffer, err] = this->getSourceLocalBuffer(request.localBuffer);
         if (err) {
             return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
@@ -626,7 +607,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     // Not needed, but set to unify execution code
     request.connectionPromise->set_value(activeConnection);
 
-    return { request.sourceBuffer, nullptr };
+    return { request.localBuffer, nullptr };
 }
 
 OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
@@ -645,9 +626,9 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     // Initialize operation state
     auto taskState = RdmaTaskInterface::State::idle;
 
-    // If destination buffer is nullptr, Receive empty message
-    if (request.destinationBuffer) {
-        auto [buffer, err] = this->getRemoteDocaBuffer(request.destinationBuffer);
+    // If local buffer is nullptr, Receive empty message
+    if (request.localBuffer) {
+        auto [buffer, err] = this->getDestinationLocalBuffer(request.localBuffer);
         if (err) {
             return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
         }
@@ -727,11 +708,16 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
 
     DOCA_CPP_LOG_DEBUG("Worker thread set receive task connection to connection promise");
 
-    return { request.destinationBuffer, nullptr };
+    return { request.localBuffer, nullptr };
 }
 
 OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
 {
+    // Check requested buffers
+    if (!request.localBuffer || !request.remoteBuffer) {
+        return { nullptr, errors::New("Invalid request; provide both local and remote RDMA buffers") };
+    }
+
     // Retrieve connection ID from request connection
     auto [connectionId, err] = request.requestConnection->GetId();
     if (err) {
@@ -749,13 +735,13 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
-    auto [srcBuf, srcBufErr] = this->getRemoteDocaBuffer(request.sourceBuffer);
+    auto [srcBuf, srcBufErr] = this->getSourceRemoteBuffer(request.remoteBuffer);
     if (srcBufErr) {
         return { nullptr, errors::Wrap(srcBufErr, "Failed to get doca buffer") };
     }
 
     // Get DOCA buffer for destination RDMA buffer
-    auto [dstBuf, dstBufErr] = this->getLocalDocaBuffer(request.destinationBuffer);
+    auto [dstBuf, dstBufErr] = this->getDestinationLocalBuffer(request.localBuffer);
     if (dstBufErr) {
         return { nullptr, errors::Wrap(dstBufErr, "Failed to get doca buffer") };
     }
@@ -814,11 +800,16 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     // Not needed, but set to unify execution code
     request.connectionPromise->set_value(activeConnection);
 
-    return { request.destinationBuffer, nullptr };
+    return { request.localBuffer, nullptr };
 }
 
 OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
 {
+    // Check requested buffers
+    if (!request.localBuffer || !request.remoteBuffer) {
+        return { nullptr, errors::New("Invalid request; provide both local and remote RDMA buffers") };
+    }
+
     // Retrieve connection ID from request connection
     auto [connectionId, err] = request.requestConnection->GetId();
     if (err) {
@@ -836,13 +827,13 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     auto taskState = RdmaTaskInterface::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
-    auto [srcBuf, srcBufErr] = this->getLocalDocaBuffer(request.sourceBuffer);
+    auto [srcBuf, srcBufErr] = this->getSourceLocalBuffer(request.localBuffer);
     if (srcBufErr) {
         return { nullptr, errors::Wrap(srcBufErr, "Failed to get doca buffer") };
     }
 
     // Get DOCA buffer for destination RDMA buffer
-    auto [dstBuf, dstBufErr] = this->getRemoteDocaBuffer(request.destinationBuffer);
+    auto [dstBuf, dstBufErr] = this->getDestinationRemoteBuffer(request.remoteBuffer);
     if (dstBufErr) {
         return { nullptr, errors::Wrap(dstBufErr, "Failed to get doca buffer") };
     }
@@ -901,7 +892,7 @@ OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
     // Not needed, but set to unify execution code
     request.connectionPromise->set_value(activeConnection);
 
-    return { request.sourceBuffer, nullptr };
+    return { request.localBuffer, nullptr };
 }
 
 error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::chrono::milliseconds waitTimeout) const
@@ -974,7 +965,7 @@ error RdmaExecutor::waitForConnectionState(RdmaConnection::State desiredState, R
     return nullptr;
 }
 
-std::tuple<doca::BufferPtr, error> RdmaExecutor::getLocalDocaBuffer(RdmaBufferPtr rdmaBuffer)
+std::tuple<doca::BufferPtr, error> RdmaExecutor::getSourceLocalBuffer(RdmaBufferPtr rdmaBuffer)
 {
     if (rdmaBuffer == nullptr) {
         return { nullptr, errors::New("RDMA buffer is null") };
@@ -1002,7 +993,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getLocalDocaBuffer(RdmaBufferPt
     return { buffer, nullptr };
 }
 
-std::tuple<doca::BufferPtr, error> RdmaExecutor::getRemoteDocaBuffer(RdmaBufferPtr rdmaBuffer)
+std::tuple<doca::BufferPtr, error> RdmaExecutor::getDestinationLocalBuffer(RdmaBufferPtr rdmaBuffer)
 {
     if (rdmaBuffer == nullptr) {
         return { nullptr, errors::New("RDMA buffer is null") };
@@ -1023,6 +1014,62 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getRemoteDocaBuffer(RdmaBufferP
     // Get doca::Buffer from BufferInventory
     auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
+    if (bufErr) {
+        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
+    }
+
+    return { buffer, nullptr };
+}
+
+std::tuple<doca::BufferPtr, error> RdmaExecutor::getSourceRemoteBuffer(RdmaRemoteBufferPtr rdmaBuffer)
+{
+    if (rdmaBuffer == nullptr) {
+        return { nullptr, errors::New("Remote RDMA buffer is null") };
+    }
+
+    // Get buffer memory range
+    auto [memoryRange, err] = rdmaBuffer->GetMemoryRange();
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
+    }
+
+    // Get MemoryMap from buffer
+    auto [memoryMap, mapErr] = rdmaBuffer->GetMemoryMap();
+    if (mapErr) {
+        return { nullptr, errors::Wrap(mapErr, "Failed to get memory map from buffer") };
+    }
+
+    // Get doca::Buffer from BufferInventory
+    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByData(
+        memoryMap, static_cast<void *>(memoryRange->memoryAddress), memoryRange->memorySize);
+    if (bufErr) {
+        return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
+    }
+
+    return { buffer, nullptr };
+}
+
+std::tuple<doca::BufferPtr, error> RdmaExecutor::getDestinationRemoteBuffer(RdmaRemoteBufferPtr rdmaBuffer)
+{
+    if (rdmaBuffer == nullptr) {
+        return { nullptr, errors::New("Remote RDMA buffer is null") };
+    }
+
+    // Get buffer memory range
+    auto [memoryRange, err] = rdmaBuffer->GetMemoryRange();
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to get buffer memory range") };
+    }
+
+    // Get MemoryMap from buffer
+    auto [memoryMap, mapErr] = rdmaBuffer->GetMemoryMap();
+    if (mapErr) {
+        return { nullptr, errors::Wrap(mapErr, "Failed to get memory map from buffer") };
+    }
+
+    // Get doca::Buffer from BufferInventory
+    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
+        memoryMap, static_cast<void *>(memoryRange->memoryAddress), memoryRange->memorySize);
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
     }

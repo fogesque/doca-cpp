@@ -19,13 +19,17 @@
     Encapsulates memory mapping to device, buffer management
 */
 
+#include <atomic>
 #include <errors/errors.hpp>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <tuple>
 
 #include "doca-cpp/core/mmap.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
+#include "doca-cpp/rdma/rdma_service_interface.hpp"
 
 namespace doca::rdma
 {
@@ -33,6 +37,8 @@ namespace doca::rdma
 // Forward declarations
 class RdmaEndpoint;
 using RdmaEndpointPtr = std::shared_ptr<RdmaEndpoint>;
+struct RdmaEndpointStorage;
+using RdmaEndpointStoragePtr = std::shared_ptr<RdmaEndpointStorage>;
 
 // Endpoint structures
 
@@ -49,41 +55,6 @@ enum class RdmaEndpointType {
 
 using RdmaEndpointBuffer = RdmaBuffer;
 using RdmaEndpointBufferPtr = RdmaBufferPtr;
-
-/**
- * @brief RDMA Endpoint Message Format
- *
- * Binary message structure for RDMA endpoint communication:
- *
- * ┌─────────────────────────────────────────────────────────┐
- * │ Field              │ Size    │ Description              │
- * ├─────────────────────────────────────────────────────────┤
- * │ Path Length        │ 2 bytes │ Length of path string    │
- * │ Path String        │ Variable│ Null-terminated path     │
- * │ Operation Opcode   │ 2 bytes │ RdmaEndpointType enum    │
- * └─────────────────────────────────────────────────────────┘
- *
- * Layout in memory:
- *
- *  Offset  Size  Field
- *  ──────  ────  ─────────────────────
- *  0       2     Path Length (uint16_t)
- *  2       N     Path String (char[])
- *  2+N     2     Operation Opcode (uint16_t)
- *
- * Example: Path="/rdma/ep1", OpCode=SEND
- *
- *  [0x00 0x09] [/r d m a / e p 1] [0x00 0x02]
- *   len=9       9 bytes path        opcode
- */
-
-// RdmaServiceInterface
-class RdmaServiceInterface
-{
-public:
-    virtual error Handle(RdmaBufferPtr buffer) = 0;
-};
-using RdmaServiceInterfacePtr = std::shared_ptr<RdmaServiceInterface>;
 
 // ----------------------------------------------------------------------------
 // RdmaEndpoint
@@ -146,6 +117,46 @@ private:
     RdmaEndpoint::Config config = {};
 
     RdmaServiceInterfacePtr service = nullptr;
+};
+
+// ----------------------------------------------------------------------------
+// RdmaEndpointStorage
+// ----------------------------------------------------------------------------
+class RdmaEndpointStorage
+{
+public:
+    struct StoredEndpoint {
+        RdmaEndpointPtr endpoint = nullptr;
+        std::atomic_bool endpointLocked = false;
+        std::mutex endpointMutex;
+    };
+    using StoredEndpointPtr = std::shared_ptr<StoredEndpoint>;
+
+    static RdmaEndpointStoragePtr Create();
+
+    error RegisterEndpoint(RdmaEndpointPtr endpoint);
+
+    bool Contains(const RdmaEndpointId & endpointId) const;
+    bool Empty() const;
+
+    std::tuple<RdmaEndpointPtr, error> GetEndpoint(const RdmaEndpointId & endpointId);
+
+    std::tuple<bool, error> TryLockEndpoint(const RdmaEndpointId & endpointId);
+    error UnlockEndpoint(const RdmaEndpointId & endpointId);
+
+    error MapEndpointsMemory(doca::DevicePtr device);
+
+    RdmaEndpointStorage() = default;
+    ~RdmaEndpointStorage() = default;
+
+    // Move-only type
+    RdmaEndpointStorage(const RdmaEndpointStorage &) = delete;
+    RdmaEndpointStorage & operator=(const RdmaEndpointStorage &) = delete;
+    RdmaEndpointStorage(RdmaEndpointStorage && other) noexcept = default;
+    RdmaEndpointStorage & operator=(RdmaEndpointStorage && other) = default;
+
+private:
+    std::map<RdmaEndpointId, StoredEndpointPtr> endpointsMap;
 };
 
 std::string EndpointTypeToString(const RdmaEndpointType & type);

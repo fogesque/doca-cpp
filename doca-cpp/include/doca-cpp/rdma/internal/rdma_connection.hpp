@@ -96,17 +96,11 @@ public:
 
     error SetUserData(doca::Data & userData);
 
-    void SetState(State newState);
-    RdmaConnection::State GetState() const;
-
-    // void SetId(RdmaConnectionId connId);
     std::tuple<RdmaConnectionId, error> GetId() const;
-
-    bool IsAccepted() const;
-    void SetAccepted();
 
     error Accept();
     error Reject();
+    error Disconnect();
 
     // Move-only type
     RdmaConnection(const RdmaConnection &) = delete;
@@ -118,10 +112,6 @@ public:
 
 private:
     doca_rdma_connection * rdmaConnection = nullptr;
-
-    RdmaConnection::State connectionState = RdmaConnection::State::idle;
-
-    bool accepted = false;
 };
 
 }  // namespace doca::rdma

@@ -42,7 +42,8 @@ public:
 
     std::tuple<std::string, error> GetPciAddress() const;
 
-    std::tuple<PciFuncType, error> GetPciFuncType() const;
+    // Deprecated
+    // std::tuple<PciFuncType, error> GetPciFuncType() const;
 
     std::tuple<bool, error> HasPciAddress(const std::string & pciAddr) const;
 
@@ -56,13 +57,15 @@ public:
 
     std::tuple<std::string, error> GetIbdevName() const;
 
-    std::tuple<uint32_t, error> GetSubfunctionIndex() const;
+    // Deprecated
+    // std::tuple<uint32_t, error> GetSubfunctionIndex() const;
 
     std::tuple<uint16_t, error> GetPortLogicalId() const;
 
     std::tuple<uint64_t, error> GetActiveRate() const;  // bits/s
 
-    std::tuple<uint32_t, error> GetInterfaceIndex() const;
+    // Deprecated
+    // std::tuple<uint32_t, error> GetInterfaceIndex() const;
 
     std::tuple<bool, error> IsAccelerateResourceReclaimSupported() const;
 

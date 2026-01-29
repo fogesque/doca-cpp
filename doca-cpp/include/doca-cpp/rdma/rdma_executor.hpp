@@ -21,38 +21,12 @@
 #include "doca-cpp/rdma/rdma_awaitable.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
-// RDMA execution model:
-// Server is RDMA Responder and has one buffer
-// Client is RDMA Requester and performs Write and Read operations to/from server's buffer.
-// Client needs to perform Send operation with RequestType message to notify server about incoming Write or Read
-// operation.
-// Server performs Receive operation to get the RequestType message from client and process it accordingly.
-// After that, Server performs Send operation to send its memory buffer descriptor to client.
-// Client performs Receive operation to get the memory buffer descriptor from server.
-// Then Client starts RDMA Write or Read operation to/from server's buffer.
-// So:
-// 1. Client --Send(RequestType)--> Server
-// 2. Server --Receive(RequestType)--> Server
-// 3. Server --Send(BufferDescriptor)--> Client
-// 4. Client --Receive(BufferDescriptor)--> Client
-// 5. Client --Write/Read--> Server
-// 6. (optional) Server --Send(Ack)--> Client
-// 7. (optional) Client --Receive(Ack)--> Client
-// NOTE: Due to DOCA issues, steps 6 and 7 must change order
-
-// TODO: I need to change architecture of RdmaExecutor and RdmaEngine to support multiple connections, tasks, and
-// buffers. First try was too complex. Also I need to come up with some protocol above RDMA operations to manage all
-// this stuff. Something like gRPC would be great, because we can define services and then implement them over RDMA.
-
-// In terms of Executor, operation submitting allowed for client side only. Server is running and waiting for incoming
-// RequestType via Receive operation. After that, server processes the request accordingly.
-
 using namespace std::chrono_literals;
 
 namespace doca::rdma
 {
 
-// --------------------------------------------------operation type is send, write, or read--------------------------
+// ----------------------------------------------------------------------------
 // Forward declarations
 // ----------------------------------------------------------------------------
 class RdmaExecutor;
@@ -82,10 +56,10 @@ struct OperationRequest {
 
     // Operation type
     Type type;
-    // Operation source buffer
-    RdmaBufferPtr sourceBuffer = nullptr;
-    // Operation destination buffer
-    RdmaBufferPtr destinationBuffer = nullptr;
+    // Operation local buffer
+    RdmaBufferPtr localBuffer = nullptr;
+    // Operation remote buffer
+    RdmaRemoteBufferPtr remoteBuffer = nullptr;
     // Operation affected bytes
     std::size_t bytesAffected = 0;
     // Operation connection: used only with every operation types except receive
@@ -99,7 +73,7 @@ struct OperationRequest {
 
 namespace ErrorTypes
 {
-inline auto TimeoutExpired = errors::New("Timeout expired");
+inline const auto TimeoutExpired = errors::New("Timeout expired");
 }  // namespace ErrorTypes
 
 // ----------------------------------------------------------------------------
@@ -129,12 +103,16 @@ public:
 
     // This functions must be considered as private. Due to DOCA fucking callbacks
     // limitations, they are public for now.
-    void AddRequestedConnection(RdmaConnectionPtr connection);
-    void AddActiveConnection(RdmaConnectionPtr connection);
-    void RemoveActiveConnection(RdmaConnectionId connectionId);
+    void OnConnectionRequested(RdmaConnectionPtr connection);
+    void OnConnectionEstablished(RdmaConnectionPtr connection);
+    void OnConnectionClosed(RdmaConnectionId connectionId);
 
-    // FIXME: Temporary function for getting active connection for client
-    std::tuple<RdmaConnectionPtr, error> GetActiveConnection();
+    std::tuple<RdmaConnectionPtr, error> GetActiveConnection(RdmaConnectionId connectionId);
+
+    // Runs event loop iteration with progress engine
+    void Progress();
+
+    doca::DevicePtr GetDevice();
 
     struct Config {
         RdmaEnginePtr initialRdmaEngine = nullptr;
@@ -161,8 +139,10 @@ private:
     error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,
                                  std::chrono::milliseconds waitTimeout = 0ms);
 
-    std::tuple<doca::BufferPtr, error> getLocalDocaBuffer(RdmaBufferPtr rdmaBuffer);
-    std::tuple<doca::BufferPtr, error> getRemoteDocaBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getSourceLocalBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getDestinationLocalBuffer(RdmaBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getSourceRemoteBuffer(RdmaRemoteBufferPtr rdmaBuffer);
+    std::tuple<doca::BufferPtr, error> getDestinationRemoteBuffer(RdmaRemoteBufferPtr rdmaBuffer);
 
     std::atomic<bool> running;
     std::unique_ptr<std::thread> workerThread = nullptr;

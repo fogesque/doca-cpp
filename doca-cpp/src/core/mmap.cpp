@@ -6,6 +6,10 @@ using doca::MemoryMap;
 using doca::MemoryMapPtr;
 using doca::MemoryRange;
 using doca::MemoryRangePtr;
+using doca::RemoteMemoryMap;
+using doca::RemoteMemoryMapPtr;
+using doca::RemoteMemoryRange;
+using doca::RemoteMemoryRangePtr;
 
 // ----------------------------------------------------------------------------
 // MemoryMap::Builder
@@ -128,18 +132,6 @@ MemoryMap::Builder MemoryMap::Create()
     return Builder(mmap);
 }
 
-MemoryMap::Builder MemoryMap::CreateFromExport(std::span<std::uint8_t> & exportDesc, DevicePtr dev)
-{
-    doca_mmap * mmap = nullptr;
-    doca_data * userData = nullptr;
-    auto err = FromDocaError(doca_mmap_create_from_export(userData, static_cast<void *>(exportDesc.data()),
-                                                          exportDesc.size(), dev->GetNative(), &mmap));
-    if (err) {
-        return Builder(nullptr);
-    }
-    return Builder(mmap, dev);
-}
-
 MemoryMap::MemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter)
     : memoryMap(initialMemoryMap), device(device), deleter(deleter)
 {
@@ -187,7 +179,7 @@ error MemoryMap::RemoveDevice()
     return nullptr;
 }
 
-std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportPci() const
+std::tuple<std::vector<std::uint8_t>, error> MemoryMap::ExportPci() const
 {
     if (!this->device) {
         return { {}, errors::New("No device associated with memory map") };
@@ -206,11 +198,11 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportPci() const
     }
 
     auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
-    auto exportDescSpan = std::span<const std::uint8_t>(exportDescPtr, exportDescLen);
+    auto exportDescSpan = std::vector<std::uint8_t>(exportDescPtr, exportDescPtr + exportDescLen);
     return { exportDescSpan, nullptr };
 }
 
-std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
+std::tuple<std::vector<std::uint8_t>, error> MemoryMap::ExportRdma() const
 {
     if (!this->device) {
         return { {}, errors::New("No device associated with memory map") };
@@ -229,7 +221,8 @@ std::tuple<std::span<const std::uint8_t>, error> MemoryMap::ExportRdma() const
     }
 
     auto * exportDescPtr = static_cast<const std::uint8_t *>(exportDesc);
-    auto exportDescSpan = std::span<const std::uint8_t>(exportDescPtr, exportDescLen);
+    auto exportDescSpan = std::vector<std::uint8_t>(exportDescPtr, exportDescPtr + exportDescLen);
+
     return { exportDescSpan, nullptr };
 }
 
@@ -256,6 +249,106 @@ std::tuple<std::span<uint8_t>, error> doca::MemoryMap::GetMemoryRange()
 }
 
 doca_mmap * MemoryMap::GetNative() const
+{
+    return this->memoryMap;
+}
+
+// ----------------------------------------------------------------------------
+// RemoteMemoryMap
+// ----------------------------------------------------------------------------
+
+RemoteMemoryMap::RemoteMemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter)
+    : memoryMap(initialMemoryMap), device(device), deleter(deleter)
+{
+}
+
+void doca::RemoteMemoryMap::Deleter::Delete(doca_mmap * mmap)
+{
+    if (mmap) {
+        std::ignore = doca_mmap_stop(mmap);
+        std::ignore = doca_mmap_destroy(mmap);
+    }
+}
+
+RemoteMemoryMap::~RemoteMemoryMap()
+{
+    if (this->memoryMap && this->deleter) {
+        this->deleter->Delete(this->memoryMap);
+    }
+}
+
+error RemoteMemoryMap::Stop()
+{
+    if (!this->memoryMap) {
+        return errors::New("Memory map is null");
+    }
+    auto err = FromDocaError(doca_mmap_stop(this->memoryMap));
+    if (err) {
+        return errors::Wrap(err, "Failed to stop memory map");
+    }
+    return nullptr;
+}
+
+error RemoteMemoryMap::RemoveDevice()
+{
+    if (!this->device) {
+        return nullptr;
+    }
+    if (!this->memoryMap) {
+        return errors::New("Memory map is null");
+    }
+    auto err = FromDocaError(doca_mmap_rm_dev(this->memoryMap, this->device->GetNative()));
+    if (err) {
+        return errors::Wrap(err, "Failed to deregister device from memory map");
+    }
+    return nullptr;
+}
+
+std::tuple<RemoteMemoryMapPtr, error> RemoteMemoryMap::CreateFromExport(std::vector<std::uint8_t> & exportDesc,
+                                                                        DevicePtr device)
+{
+    if (device == nullptr) {
+        return { nullptr, errors::New("Given device is null") };
+    }
+
+    doca_mmap * mmap = nullptr;
+    doca_data * userData = nullptr;
+    auto err = FromDocaError(doca_mmap_create_from_export(userData, static_cast<void *>(exportDesc.data()),
+                                                          exportDesc.size(), device->GetNative(), &mmap));
+    if (err) {
+        return { nullptr, errors::New("Failed to create remote memory map from exported descriptor") };
+    }
+
+    auto remoteMmap = std::make_shared<RemoteMemoryMap>(mmap, device, std::make_shared<Deleter>());
+
+    return { remoteMmap, nullptr };
+}
+
+std::tuple<RemoteMemoryRangePtr, error> RemoteMemoryMap::GetRemoteMemoryRange()
+{
+    if (!this->device) {
+        return { {}, errors::New("No device associated with memory map") };
+    }
+    if (!this->memoryMap) {
+        return { {}, errors::New("Memory map is null") };
+    }
+
+    void * memrange = nullptr;
+    size_t memsize = 0;
+
+    auto err = FromDocaError(doca_mmap_get_memrange(this->memoryMap, &memrange, &memsize));
+    if (err) {
+        return { {}, errors::Wrap(err, "Failed to get memory range from memory map") };
+    }
+
+    auto remoteMemrange = std::make_shared<RemoteMemoryRange>();
+    remoteMemrange->memoryAddress = static_cast<std::uint8_t *>(memrange);
+    remoteMemrange->memorySize = memsize;
+
+    return { remoteMemrange, nullptr };
+}
+
+doca_mmap * RemoteMemoryMap::GetNative()
 {
     return this->memoryMap;
 }
