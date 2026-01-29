@@ -6,9 +6,7 @@ using doca::ContextPtr;
 using doca::ProgressEngine;
 using doca::ProgressEnginePtr;
 
-// ----------------------------------------------------------------------------
-// ProgressEngine
-// ----------------------------------------------------------------------------
+#pragma region MemoryMap
 
 std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
 {
@@ -79,14 +77,4 @@ std::tuple<std::size_t, error> ProgressEngine::GetNumInflightTasks() const
     return { numInflightTasks, nullptr };
 }
 
-error ProgressEngine::SetEventMode(ProgressEngineEventMode mode)
-{
-    if (!this->progressEngine) {
-        return errors::New("Progress engine is null");
-    }
-    auto err = FromDocaError(doca_pe_set_event_mode(this->progressEngine, static_cast<doca_pe_event_mode>(mode)));
-    if (err) {
-        return errors::Wrap(err, "Failed to set progress engine event mode");
-    }
-    return nullptr;
-}
+#pragma endregion

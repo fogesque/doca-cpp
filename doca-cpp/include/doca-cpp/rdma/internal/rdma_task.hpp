@@ -37,7 +37,7 @@ using RdmaReadTaskPtr = std::shared_ptr<RdmaReadTask>;
 // ----------------------------------------------------------------------------
 // RdmaTaskInterface
 // ----------------------------------------------------------------------------
-class RdmaTaskInterface : public doca::TaskInterface
+class RdmaTaskInterface : public doca::ITask
 {
 public:
     enum class State {
