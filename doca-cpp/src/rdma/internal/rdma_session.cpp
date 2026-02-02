@@ -605,12 +605,12 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaOperation(RdmaExecutorPtr e
 asio::awaitable<error> RdmaSession::PerformRdmaSend(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
                                                     RdmaConnectionPtr connection)
 {
-    auto operation = OperationRequest{
-        .type = OperationRequest::Type::send,
+    auto operation = RdmaOperationRequest{
+        .type = RdmaOperationType::send,
         .localBuffer = endpoint->Buffer(),
         .remoteBuffer = nullptr,
         .requestConnection = connection,
-        .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
+        .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
@@ -626,12 +626,12 @@ asio::awaitable<error> RdmaSession::PerformRdmaSend(RdmaExecutorPtr executor, Rd
 
 asio::awaitable<error> RdmaSession::PerformRdmaReceive(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint)
 {
-    auto operation = OperationRequest{
-        .type = OperationRequest::Type::receive,
+    auto operation = RdmaOperationRequest{
+        .type = RdmaOperationType::receive,
         .localBuffer = endpoint->Buffer(),
         .remoteBuffer = nullptr,
         .requestConnection = nullptr,  // not needed in receive
-        .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
+        .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
@@ -649,12 +649,12 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaWrite(RdmaExecutorPtr execu
                                                            RdmaRemoteBufferPtr remoteBuffer,
                                                            RdmaConnectionPtr connection)
 {
-    auto operation = OperationRequest{
-        .type = OperationRequest::Type::write,
+    auto operation = RdmaOperationRequest{
+        .type = RdmaOperationType::write,
         .localBuffer = endpoint->Buffer(),
         .remoteBuffer = remoteBuffer,
         .requestConnection = connection,
-        .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
+        .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
@@ -672,12 +672,12 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaRead(RdmaExecutorPtr execut
                                                           RdmaRemoteBufferPtr remoteBuffer,
                                                           RdmaConnectionPtr connection)
 {
-    auto operation = OperationRequest{
-        .type = OperationRequest::Type::read,
+    auto operation = RdmaOperationRequest{
+        .type = RdmaOperationType::read,
         .localBuffer = endpoint->Buffer(),
         .remoteBuffer = remoteBuffer,
         .requestConnection = connection,
-        .responcePromise = std::make_shared<std::promise<OperationResponce>>(),
+        .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
         .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 

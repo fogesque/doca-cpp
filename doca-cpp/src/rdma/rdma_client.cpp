@@ -23,10 +23,6 @@ using doca::rdma::RdmaClientPtr;
 
 using doca::rdma::RdmaBufferPtr;
 
-using doca::rdma::RdmaConnectionPtr;
-
-using doca::rdma::OperationRequest;
-
 // ----------------------------------------------------------------------------
 // RdmaClient
 // ----------------------------------------------------------------------------

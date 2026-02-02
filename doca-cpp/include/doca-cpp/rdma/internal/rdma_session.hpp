@@ -9,9 +9,10 @@
 #include <set>
 #include <string>
 
+#include "doca-cpp/rdma/internal/rdma_executor.hpp"
+#include "doca-cpp/rdma/internal/rdma_operation.hpp"
 #include "doca-cpp/rdma/internal/rdma_request.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
-#include "doca-cpp/rdma/rdma_executor.hpp"
 
 namespace doca::rdma
 {
