@@ -1,4 +1,4 @@
-#include "doca-cpp/rdma/rdma_executor.hpp"
+#include "doca-cpp/rdma/internal/rdma_executor.hpp"
 
 #include "doca-cpp/logging/logging.hpp"
 
@@ -8,15 +8,13 @@ namespace
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
-    .moduleName = "rdma::executor",
+    .moduleName = "executor",
 };
 }  // namespace
 DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
 
 #endif
 
-using doca::rdma::OperationRequest;
-using doca::rdma::OperationResponce;
 using doca::rdma::RdmaAwaitable;
 using doca::rdma::RdmaConnection;
 using doca::rdma::RdmaConnectionPtr;
@@ -24,6 +22,8 @@ using doca::rdma::RdmaConnectionRole;
 using doca::rdma::RdmaEnginePtr;
 using doca::rdma::RdmaExecutor;
 using doca::rdma::RdmaExecutorPtr;
+using doca::rdma::RdmaOperationRequest;
+using doca::rdma::RdmaOperationResponce;
 
 namespace constants
 {
@@ -59,7 +59,7 @@ std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialD
 }
 
 RdmaExecutor::RdmaExecutor(const Config & initialConfig)
-    : rdmaEngine(initialConfig.initialRdmaEngine), device(initialConfig.initialDevice), running(false),
+    : rdmaEngine(initialConfig.initialRdmaEngine), device(initialConfig.initialDevice), workerRunning(false),
       workerThread(nullptr), rdmaContext(nullptr), progressEngine(nullptr), bufferInventory(nullptr)
 {
 }
@@ -69,7 +69,7 @@ RdmaExecutor::~RdmaExecutor()
     DOCA_CPP_LOG_DEBUG("Executor destructor called, joining all running threads");
     {
         std::scoped_lock lock(this->queueMutex);
-        this->running.store(false);
+        this->workerRunning.store(false);
     }
     this->queueCondVar.notify_one();
 
@@ -83,7 +83,7 @@ error RdmaExecutor::Start()
 {
     DOCA_CPP_LOG_DEBUG("Starting RDMA executor...");
 
-    if (this->running.load()) {
+    if (this->workerRunning.load()) {
         return errors::New("Executor is already running");
     }
 
@@ -296,7 +296,7 @@ error RdmaExecutor::Start()
     DOCA_CPP_LOG_DEBUG("RDMA context state is running");
 
     // Start worker thread
-    this->running.store(true);
+    this->workerRunning.store(true);
     this->workerThread = std::make_unique<std::thread>([this] { this->workerLoop(); });
 
     DOCA_CPP_LOG_DEBUG("Started executor working thread");
@@ -308,14 +308,14 @@ void RdmaExecutor::Stop()
 {
     DOCA_CPP_LOG_DEBUG("Stopping executor...");
 
-    if (!this->running.load()) {
+    if (!this->workerRunning.load()) {
         return;
     }
 
     // Stop worker loop
     {
         std::scoped_lock lock(this->queueMutex);
-        this->running.store(false);
+        this->workerRunning.store(false);
     }
     this->queueCondVar.notify_one();
 
@@ -451,14 +451,14 @@ doca::DevicePtr doca::rdma::RdmaExecutor::GetDevice()
     return this->device;
 }
 
-std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(OperationRequest request)
+std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(RdmaOperationRequest request)
 {
     auto operationFuture = request.responcePromise->get_future();
     auto connectionFuture = request.connectionPromise->get_future();
     auto awaitable = RdmaAwaitable(operationFuture, connectionFuture);
     {
         std::scoped_lock lock(this->queueMutex);
-        if (!this->running) {
+        if (!this->workerRunning) {
             auto err = errors::New("Executor is shut down");
             request.responcePromise->set_value({ nullptr, err });
             request.connectionPromise->set_value(nullptr);
@@ -475,12 +475,12 @@ void RdmaExecutor::workerLoop()
 {
     while (true) {
         // Get operation request from operations queue
-        OperationRequest request;
+        RdmaOperationRequest request;
         {
             std::unique_lock lock(this->queueMutex);
-            this->queueCondVar.wait(lock, [this] { return !this->running || !this->operationQueue.empty(); });
+            this->queueCondVar.wait(lock, [this] { return !this->workerRunning || !this->operationQueue.empty(); });
 
-            if (!this->running && this->operationQueue.empty()) {
+            if (!this->workerRunning && this->operationQueue.empty()) {
                 DOCA_CPP_LOG_DEBUG("Exiting worker thread");
                 return;
             }
@@ -493,7 +493,7 @@ void RdmaExecutor::workerLoop()
         auto responce = this->executeOperation(request);
 
         // If error occured, connection promise won't have value, so set it to null
-        const auto & responceErr = responce.second;
+        const auto & responceErr = std::get<1>(responce);
         if (responceErr) {
             request.connectionPromise->set_value(nullptr);
         }
@@ -507,22 +507,22 @@ void RdmaExecutor::workerLoop()
     }
 }
 
-OperationResponce RdmaExecutor::executeOperation(OperationRequest & request)
+RdmaOperationResponce RdmaExecutor::executeOperation(RdmaOperationRequest & request)
 {
     switch (request.type) {
-        case OperationRequest::Type::send:
+        case RdmaOperationType::send:
             return this->executeSend(request);
-        case OperationRequest::Type::receive:
+        case RdmaOperationType::receive:
             return this->executeReceive(request);
-        case OperationRequest::Type::read:
+        case RdmaOperationType::read:
             return this->executeRead(request);
-        case OperationRequest::Type::write:
+        case RdmaOperationType::write:
             return this->executeWrite(request);
     }
     return { nullptr, errors::New("Unknown operation type") };
 }
 
-OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
+RdmaOperationResponce RdmaExecutor::executeSend(RdmaOperationRequest & request)
 {
     // Send Operation:
     // 1. Get MemoryMap from the buffer
@@ -610,7 +610,7 @@ OperationResponce RdmaExecutor::executeSend(OperationRequest & request)
     return { request.localBuffer, nullptr };
 }
 
-OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
+RdmaOperationResponce RdmaExecutor::executeReceive(RdmaOperationRequest & request)
 {
     // Receive Operation:
     // 1. Get MemoryMap from buffer
@@ -711,7 +711,7 @@ OperationResponce RdmaExecutor::executeReceive(OperationRequest & request)
     return { request.localBuffer, nullptr };
 }
 
-OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
+RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
 {
     // Check requested buffers
     if (!request.localBuffer || !request.remoteBuffer) {
@@ -803,7 +803,7 @@ OperationResponce RdmaExecutor::executeRead(OperationRequest & request)
     return { request.localBuffer, nullptr };
 }
 
-OperationResponce RdmaExecutor::executeWrite(OperationRequest & request)
+RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
 {
     // Check requested buffers
     if (!request.localBuffer || !request.remoteBuffer) {
