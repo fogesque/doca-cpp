@@ -3,7 +3,7 @@
 
 error user::UserWriteService::Handle(doca::rdma::RdmaBufferPtr buffer)
 {
-    if (this->writePattern = 0xFF) {
+    if (this->writePattern == 0xFF) {
         this->writePattern = 0x11;
     }
 
