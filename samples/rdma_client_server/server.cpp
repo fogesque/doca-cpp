@@ -79,8 +79,8 @@ int main()
 
     std::println("[Server Sample] Registering example services to RDMA endpoints");
 
-    auto userWriteService = std::make_shared<UserWriteService>();
-    auto userReadService = std::make_shared<UserReadService>();
+    auto userWriteService = std::make_shared<user::UserWriteService>();
+    auto userReadService = std::make_shared<user::UserReadService>();
     for (auto & endpoint : endpoints) {
         const auto type = endpoint->Type();
         if (endpoint->Type() == doca::rdma::RdmaEndpointType::read ||
