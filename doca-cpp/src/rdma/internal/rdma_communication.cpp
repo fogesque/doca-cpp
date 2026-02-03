@@ -1,5 +1,3 @@
-#pragma once
-
 #include "doca-cpp/rdma/internal/rdma_communication.hpp"
 
 using doca::rdma::communication::Acknowledge;
