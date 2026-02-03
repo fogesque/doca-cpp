@@ -153,7 +153,7 @@ private:
     /// @brief Waits for specified RDMA context state running progress engine with timeout
     error waitForContextState(doca::Context::State desiredState, std::chrono::milliseconds waitTimeout = 0ms) const;
     /// @brief Waits for specified RDMA task completion state running progress engine with timeout
-    error waitForTaskState(RdmaTaskInterface::State desiredState, RdmaTaskInterface::State & changingState,
+    error waitForTaskState(IRdmaTask::State desiredState, IRdmaTask::State & changingState,
                            std::chrono::milliseconds waitTimeout = 0ms);
     /// @brief Waits for specified RDMA connection state running progress engine with timeout
     error waitForConnectionState(RdmaConnection::State desiredState, RdmaConnection::State & changingState,

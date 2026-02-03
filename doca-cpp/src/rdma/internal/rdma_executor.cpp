@@ -140,14 +140,14 @@ error RdmaExecutor::Start()
     // Set RDMA Receive Task state change callbacks
     auto taskReceiveSuccessCallback = [](struct doca_rdma_task_receive * task, union doca_data taskUserData,
                                          union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::completed;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::completed;
         DOCA_CPP_LOG_DEBUG("Callback: receive task completed successfully");
     };
     auto taskReceiveErrorCallback = [](struct doca_rdma_task_receive * task, union doca_data taskUserData,
                                        union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::error;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::error;
         DOCA_CPP_LOG_DEBUG("Callback: receive task completed with error");
     };
     err = this->rdmaEngine->SetReceiveTaskCompletionCallbacks(taskReceiveSuccessCallback, taskReceiveErrorCallback);
@@ -160,14 +160,14 @@ error RdmaExecutor::Start()
     // Set RDMA Send Task state change callbacks
     auto taskSendSuccessCallback = [](struct doca_rdma_task_send * task, union doca_data taskUserData,
                                       union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::completed;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::completed;
         DOCA_CPP_LOG_DEBUG("Callback: send task completed successfully");
     };
     auto taskSendErrorCallback = [](struct doca_rdma_task_send * task, union doca_data taskUserData,
                                     union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::error;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::error;
         DOCA_CPP_LOG_DEBUG("Callback: send task completed with error");
     };
     err = this->rdmaEngine->SetSendTaskCompletionCallbacks(taskSendSuccessCallback, taskSendErrorCallback);
@@ -180,14 +180,14 @@ error RdmaExecutor::Start()
     // Set RDMA Read Task state change callbacks
     auto taskReadSuccessCallback = [](struct doca_rdma_task_read * task, union doca_data taskUserData,
                                       union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::completed;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::completed;
         DOCA_CPP_LOG_DEBUG("Callback: read task completed successfully");
     };
     auto taskReadErrorCallback = [](struct doca_rdma_task_read * task, union doca_data taskUserData,
                                     union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::error;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::error;
         DOCA_CPP_LOG_DEBUG("Callback: read task completed with error");
     };
     err = this->rdmaEngine->SetReadTaskCompletionCallbacks(taskReadSuccessCallback, taskReadErrorCallback);
@@ -200,14 +200,14 @@ error RdmaExecutor::Start()
     // Set RDMA Write Task state change callbacks
     auto taskWriteSuccessCallback = [](struct doca_rdma_task_write * task, union doca_data taskUserData,
                                        union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::completed;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::completed;
         DOCA_CPP_LOG_DEBUG("Callback: write task completed successfully");
     };
     auto taskWriteErrorCallback = [](struct doca_rdma_task_write * task, union doca_data taskUserData,
                                      union doca_data ctxUserData) -> void {
-        auto transferState = static_cast<RdmaTaskInterface::State *>(taskUserData.ptr);
-        *transferState = RdmaTaskInterface::State::error;
+        auto transferState = static_cast<IRdmaTask::State *>(taskUserData.ptr);
+        *transferState = IRdmaTask::State::error;
         DOCA_CPP_LOG_DEBUG("Callback: write task completed with error");
     };
     err = this->rdmaEngine->SetWriteTaskCompletionCallbacks(taskWriteSuccessCallback, taskWriteErrorCallback);
@@ -548,7 +548,7 @@ RdmaOperationResponce RdmaExecutor::executeSend(RdmaOperationRequest & request)
     doca::BufferPtr srcBuf = doca::Buffer::CreateRef(nullptr);
 
     // Initialize operation state
-    auto taskState = RdmaTaskInterface::State::idle;
+    auto taskState = IRdmaTask::State::idle;
 
     if (request.localBuffer) {
         auto [buffer, err] = this->getSourceLocalBuffer(request.localBuffer);
@@ -571,7 +571,7 @@ RdmaOperationResponce RdmaExecutor::executeSend(RdmaOperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread allocated send task");
 
     // Submit RdmaSendTask to RdmaEngine
-    taskState = RdmaTaskInterface::State::submitted;
+    taskState = IRdmaTask::State::submitted;
     auto err = sendTask->Submit();
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA send task") };
@@ -583,7 +583,7 @@ RdmaOperationResponce RdmaExecutor::executeSend(RdmaOperationRequest & request)
 
     // Wait for task completion
     // const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
+    err = this->waitForTaskState(IRdmaTask::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion due to timeout") };
@@ -624,7 +624,7 @@ RdmaOperationResponce RdmaExecutor::executeReceive(RdmaOperationRequest & reques
     doca::BufferPtr destBuf = doca::Buffer::CreateRef(nullptr);
 
     // Initialize operation state
-    auto taskState = RdmaTaskInterface::State::idle;
+    auto taskState = IRdmaTask::State::idle;
 
     // If local buffer is nullptr, Receive empty message
     if (request.localBuffer) {
@@ -647,7 +647,7 @@ RdmaOperationResponce RdmaExecutor::executeReceive(RdmaOperationRequest & reques
     DOCA_CPP_LOG_DEBUG("Worker thread allocated receive task");
 
     // Submit RdmaReceiveTask to RdmaEngine
-    taskState = RdmaTaskInterface::State::submitted;
+    taskState = IRdmaTask::State::submitted;
     auto err = receiveTask->Submit();
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA receive task") };
@@ -659,7 +659,7 @@ RdmaOperationResponce RdmaExecutor::executeReceive(RdmaOperationRequest & reques
 
     // Wait for task completion: if it will complete with error, function will return it
     // const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
+    err = this->waitForTaskState(IRdmaTask::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion due to timeout") };
@@ -732,7 +732,7 @@ RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
     }
 
     // Initialize operation state
-    auto taskState = RdmaTaskInterface::State::idle;
+    auto taskState = IRdmaTask::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
     auto [srcBuf, srcBufErr] = this->getSourceRemoteBuffer(request.remoteBuffer);
@@ -760,7 +760,7 @@ RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread allocated read task");
 
     // Submit RdmaSendTask to RdmaEngine
-    taskState = RdmaTaskInterface::State::submitted;
+    taskState = IRdmaTask::State::submitted;
     err = readTask->Submit();
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA read task") };
@@ -772,7 +772,7 @@ RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
 
     // Wait for task completion
     // const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
+    err = this->waitForTaskState(IRdmaTask::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA read task completion due to timeout") };
@@ -824,7 +824,7 @@ RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
     }
 
     // Initialize operation state
-    auto taskState = RdmaTaskInterface::State::idle;
+    auto taskState = IRdmaTask::State::idle;
 
     // Get DOCA buffer for source RDMA buffer
     auto [srcBuf, srcBufErr] = this->getSourceLocalBuffer(request.localBuffer);
@@ -852,7 +852,7 @@ RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
     DOCA_CPP_LOG_DEBUG("Worker thread allocated write task");
 
     // Submit task to RdmaEngine
-    taskState = RdmaTaskInterface::State::submitted;
+    taskState = IRdmaTask::State::submitted;
     err = writeTask->Submit();
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to submit RDMA write task") };
@@ -864,7 +864,7 @@ RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
 
     // Wait for task completion
     // const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(RdmaTaskInterface::State::completed, taskState /*,  waitTimeout */);
+    err = this->waitForTaskState(IRdmaTask::State::completed, taskState /*,  waitTimeout */);
     if (err) {
         if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
             return { nullptr, errors::Wrap(err, "Failed to wait for RDMA write task completion due to timeout") };
@@ -923,7 +923,7 @@ error RdmaExecutor::waitForContextState(doca::Context::State desiredState, std::
     return nullptr;
 }
 
-error RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desiredState, RdmaTaskInterface::State & changingState,
+error RdmaExecutor::waitForTaskState(IRdmaTask::State desiredState, IRdmaTask::State & changingState,
                                      std::chrono::milliseconds waitTimeout)
 {
     if (this->progressEngine == nullptr) {
@@ -938,7 +938,7 @@ error RdmaExecutor::waitForTaskState(RdmaTaskInterface::State desiredState, Rdma
         std::this_thread::sleep_for(10us);
         this->progressEngine->Progress();
 
-        if (changingState == RdmaTaskInterface::State::error) {
+        if (changingState == IRdmaTask::State::error) {
             return errors::New("Task completed with error");
         }
     }
