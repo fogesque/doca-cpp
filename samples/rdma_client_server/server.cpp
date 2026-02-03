@@ -29,10 +29,6 @@ int main()
     std::println("   DOCA-CPP RDMA Server Sample");
     std::println("==================================\n");
 
-    std::println("[Server Sample] Setting doca-cpp logging level");
-
-    doca::logging::SetLogLevel(configs::loggingLevel);
-
     std::println("[Server Sample] Parsing configs from {}", configs::configsFilename);
 
     // Parse sample configs
@@ -44,6 +40,10 @@ int main()
 
     // Print sample configs
     configs::PrintSampleConfigs(cfg);
+
+    std::println("[Server Sample] Setting doca-cpp logging level");
+
+    doca::logging::SetLogLevel(cfg->loggingLevel);
 
     std::println("[Server Sample] Opening InfiniBand device {}", cfg->serverCfg.deviceServerIbName);
 

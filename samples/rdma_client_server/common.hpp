@@ -16,8 +16,6 @@
 namespace configs
 {
 
-inline const auto loggingLevel = doca::logging::LogLevel::Trace;
-
 inline const std::string configsFilename = "rdma_client_server_configs.yaml";
 
 // Sample configs for server and client
@@ -34,6 +32,8 @@ struct SampleConfig {
 
     ServerConfig serverCfg;
     ClientConfig clientCfg;
+
+    doca::logging::LogLevel loggingLevel = doca::logging::LogLevel::Off;
 };
 using SampleConfigPtr = std::shared_ptr<SampleConfig>;
 
@@ -47,6 +47,7 @@ inline std::tuple<SampleConfigPtr, error> ParseSampleConfigs(const std::string &
     }
 
     YAML::Node yamlConfig = YAML::LoadFile(configFilename);
+    YAML::Node sampleNode;
     YAML::Node serverNode;
     YAML::Node clientNode;
 
@@ -101,7 +102,43 @@ inline std::tuple<SampleConfigPtr, error> ParseSampleConfigs(const std::string &
         }
     }
 
+    // Parse sample configs
+
+    try {
+        sampleNode = yamlConfig["sample"];
+        if (sampleNode["log-level"]) {
+            try {
+                cfg->loggingLevel = static_cast<doca::logging::LogLevel>(sampleNode["log-level"].as<uint32_t>());
+            } catch (std::runtime_error & e) {
+                return { nullptr, errors::New("Failed to parse 'log-level' field in sample node") };
+            }
+        }
+    } catch (std::runtime_error & e) {
+        cfg->loggingLevel = doca::logging::LogLevel::Off;
+    }
+
     return { cfg, nullptr };
+}
+
+inline std::string LogLevelToString(const doca::logging::LogLevel level)
+{
+    switch (level) {
+        case doca::logging::LogLevel::Off:
+            return "Off";
+        case doca::logging::LogLevel::Trace:
+            return "Trace";
+        case doca::logging::LogLevel::Debug:
+            return "Debug";
+        case doca::logging::LogLevel::Info:
+            return "Info";
+        case doca::logging::LogLevel::Warning:
+            return "Warning";
+        case doca::logging::LogLevel::Error:
+            return "Error";
+        case doca::logging::LogLevel::Critical:
+            return "Critical";
+    }
+    return "Unknown";
 }
 
 // Prints parsed configs (for debugging)
@@ -115,6 +152,8 @@ inline void PrintSampleConfigs(const SampleConfigPtr cfg)
     std::println("    Port:            {}", cfg->serverCfg.serverPort);
     std::println("  Client:");
     std::println("    Device:          {}", cfg->clientCfg.deviceClientIbName);
+    std::println("  Sample:");
+    std::println("    Log Level:       {}", LogLevelToString(cfg->loggingLevel));
     std::println("==================================");
     std::println();
 }

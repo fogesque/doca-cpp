@@ -14,10 +14,6 @@ int main()
     std::println("   DOCA-CPP RDMA Client Sample");
     std::println("==================================\n");
 
-    std::println("[Client Sample] Setting doca-cpp logging level");
-
-    doca::logging::SetLogLevel(configs::loggingLevel);
-
     std::println("[Client Sample] Parsing configs from {}", configs::configsFilename);
 
     // Parse sample configs
@@ -29,6 +25,10 @@ int main()
 
     // Print sample configs
     configs::PrintSampleConfigs(cfg);
+
+    std::println("[Client Sample] Setting doca-cpp logging level");
+
+    doca::logging::SetLogLevel(cfg->loggingLevel);
 
     std::println("[Client Sample] Opening InfiniBand device {}", cfg->clientCfg.deviceClientIbName);
 
