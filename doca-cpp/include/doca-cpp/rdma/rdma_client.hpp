@@ -9,11 +9,11 @@
 #include <tuple>
 
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/rdma/internal/rdma_executor.hpp"
 #include "doca-cpp/rdma/internal/rdma_request.hpp"
 #include "doca-cpp/rdma/internal/rdma_session.hpp"
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 #include "doca-cpp/rdma/rdma_endpoint.hpp"
-#include "doca-cpp/rdma/rdma_executor.hpp"
 
 namespace doca::rdma
 {

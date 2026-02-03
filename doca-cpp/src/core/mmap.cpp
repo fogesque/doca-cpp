@@ -11,9 +11,7 @@ using doca::RemoteMemoryMapPtr;
 using doca::RemoteMemoryRange;
 using doca::RemoteMemoryRangePtr;
 
-// ----------------------------------------------------------------------------
-// MemoryMap::Builder
-// ----------------------------------------------------------------------------
+#pragma region MemoryMap
 
 MemoryMap::Builder::Builder(doca_mmap * plainMmap) : mmap(plainMmap), buildErr(nullptr), device(nullptr) {}
 
@@ -76,18 +74,6 @@ MemoryMap::Builder & MemoryMap::Builder::SetMaxNumDevices(uint32_t maxDevices)
     return *this;
 }
 
-MemoryMap::Builder & MemoryMap::Builder::SetUserData(const Data & data)
-{
-    if (this->mmap && !this->buildErr) {
-        auto nativeData = data.ToNative();
-        auto err = FromDocaError(doca_mmap_set_user_data(this->mmap, nativeData));
-        if (err) {
-            this->buildErr = errors::Wrap(err, "Failed to set user data");
-        }
-    }
-    return *this;
-}
-
 std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
 {
     if (this->buildErr) {
@@ -118,9 +104,9 @@ std::tuple<MemoryMapPtr, error> MemoryMap::Builder::Start()
     return { memoryMapPtr, nullptr };
 }
 
-// ----------------------------------------------------------------------------
-// MemoryMap
-// ----------------------------------------------------------------------------
+#pragma endregion
+
+#pragma region MemoryMap::Builder
 
 MemoryMap::Builder MemoryMap::Create()
 {
@@ -253,9 +239,9 @@ doca_mmap * MemoryMap::GetNative() const
     return this->memoryMap;
 }
 
-// ----------------------------------------------------------------------------
-// RemoteMemoryMap
-// ----------------------------------------------------------------------------
+#pragma endregion
+
+#pragma region RemoteMemoryMap
 
 RemoteMemoryMap::RemoteMemoryMap(doca_mmap * initialMemoryMap, DevicePtr device, DeleterPtr deleter)
     : memoryMap(initialMemoryMap), device(device), deleter(deleter)
@@ -352,3 +338,5 @@ doca_mmap * RemoteMemoryMap::GetNative()
 {
     return this->memoryMap;
 }
+
+#pragma endregion

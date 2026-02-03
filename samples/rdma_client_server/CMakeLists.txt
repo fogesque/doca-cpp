@@ -11,7 +11,12 @@ find_package(yaml-cpp CONFIG REQUIRED)
 # ======================================================================
 set(TARGET_NAME_SERVER ${TARGET_PREFIX}rdma_server)
 
-add_executable(${TARGET_NAME_SERVER} ${CMAKE_CURRENT_LIST_DIR}/server.cpp)
+set(SERVER_SOURCES 
+    ${CMAKE_SOURCE_DIR}/samples/rdma_client_server/server.cpp 
+    ${CMAKE_SOURCE_DIR}/samples/rdma_client_server/service.cpp     
+)
+
+add_executable(${TARGET_NAME_SERVER} ${SERVER_SOURCES})
 
 target_link_libraries(${TARGET_NAME_SERVER}
     PRIVATE
@@ -34,7 +39,12 @@ install(TARGETS ${TARGET_NAME_SERVER} DESTINATION ${CMAKE_BINARY_DIR}/bin/sample
 # ======================================================================
 set(TARGET_NAME_CLIENT ${TARGET_PREFIX}rdma_client)
 
-add_executable(${TARGET_NAME_CLIENT} ${CMAKE_CURRENT_LIST_DIR}/client.cpp)
+set(CLIENT_SOURCES 
+    ${CMAKE_SOURCE_DIR}/samples/rdma_client_server/client.cpp 
+    ${CMAKE_SOURCE_DIR}/samples/rdma_client_server/service.cpp     
+)
+
+add_executable(${TARGET_NAME_CLIENT} ${CLIENT_SOURCES})
 
 target_link_libraries(${TARGET_NAME_CLIENT}
     PRIVATE
