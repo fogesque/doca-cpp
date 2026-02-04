@@ -100,17 +100,22 @@ int main()
 
     std::println("[Client Sample] Requesting server to process every endpoint");
 
-    // Request RDMA operation for every endpoint
-    for (auto & endpoint : endpoints) {
-        const auto endpointId = doca::rdma::MakeEndpointId(endpoint);
-        std::println("[Client Sample] Requesting server to process endpoint with ID: {}", endpointId);
-        // TODO: make methods for every endpoint or call by endpoint path with type
-        err = client->RequestEndpointProcessing(endpointId);
-        if (err) {
-            std::println("[Client Sample] Failed to process client's request: {}", err->What());
-            return 1;
+    // Request RDMA operation for every endpoint 20 times
+    const auto requestsCount = 20;
+    for (int i = 0; i < requestsCount; i++) {
+        for (auto & endpoint : endpoints) {
+            const auto endpointId = doca::rdma::MakeEndpointId(endpoint);
+            std::println("[Client Sample] Requesting server to process endpoint with ID: {}", endpointId);
+            // TODO: make methods for every endpoint or call by endpoint path with type
+            err = client->RequestEndpointProcessing(endpointId);
+            if (err) {
+                std::println("[Client Sample] Failed to process client's request: {}", err->What());
+                return 1;
+            }
         }
     }
+
+    std::println("[Client Sample] All RDMA requests completed successfuly");
 
     std::println("==================================");
     std::println("   End Of Client Sample");
