@@ -21,8 +21,6 @@ using RdmaExecutorPtr = std::shared_ptr<RdmaExecutor>;
 /// Type of RDMA operation
 ///
 enum class RdmaOperationType {
-    send,
-    receive,
     read,
     write,
 };
@@ -45,19 +43,15 @@ using RdmaOperationConnectionPromise = std::shared_ptr<std::promise<RdmaConnecti
 ///
 struct RdmaOperationRequest {
     // Operation type
-    RdmaOperationType type = RdmaOperationType::send;
+    RdmaOperationType type = RdmaOperationType::write;
     // Operation local buffer
     RdmaBufferPtr localBuffer = nullptr;
     // Operation remote buffer
     RdmaRemoteBufferPtr remoteBuffer = nullptr;
     // Operation affected bytes
     std::size_t bytesAffected = 0;
-    // Operation connection: used with every operation type except RDMA Receive
-    RdmaConnectionPtr requestConnection = nullptr;
     // Responce promise
     RdmaOperationRequestPromise responcePromise = nullptr;
-    // Connection promise: used only when operation type is RDMA Receive
-    RdmaOperationConnectionPromise connectionPromise = nullptr;
 };
 
 }  // namespace doca::rdma

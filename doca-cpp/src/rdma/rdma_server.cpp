@@ -8,7 +8,7 @@ namespace
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
-    .moduleName = "rdma::server",
+    .moduleName = "server",
 };
 }  // namespace
 DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
@@ -89,6 +89,7 @@ error RdmaServer::Serve()
 
     // Cleanup defer to reset isServing on exit
     auto deferred = defer::MakeDefer([this]() {
+        DOCA_CPP_LOG_DEBUG("Defer called: isServing is false");
         this->isServing.store(false);
         this->shutdownCondVar.notify_all();
     });
@@ -150,7 +151,7 @@ error RdmaServer::Serve()
         asio::co_spawn(
             ioContext,
             [&]() -> asio::awaitable<void> {
-                while (true) {
+                while (this->continueServing.load()) {
                     // Accept new client
                     asio::ip::tcp::socket socket = co_await acceptor.async_accept(asio::use_awaitable);
 

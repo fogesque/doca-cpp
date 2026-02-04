@@ -8,7 +8,7 @@ namespace
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
-    .moduleName = "rdma::client",
+    .moduleName = "client",
 };
 }  // namespace
 DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
@@ -129,15 +129,6 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
 
     DOCA_CPP_LOG_DEBUG("Fetched endpoint from storage");
 
-    // Get active connection
-    const auto connectionId = RdmaConnectionId{ 0 };
-    auto [connection, connErr] = this->executor->GetActiveConnection(connectionId);
-    if (connErr) {
-        return errors::Wrap(connErr, "Failed to get active RDMA connection");
-    }
-
-    DOCA_CPP_LOG_DEBUG("Fetched active connection");
-
     // Create Asio io_context (event loop)
     asio::io_context ioContext;
 
@@ -165,15 +156,14 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
             DOCA_CPP_LOG_DEBUG("Connected to communication session");
 
             // Spawn session handler for RDMA performing
-            asio::co_spawn(co_await asio::this_coro::executor,
-                           doca::rdma::HandleClientSession(session, endpoint, rdmaExecutor, connectionId),
-                           [&processingError](std::exception_ptr exception, error handleError) -> void {
-                               processingError = handleError;
-                               if (processingError) {
-                                   DOCA_CPP_LOG_ERROR(
-                                       std::format("Session ended with failure: {}", processingError->What()));
-                               }
-                           });
+            asio::co_spawn(
+                co_await asio::this_coro::executor, doca::rdma::HandleClientSession(session, endpoint, rdmaExecutor),
+                [&processingError](std::exception_ptr exception, error handleError) -> void {
+                    processingError = handleError;
+                    if (processingError) {
+                        DOCA_CPP_LOG_ERROR(std::format("Session ended with failure: {}", processingError->What()));
+                    }
+                });
         },
         asio::detached);
 

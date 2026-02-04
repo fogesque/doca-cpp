@@ -26,8 +26,7 @@ inline constexpr uint16_t Port = 41007;
 /// This message must be sent by client to server to request RDMA operation over specified RDMA endpoint.
 ///
 struct Request {
-    RdmaConnectionId connectionId = 0;
-    RdmaEndpointType endpointType = RdmaEndpointType::send;
+    RdmaEndpointType endpointType = RdmaEndpointType::write;
     RdmaEndpointPath endpointPath;
 };
 

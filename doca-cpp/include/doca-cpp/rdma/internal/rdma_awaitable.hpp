@@ -32,19 +32,16 @@ public:
     /// @brief Blocking await method for RDMA operation result retrieval with timeout
     RdmaOperationResponce AwaitWithTimeout(const std::chrono::milliseconds timeout);
 
-    /// @brief Blocking await method for connection retrieval from RDMA Receive operation. Always returns null if
-    /// operation was not RDMA Receive
-    RdmaConnectionPtr GetConnection();
-
     /// [Construction & Destruction]
+
+#pragma region RdmaAwaitable::Construct
 
     /// @brief Default constructor is deleted
     RdmaAwaitable() = delete;
 
     /// @brief Constructor
     /// @warning Takes ownership of given futures objects
-    RdmaAwaitable(std::future<RdmaOperationResponce> & initialTaskFuture,
-                  std::future<RdmaConnectionPtr> & initialConnectionFuture);
+    explicit RdmaAwaitable(std::future<RdmaOperationResponce> & initialTaskFuture);
 
     /// @brief Copy constructor is deleted
     RdmaAwaitable(const RdmaAwaitable &) = delete;
@@ -61,13 +58,11 @@ public:
     /// @brief Destructor
     ~RdmaAwaitable() = default;
 
+#pragma endregion
+
 private:
     /// @brief Task future with RDMA responce object
     std::future<RdmaOperationResponce> taskFuture;
-
-    /// @brief Task future with RDMA connection object
-    /// @warning Used only with RDMA Receive operation due to DOCA interface details
-    std::future<RdmaConnectionPtr> connectionFuture;
 };
 
 }  // namespace doca::rdma

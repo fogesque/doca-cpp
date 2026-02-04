@@ -8,7 +8,7 @@ namespace
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
-    .moduleName = "rdma::session",
+    .moduleName = "session",
 };
 }  // namespace
 DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
@@ -76,11 +76,16 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
         DOCA_CPP_LOG_DEBUG("Received request via socket");
 
         const auto requestedEndpointId = doca::rdma::MakeEndpointId(request.endpointPath, request.endpointType);
-        const auto requestorConnectionId = request.connectionId;
-
-        Responce response;
 
         DOCA_CPP_LOG_DEBUG(std::format("Requested endpoint: {}", requestedEndpointId));
+
+        // Check for active RDMA connection
+        auto [connection, connErr] = executor->GetActiveConnection();
+        if (connErr) {
+            co_return errors::Wrap(connErr, "Failed to get active connection from executor");
+        }
+
+        Responce response;
 
         // Get requested endpoint
         auto [endpoint, epErr] = endpointsStorage->GetEndpoint(requestedEndpointId);
@@ -138,8 +143,8 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 
         // Endpoint locked successfully
 
-        // If endpoint is read/receive, call user service before performing RDMA operation
-        if (endpoint->Type() == RdmaEndpointType::receive || endpoint->Type() == RdmaEndpointType::read) {
+        // If endpoint is read, call user service before performing RDMA operation
+        if (endpoint->Type() == RdmaEndpointType::read) {
             auto srvErr = endpoint->Service()->Handle(endpoint->Buffer());
             if (srvErr) {
                 response.responceCode = Responce::Code::operationServiceError;
@@ -163,7 +168,7 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
         DOCA_CPP_LOG_DEBUG("Sent permission");
 
         // Perform RDMA operation
-        err = co_await RdmaSessionServer::PerformRdmaOperation(executor, endpoint, requestorConnectionId);
+        err = co_await RdmaSessionServer::PerformRdmaOperation(executor, endpoint);
         if (err) {
             co_return errors::Wrap(err, "Failed to perform RDMA operation");
         }
@@ -181,9 +186,9 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 
         DOCA_CPP_LOG_DEBUG("Ack received");
 
-        // If endpoint is write/send, call user service after performing RDMA operation and receiving ack from
+        // If endpoint is write, call user service after performing RDMA operation and receiving ack from
         // client
-        if (endpoint->Type() == RdmaEndpointType::send || endpoint->Type() == RdmaEndpointType::write) {
+        if (endpoint->Type() == RdmaEndpointType::write) {
             auto srvErr = endpoint->Service()->Handle(endpoint->Buffer());
             if (srvErr) {
                 // TODO: fuuuuck again design issues: how to notify client that error occured when processing user
@@ -205,12 +210,11 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 }
 
 asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr session, RdmaEndpointPtr endpoint,
-                                                       RdmaExecutorPtr executor, RdmaConnectionId connectionId)
+                                                       RdmaExecutorPtr executor)
 {
     Request request;
     request.endpointType = endpoint->Type();
     request.endpointPath = endpoint->Path();
-    request.connectionId = connectionId;
 
     DOCA_CPP_LOG_DEBUG("Requested endpoint path: " + request.endpointPath);
     DOCA_CPP_LOG_DEBUG(std::format("Requested endpoint type: {}", static_cast<int>(request.endpointType)));
@@ -245,8 +249,8 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
     Acknowledge ack;
     ack.ackCode = Acknowledge::Code::operationCanceled;
 
-    // If endpoint is send/write, call user service before performing RDMA operation
-    if (endpoint->Type() == RdmaEndpointType::send || endpoint->Type() == RdmaEndpointType::write) {
+    // If endpoint is write, call user service before performing RDMA operation
+    if (endpoint->Type() == RdmaEndpointType::write) {
         auto srvErr = endpoint->Service()->Handle(endpoint->Buffer());
         if (srvErr) {
             ack.ackCode = Acknowledge::Code::operationCanceled;
@@ -257,7 +261,7 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
     }
 
     // Perform RDMA operation
-    err = co_await RdmaSessionClient::PerformRdmaOperation(executor, endpoint, remoteBuffer, connectionId);
+    err = co_await RdmaSessionClient::PerformRdmaOperation(executor, endpoint, remoteBuffer);
     if (err) {
         ack.ackCode = Acknowledge::Code::operationFailed;
         std::ignore = co_await session->SendAcknowledge(ack, timeout);
@@ -275,8 +279,8 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
 
     DOCA_CPP_LOG_DEBUG("Ack sent");
 
-    // If endpoint is receive/read, call user service before performing RDMA operation
-    if (endpoint->Type() == RdmaEndpointType::receive || endpoint->Type() == RdmaEndpointType::read) {
+    // If endpoint is read, call user service before performing RDMA operation
+    if (endpoint->Type() == RdmaEndpointType::read) {
         auto srvErr = endpoint->Service()->Handle(endpoint->Buffer());
         if (srvErr) {
             co_return errors::Wrap(srvErr, "Service handle failed");
@@ -531,26 +535,10 @@ asio::awaitable<error> RdmaSessionClient::SendAcknowledge(const Acknowledge & ac
     co_return nullptr;
 }
 
-asio::awaitable<error> RdmaSessionServer::PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                               RdmaConnectionId connectionId)
+asio::awaitable<error> RdmaSessionServer::PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint)
 {
-    auto [connection, err] = executor->GetActiveConnection(connectionId);
-    if (err) {
-        co_return errors::Wrap(err, "Failed to get active connection");
-    }
-
     const auto endpointType = endpoint->Type();
     switch (endpointType) {
-        case RdmaEndpointType::send:
-            {
-                auto err = co_await RdmaSessionServer::PerformRdmaReceive(executor, endpoint);
-                co_return err;
-            }
-        case RdmaEndpointType::receive:
-            {
-                auto err = co_await RdmaSessionServer::PerformRdmaSend(executor, endpoint, connection);
-                co_return err;
-            }
         case RdmaEndpointType::write:
             {
                 // Server does nothing when write is performed
@@ -567,34 +555,23 @@ asio::awaitable<error> RdmaSessionServer::PerformRdmaOperation(RdmaExecutorPtr e
 }
 
 asio::awaitable<error> RdmaSessionClient::PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                               RdmaRemoteBufferPtr remoteBuffer,
-                                                               RdmaConnectionId connectionId)
+                                                               RdmaRemoteBufferPtr remoteBuffer)
 {
-    auto [connection, err] = executor->GetActiveConnection(connectionId);
+    auto [connection, err] = executor->GetActiveConnection();
     if (err) {
         co_return errors::Wrap(err, "Failed to get active connection");
     }
 
     const auto endpointType = endpoint->Type();
     switch (endpointType) {
-        case RdmaEndpointType::send:
-            {
-                auto err = co_await RdmaSessionClient::PerformRdmaSend(executor, endpoint, connection);
-                co_return err;
-            }
-        case RdmaEndpointType::receive:
-            {
-                auto err = co_await RdmaSessionClient::PerformRdmaReceive(executor, endpoint);
-                co_return err;
-            }
         case RdmaEndpointType::write:
             {
-                auto err = co_await RdmaSessionClient::PerformRdmaWrite(executor, endpoint, remoteBuffer, connection);
+                auto err = co_await RdmaSessionClient::PerformRdmaWrite(executor, endpoint, remoteBuffer);
                 co_return err;
             }
         case RdmaEndpointType::read:
             {
-                auto err = co_await RdmaSessionClient::PerformRdmaRead(executor, endpoint, remoteBuffer, connection);
+                auto err = co_await RdmaSessionClient::PerformRdmaRead(executor, endpoint, remoteBuffer);
                 co_return err;
             }
         default:
@@ -602,60 +579,14 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaOperation(RdmaExecutorPtr e
     }
 }
 
-asio::awaitable<error> RdmaSession::PerformRdmaSend(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                    RdmaConnectionPtr connection)
-{
-    auto operation = RdmaOperationRequest{
-        .type = RdmaOperationType::send,
-        .localBuffer = endpoint->Buffer(),
-        .remoteBuffer = nullptr,
-        .requestConnection = connection,
-        .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
-        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
-    };
-
-    auto [awaitable, err] = executor->SubmitOperation(operation);
-    if (err) {
-        co_return errors::Wrap(err, "Failed to submit operation");
-    }
-
-    auto [_, opErr] = awaitable.AwaitWithTimeout(constants::RdmaOperationTimeout);
-
-    co_return opErr;
-}
-
-asio::awaitable<error> RdmaSession::PerformRdmaReceive(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint)
-{
-    auto operation = RdmaOperationRequest{
-        .type = RdmaOperationType::receive,
-        .localBuffer = endpoint->Buffer(),
-        .remoteBuffer = nullptr,
-        .requestConnection = nullptr,  // not needed in receive
-        .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
-        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
-    };
-
-    auto [awaitable, err] = executor->SubmitOperation(operation);
-    if (err) {
-        co_return errors::Wrap(err, "Failed to submit operation");
-    }
-
-    auto [_, opErr] = awaitable.AwaitWithTimeout(constants::RdmaOperationTimeout);
-
-    co_return opErr;
-}
-
 asio::awaitable<error> RdmaSessionClient::PerformRdmaWrite(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                           RdmaRemoteBufferPtr remoteBuffer,
-                                                           RdmaConnectionPtr connection)
+                                                           RdmaRemoteBufferPtr remoteBuffer)
 {
     auto operation = RdmaOperationRequest{
         .type = RdmaOperationType::write,
         .localBuffer = endpoint->Buffer(),
         .remoteBuffer = remoteBuffer,
-        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
-        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
     auto [awaitable, err] = executor->SubmitOperation(operation);
@@ -669,16 +600,13 @@ asio::awaitable<error> RdmaSessionClient::PerformRdmaWrite(RdmaExecutorPtr execu
 }
 
 asio::awaitable<error> RdmaSessionClient::PerformRdmaRead(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                          RdmaRemoteBufferPtr remoteBuffer,
-                                                          RdmaConnectionPtr connection)
+                                                          RdmaRemoteBufferPtr remoteBuffer)
 {
     auto operation = RdmaOperationRequest{
         .type = RdmaOperationType::read,
         .localBuffer = endpoint->Buffer(),
         .remoteBuffer = remoteBuffer,
-        .requestConnection = connection,
         .responcePromise = std::make_shared<std::promise<RdmaOperationResponce>>(),
-        .connectionPromise = std::make_shared<std::promise<RdmaConnectionPtr>>(),
     };
 
     auto [awaitable, err] = executor->SubmitOperation(operation);

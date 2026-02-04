@@ -5,9 +5,8 @@ using doca::rdma::RdmaBufferPtr;
 using doca::rdma::RdmaConnectionPtr;
 using doca::rdma::RdmaOperationResponce;
 
-RdmaAwaitable::RdmaAwaitable(std::future<RdmaOperationResponce> & initialTaskFuture,
-                             std::future<RdmaConnectionPtr> & initialConnectionFuture)
-    : taskFuture(std::move(initialTaskFuture)), connectionFuture(std::move(initialConnectionFuture))
+RdmaAwaitable::RdmaAwaitable(std::future<RdmaOperationResponce> & initialTaskFuture)
+    : taskFuture(std::move(initialTaskFuture))
 {
 }
 
@@ -24,10 +23,5 @@ RdmaOperationResponce RdmaAwaitable::AwaitWithTimeout(const std::chrono::millise
         return this->taskFuture.get();
     }
 
-    return { nullptr, errors::New("Operation timed out") };
-}
-
-RdmaConnectionPtr RdmaAwaitable::GetConnection()
-{
-    return this->connectionFuture.get();
+    return { nullptr, errors::New("Task execution timed out") };
 }

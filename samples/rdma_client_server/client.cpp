@@ -67,16 +67,14 @@ int main()
     auto userReadService = std::make_shared<user::UserReadService>();
     for (auto & endpoint : endpoints) {
         const auto type = endpoint->Type();
-        if (endpoint->Type() == doca::rdma::RdmaEndpointType::send ||
-            endpoint->Type() == doca::rdma::RdmaEndpointType::write) {
+        if (endpoint->Type() == doca::rdma::RdmaEndpointType::write) {
             auto err = endpoint->RegisterService(userWriteService);
             if (err) {
                 std::println("[Client Sample] Failed to register user service for endpoint: {}", err->What());
                 return 1;
             }
         }
-        if (endpoint->Type() == doca::rdma::RdmaEndpointType::receive ||
-            endpoint->Type() == doca::rdma::RdmaEndpointType::read) {
+        if (endpoint->Type() == doca::rdma::RdmaEndpointType::read) {
             auto err = endpoint->RegisterService(userReadService);
             if (err) {
                 std::println("[Client Sample] Failed to register user service for endpoint: {}", err->What());

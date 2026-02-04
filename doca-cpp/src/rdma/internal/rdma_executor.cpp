@@ -365,7 +365,7 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
     // Wait for connection to be established
     const auto startTime = std::chrono::steady_clock::now();
     const auto waitTimeout = 5s;
-    while (this->activeConnections.empty()) {
+    while (this->activeConnection == nullptr) {
         if (this->timeoutExpired(startTime, waitTimeout)) {
             return ErrorTypes::TimeoutExpired;
         }
@@ -393,57 +393,61 @@ error RdmaExecutor::ListenToPort(uint16_t port)
     DOCA_CPP_LOG_DEBUG("Started to listen to port");
 
     // FIXME: Testing shit
-    DOCA_CPP_LOG_DEBUG("Waiting for established connection........................");
-    while (this->activeConnections.empty()) {
+    DOCA_CPP_LOG_DEBUG("Waiting for established connection........................................");
+    while (this->activeConnection == nullptr) {
         this->progressEngine->Progress();
     };
-    DOCA_CPP_LOG_DEBUG("........................Got it");
+    DOCA_CPP_LOG_DEBUG("....................................................................Got it");
 
     return nullptr;
 }
 
 void RdmaExecutor::OnConnectionRequested(RdmaConnectionPtr connection)
 {
-    const auto & [id, err] = connection->GetId();
-    if (err || this->requestedConnections.contains(id)) {
+    // Reject if already established
+    if (this->activeConnection != nullptr) {
         std::ignore = connection->Reject();
         return;
     }
-    this->requestedConnections[id] = connection;
 
-    std::ignore = this->requestedConnections[id]->Accept();
+    // Reject if already requested
+    if (this->requestedConnection != nullptr) {
+        std::ignore = connection->Reject();
+        return;
+    }
+    this->requestedConnection = connection;
 
-    DOCA_CPP_LOG_DEBUG(std::format("Add requested connection (ID: {}) to requested connections list", id));
+    std::ignore = this->requestedConnection->Accept();
+
+    DOCA_CPP_LOG_DEBUG(std::format("Add requested connection to executor"));
 }
 
 void RdmaExecutor::OnConnectionEstablished(RdmaConnectionPtr connection)
 {
-    const auto & [id, err] = connection->GetId();
-
-    if (err || this->activeConnections.contains(id)) {
+    // Disconnect if already established
+    if (this->activeConnection != nullptr) {
         std::ignore = connection->Disconnect();
         return;
     }
 
-    this->activeConnections[id] = connection;
-    this->requestedConnections.erase(id);
+    this->activeConnection = connection;
+    this->requestedConnection = nullptr;
 
-    DOCA_CPP_LOG_DEBUG(std::format("Moved requested connection (ID: {}) to active connections list", id));
+    DOCA_CPP_LOG_DEBUG(std::format("Assigned requested connection to active connection"));
 }
 
 void RdmaExecutor::OnConnectionClosed(RdmaConnectionId connectionId)
 {
-    this->activeConnections.erase(connectionId);
-    DOCA_CPP_LOG_DEBUG(std::format("Removed connection (ID: {}) from active connections list", connectionId));
+    this->activeConnection = nullptr;
+    DOCA_CPP_LOG_DEBUG(std::format("Removed active connection from executor"));
 }
 
-std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection(RdmaConnectionId connectionId)
+std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection()
 {
-    if (!this->activeConnections.contains(connectionId)) {
-        return { nullptr, errors::New("No active RDMA connection with requested ID") };
+    if (this->activeConnection == nullptr) {
+        return { nullptr, errors::New("No active RDMA connection") };
     }
-
-    return { this->activeConnections.at(connectionId), nullptr };
+    return { this->activeConnection, nullptr };
 }
 
 void doca::rdma::RdmaExecutor::Progress()
@@ -459,14 +463,12 @@ doca::DevicePtr doca::rdma::RdmaExecutor::GetDevice()
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(RdmaOperationRequest request)
 {
     auto operationFuture = request.responcePromise->get_future();
-    auto connectionFuture = request.connectionPromise->get_future();
-    auto awaitable = RdmaAwaitable(operationFuture, connectionFuture);
+    auto awaitable = RdmaAwaitable(operationFuture);
     {
         std::scoped_lock lock(this->queueMutex);
         if (!this->workerRunning) {
             auto err = errors::New("Executor is shut down");
             request.responcePromise->set_value({ nullptr, err });
-            request.connectionPromise->set_value(nullptr);
             return { std::move(awaitable), err };
         }
         this->operationQueue.push(std::move(request));
@@ -497,12 +499,6 @@ void RdmaExecutor::workerLoop()
         // Execute operation from queue
         auto responce = this->executeOperation(request);
 
-        // If error occured, connection promise won't have value, so set it to null
-        const auto & responceErr = std::get<1>(responce);
-        if (responceErr) {
-            request.connectionPromise->set_value(nullptr);
-        }
-
         // Set operation promise responce value
         request.responcePromise->set_value(responce);
 
@@ -515,205 +511,12 @@ void RdmaExecutor::workerLoop()
 RdmaOperationResponce RdmaExecutor::executeOperation(RdmaOperationRequest & request)
 {
     switch (request.type) {
-        case RdmaOperationType::send:
-            return this->executeSend(request);
-        case RdmaOperationType::receive:
-            return this->executeReceive(request);
         case RdmaOperationType::read:
             return this->executeRead(request);
         case RdmaOperationType::write:
             return this->executeWrite(request);
     }
     return { nullptr, errors::New("Unknown operation type") };
-}
-
-RdmaOperationResponce RdmaExecutor::executeSend(RdmaOperationRequest & request)
-{
-    // Send Operation:
-    // 1. Get MemoryMap from the buffer
-    // 2. Get doca::Buffer from BufferInventory
-    // 3. Create RdmaSendTask from RdmaEngine
-    // 4. Submit RdmaSendTask to RdmaEngine
-    // 5. Wait for task completion (will be done after callback)
-
-    // Retrieve connection ID from request connection
-    auto [connectionId, connErr] = request.requestConnection->GetId();
-    if (connErr) {
-        return { nullptr, errors::Wrap(connErr, "Failed to get connection ID") };
-    }
-
-    DOCA_CPP_LOG_DEBUG(std::format("Worker thread got connection ID: {}", connectionId));
-
-    // Check that connection is active
-    if (!this->activeConnections.contains(connectionId)) {
-        return { nullptr, errors::New("No active RDMA connection available for send operation") };
-    }
-
-    // Source DOCA buffer, may be nullptr for empty message
-    doca::BufferPtr srcBuf = doca::Buffer::CreateRef(nullptr);
-
-    // Initialize operation state
-    auto taskState = IRdmaTask::State::idle;
-
-    if (request.localBuffer) {
-        auto [buffer, err] = this->getSourceLocalBuffer(request.localBuffer);
-        if (err) {
-            return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
-        }
-        srcBuf = buffer;
-        DOCA_CPP_LOG_DEBUG("Worker thread allocated plain doca buffer");
-    }
-
-    // Create RdmaSendTask from RdmaEngine
-    // Set task user data to current transfer state: it will be changed in the task callbacks
-    auto taskUserData = doca::Data(static_cast<void *>(&taskState));
-    auto activeConnection = this->activeConnections.at(connectionId);
-    auto [sendTask, taskErr] = this->rdmaEngine->AllocateSendTask(activeConnection, srcBuf, taskUserData);
-    if (taskErr) {
-        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA send task") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread allocated send task");
-
-    // Submit RdmaSendTask to RdmaEngine
-    taskState = IRdmaTask::State::submitted;
-    auto err = sendTask->Submit();
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to submit RDMA send task") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread submitted send task");
-
-    DOCA_CPP_LOG_DEBUG("Worker thread is waiting for task to complete...");
-
-    // Wait for task completion
-    // const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(IRdmaTask::State::completed, taskState /*,  waitTimeout */);
-    if (err) {
-        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
-            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion due to timeout") };
-        }
-        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA send task completion") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread completed send task");
-
-    // Free RdmaSendTask
-    sendTask->Free();
-
-    // Decrement buffer reference count in BufferInventory
-    auto [refcount, rcErr] = srcBuf->DecRefcount();
-    if (rcErr) {
-        return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in buffer inventory") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread decrease reference count for plain doca buffer");
-
-    // Not needed, but set to unify execution code
-    request.connectionPromise->set_value(activeConnection);
-
-    return { request.localBuffer, nullptr };
-}
-
-RdmaOperationResponce RdmaExecutor::executeReceive(RdmaOperationRequest & request)
-{
-    // Receive Operation:
-    // 1. Get MemoryMap from buffer
-    // 2. Get doca::Buffer from BufferInventory
-    // 3. Create RdmaReceiveTask from RdmaEngine
-    // 4. Submit RdmaReceiveTask to RdmaEngine
-    // 5. Wait for task completion (will be done after callback)
-    // 6. Get received bytes count from RdmaReceiveTask
-
-    // Destination DOCA buffer, may be nullptr for empty message
-    doca::BufferPtr destBuf = doca::Buffer::CreateRef(nullptr);
-
-    // Initialize operation state
-    auto taskState = IRdmaTask::State::idle;
-
-    // If local buffer is nullptr, Receive empty message
-    if (request.localBuffer) {
-        auto [buffer, err] = this->getDestinationLocalBuffer(request.localBuffer);
-        if (err) {
-            return { nullptr, errors::Wrap(err, "Failed to get doca buffer") };
-        }
-        destBuf = buffer;
-        DOCA_CPP_LOG_DEBUG("Worker thread allocated plain doca buffer");
-    }
-
-    // Create RdmaReceiveTask from RdmaEngine
-    // Set task user data to current transfer state: it will be changed in the task callbacks
-    auto taskUserData = doca::Data(static_cast<void *>(&taskState));
-    auto [receiveTask, taskErr] = this->rdmaEngine->AllocateReceiveTask(destBuf, taskUserData);
-    if (taskErr) {
-        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA receive task") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread allocated receive task");
-
-    // Submit RdmaReceiveTask to RdmaEngine
-    taskState = IRdmaTask::State::submitted;
-    auto err = receiveTask->Submit();
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to submit RDMA receive task") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread submitted receive task");
-
-    DOCA_CPP_LOG_DEBUG("Worker thread is waiting for task to complete...");
-
-    // Wait for task completion: if it will complete with error, function will return it
-    // const auto waitTimeout = 5000ms;
-    err = this->waitForTaskState(IRdmaTask::State::completed, taskState /*,  waitTimeout */);
-    if (err) {
-        if (errors::Is(err, ErrorTypes::TimeoutExpired)) {
-            return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion due to timeout") };
-        }
-        return { nullptr, errors::Wrap(err, "Failed to wait for RDMA receive task completion") };
-    }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread completed receive task");
-
-    // Get connection from task
-    auto [connection, connErr] = receiveTask->GetTaskConnection();
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to get connection from RDMA receive task") };
-    }
-
-    // Set affected bytes
-    auto [destBuffer, getErr] = receiveTask->GetBuffer(RdmaBuffer::Type::destination);
-    if (getErr) {
-        return { nullptr, errors::Wrap(getErr, "Failed to get destination buffer from RDMA receive task") };
-    }
-    auto [length, lenErr] = destBuffer->GetLength();
-    if (lenErr) {
-        return { nullptr, errors::Wrap(lenErr, "Failed to get length of destination buffer from RDMA receive task") };
-    }
-    request.bytesAffected = length;
-    DOCA_CPP_LOG_DEBUG(std::format("Receive task affected bytes: {}", length));
-    auto [_, dstRcErr] = destBuffer->DecRefcount();
-    if (dstRcErr) {
-        return { nullptr,
-                 errors::Wrap(err,
-                              "Failed to decrement reference count of destination buffer from RDMA receive task") };
-    }
-
-    // Free RdmaSendTask
-    receiveTask->Free();
-
-    // Decrement buffer reference count in BufferInventory
-    // auto [__, rcErr] = destBuf->DecRefcount();
-    // if (rcErr) {
-    //     return { nullptr, errors::Wrap(rcErr, "Failed to decrement buffer reference count in buffer inventory") };
-    // }
-
-    DOCA_CPP_LOG_DEBUG("Worker thread decreased plain doca source and destination buffers reference counts");
-
-    request.connectionPromise->set_value(connection);
-
-    DOCA_CPP_LOG_DEBUG("Worker thread set receive task connection to connection promise");
-
-    return { request.localBuffer, nullptr };
 }
 
 RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
@@ -723,16 +526,8 @@ RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
         return { nullptr, errors::New("Invalid request; provide both local and remote RDMA buffers") };
     }
 
-    // Retrieve connection ID from request connection
-    auto [connectionId, err] = request.requestConnection->GetId();
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to get connection ID") };
-    }
-
-    DOCA_CPP_LOG_DEBUG(std::format("Worker thread got connection ID: {}", connectionId));
-
     // Check that connection is active
-    if (!this->activeConnections.contains(connectionId)) {
+    if (this->activeConnection == nullptr) {
         return { nullptr, errors::New("No active RDMA connection available for read operation") };
     }
 
@@ -756,10 +551,9 @@ RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
     // Create RdmaSendTask from RdmaEngine
     // Set task user data to current transfer state: it will be changed in the task callbacks
     auto taskUserData = doca::Data(static_cast<void *>(&taskState));
-    auto activeConnection = this->activeConnections.at(connectionId);
-    auto [readTask, taskErr] = this->rdmaEngine->AllocateReadTask(activeConnection, srcBuf, dstBuf, taskUserData);
-    if (taskErr) {
-        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA read task") };
+    auto [readTask, err] = this->rdmaEngine->AllocateReadTask(this->activeConnection, srcBuf, dstBuf, taskUserData);
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to allocate RDMA read task") };
     }
 
     DOCA_CPP_LOG_DEBUG("Worker thread allocated read task");
@@ -802,9 +596,6 @@ RdmaOperationResponce RdmaExecutor::executeRead(RdmaOperationRequest & request)
 
     DOCA_CPP_LOG_DEBUG("Worker thread decreased plain doca source and destination buffers reference counts");
 
-    // Not needed, but set to unify execution code
-    request.connectionPromise->set_value(activeConnection);
-
     return { request.localBuffer, nullptr };
 }
 
@@ -815,16 +606,8 @@ RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
         return { nullptr, errors::New("Invalid request; provide both local and remote RDMA buffers") };
     }
 
-    // Retrieve connection ID from request connection
-    auto [connectionId, err] = request.requestConnection->GetId();
-    if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to get connection ID") };
-    }
-
-    DOCA_CPP_LOG_DEBUG(std::format("Worker thread got connection ID: {}", connectionId));
-
     // Check that connection is active
-    if (!this->activeConnections.contains(connectionId)) {
+    if (this->activeConnection == nullptr) {
         return { nullptr, errors::New("No active RDMA connection available for write operation") };
     }
 
@@ -848,10 +631,9 @@ RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
     // Create task from RdmaEngine
     // Set task user data to current transfer state: it will be changed in the task callbacks
     auto taskUserData = doca::Data(static_cast<void *>(&taskState));
-    auto activeConnection = this->activeConnections.at(connectionId);
-    auto [writeTask, taskErr] = this->rdmaEngine->AllocateWriteTask(activeConnection, srcBuf, dstBuf, taskUserData);
-    if (taskErr) {
-        return { nullptr, errors::Wrap(taskErr, "Failed to allocate RDMA write task") };
+    auto [writeTask, err] = this->rdmaEngine->AllocateWriteTask(this->activeConnection, srcBuf, dstBuf, taskUserData);
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to allocate RDMA write task") };
     }
 
     DOCA_CPP_LOG_DEBUG("Worker thread allocated write task");
@@ -893,9 +675,6 @@ RdmaOperationResponce RdmaExecutor::executeWrite(RdmaOperationRequest & request)
     }
 
     DOCA_CPP_LOG_DEBUG("Worker thread decreased plain doca source and destination buffers reference counts");
-
-    // Not needed, but set to unify execution code
-    request.connectionPromise->set_value(activeConnection);
 
     return { request.localBuffer, nullptr };
 }

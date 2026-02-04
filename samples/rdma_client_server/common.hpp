@@ -166,26 +166,26 @@ namespace endpoints
 struct Config {
     std::string path = "";
     std::size_t size = 0;
-    doca::rdma::RdmaEndpointType type = doca::rdma::RdmaEndpointType::receive;
+    doca::rdma::RdmaEndpointType type = doca::rdma::RdmaEndpointType::write;
 };
 
 // NOTE: soon it will be auto generated
 
 // endpoints:
 //   - path: /rdma/ep0
-//     type: receive
+//     type: read
 //     buffer:
-//       size: 4096 # bytes - 4KB
+//       size: 4194304 # bytes - 4MB
+
+//   - path: /rdma/ep0
+//     type: write
+//     buffer:
+//       size: 4194304 # bytes - 4MB
 
 //   - path: /rdma/ep1
 //     type: write
 //     buffer:
 //       size: 4194304 # bytes - 4MB
-
-//   - path: /rdma/ep0
-//     type: send
-//     buffer:
-//       size: 4096 # bytes - 4KB
 
 //   - path: /rdma/ep1
 //     type: read
@@ -194,14 +194,14 @@ struct Config {
 
 inline const auto cfg0 = endpoints::Config{
     .path = "/rdma/ep0",
-    .size = 4096,
-    .type = doca::rdma::RdmaEndpointType::send,
+    .size = 4194304,
+    .type = doca::rdma::RdmaEndpointType::write,
 };
 
 inline const auto cfg1 = endpoints::Config{
     .path = "/rdma/ep0",
-    .size = 4096,
-    .type = doca::rdma::RdmaEndpointType::receive,
+    .size = 4194304,
+    .type = doca::rdma::RdmaEndpointType::read,
 };
 
 inline const auto cfg2 = endpoints::Config{
@@ -216,7 +216,7 @@ inline const auto cfg3 = endpoints::Config{
     .type = doca::rdma::RdmaEndpointType::read,
 };
 
-inline const std::array<endpoints::Config, 2> Configs = { /*cfg0, cfg1,*/ cfg2, cfg3 /* */ };
+inline const std::array<endpoints::Config, 4> Configs = { cfg0, cfg1, cfg2, cfg3 };
 
 inline std::tuple<std::vector<doca::rdma::RdmaEndpointPtr>, error> CreateEndpoints(doca::DevicePtr device,
                                                                                    const std::vector<Config> & configs)

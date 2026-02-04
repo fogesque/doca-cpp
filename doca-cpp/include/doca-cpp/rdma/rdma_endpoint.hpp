@@ -31,9 +31,7 @@ using RdmaEndpointPath = std::string;
 
 /// @brief RDMA endpoint type enumeration
 enum class RdmaEndpointType {
-    send = 0x01,
-    receive,
-    write,
+    write = 0x01,
     read,
 };
 
@@ -70,7 +68,7 @@ public:
     /// @brief Configuration struct for endpoint construction
     struct Config {
         RdmaEndpointPath path = "";
-        RdmaEndpointType type = RdmaEndpointType::receive;
+        RdmaEndpointType type = RdmaEndpointType::write;
         RdmaEndpointBufferPtr buffer = nullptr;
     };
 

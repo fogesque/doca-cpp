@@ -66,7 +66,7 @@ public:
     /// @brief Starts to listen to port as RDMA server
     error ListenToPort(uint16_t port);
     /// @brief Gets active RDMA connection
-    std::tuple<RdmaConnectionPtr, error> GetActiveConnection(RdmaConnectionId connectionId);
+    std::tuple<RdmaConnectionPtr, error> GetActiveConnection();
 
     /// @brief Method called when RDMA connection is requested
     /// @warning This method is considered as private. Do not use it outside executor
@@ -135,10 +135,6 @@ private:
 
     /// @brief Executes RDMA operation from request
     RdmaOperationResponce executeOperation(RdmaOperationRequest & request);
-    /// @brief Executes RDMA Send operation from request
-    RdmaOperationResponce executeSend(RdmaOperationRequest & request);
-    /// @brief Executes RDMA Receive operation from request
-    RdmaOperationResponce executeReceive(RdmaOperationRequest & request);
     /// @brief Executes RDMA Read operation from request
     RdmaOperationResponce executeRead(RdmaOperationRequest & request);
     /// @brief Executes RDMA Write operation from request
@@ -194,10 +190,10 @@ private:
 
     /// [Connections Storage]
 
-    /// @brief Active connections map
-    std::map<RdmaConnectionId, RdmaConnectionPtr> activeConnections;
-    /// @brief Requested connections map
-    std::map<RdmaConnectionId, RdmaConnectionPtr> requestedConnections;
+    /// @brief Active connection
+    RdmaConnectionPtr activeConnection = nullptr;
+    /// @brief Requested connection
+    RdmaConnectionPtr requestedConnection = nullptr;
 
     /// [Components]
 

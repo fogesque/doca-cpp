@@ -46,7 +46,7 @@ asio::awaitable<error> HandleServerSession(RdmaSessionServerPtr session, RdmaEnd
 
 /// @brief Coroutine to handle a communication session on client side
 asio::awaitable<error> HandleClientSession(RdmaSessionClientPtr session, RdmaEndpointPtr endpoint,
-                                           RdmaExecutorPtr executor, RdmaConnectionId connectionId);
+                                           RdmaExecutorPtr executor);
 
 ///
 /// @brief
@@ -60,15 +60,6 @@ public:
 
     /// @brief Checks if session is open
     bool IsOpen() const;
-
-    /// [RDMA Operations]
-
-    /// @brief Submits RDMA send to given executor
-    static asio::awaitable<error> PerformRdmaSend(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                  RdmaConnectionPtr connection);
-
-    /// @brief Submits RDMA receive to given executor
-    static asio::awaitable<error> PerformRdmaReceive(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint);
 
     /// [Construction & Destruction]
 
@@ -128,8 +119,7 @@ public:
     /// [RDMA Operations]
 
     /// @brief Performs RDMA operation by submitting task to executor
-    static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                       RdmaConnectionId connectionId);
+    static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint);
 
     /// [Construction & Destruction]
 
@@ -188,15 +178,15 @@ public:
 
     /// @brief Performs RDMA operation by submitting task to executor
     static asio::awaitable<error> PerformRdmaOperation(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                       RdmaRemoteBufferPtr remoteBuffer, RdmaConnectionId connectionId);
+                                                       RdmaRemoteBufferPtr remoteBuffer);
 
     /// @brief Submits RDMA write to given executor
     static asio::awaitable<error> PerformRdmaWrite(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                   RdmaRemoteBufferPtr remoteBuffer, RdmaConnectionPtr connection);
+                                                   RdmaRemoteBufferPtr remoteBuffer);
 
     /// @brief Submits RDMA read to given executor
     static asio::awaitable<error> PerformRdmaRead(RdmaExecutorPtr executor, RdmaEndpointPtr endpoint,
-                                                  RdmaRemoteBufferPtr remoteBuffer, RdmaConnectionPtr connection);
+                                                  RdmaRemoteBufferPtr remoteBuffer);
 
     /// [Construction & Destruction]
 

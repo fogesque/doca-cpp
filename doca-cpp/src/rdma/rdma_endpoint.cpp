@@ -106,10 +106,11 @@ RdmaServiceInterfacePtr RdmaEndpoint::Service()
 std::string doca::rdma::EndpointTypeToString(const RdmaEndpointType & type)
 {
     switch (type) {
-        case RdmaEndpointType::send:
-            return "send";
-        case RdmaEndpointType::receive:
-            return "receive";
+        // Send/Receive support is deprecated
+        // case RdmaEndpointType::send:
+        //     return "send";
+        // case RdmaEndpointType::receive:
+        //     return "receive";
         case RdmaEndpointType::write:
             return "write";
         case RdmaEndpointType::read:
@@ -132,10 +133,11 @@ RdmaEndpointId doca::rdma::MakeEndpointId(const RdmaEndpointPath & endpointPath,
 doca::AccessFlags doca::rdma::GetEndpointAccessFlags(const RdmaEndpointType & type)
 {
     switch (type) {
-        case RdmaEndpointType::send:
-            return doca::AccessFlags::localReadWrite;
-        case RdmaEndpointType::receive:
-            return doca::AccessFlags::localReadWrite;
+        // Send/Receive support is deprecated
+        // case RdmaEndpointType::send:
+        //     return doca::AccessFlags::localReadWrite;
+        // case RdmaEndpointType::receive:
+        //     return doca::AccessFlags::localReadWrite;
         case RdmaEndpointType::write:
             return doca::AccessFlags::rdmaWrite;
         case RdmaEndpointType::read:

@@ -36,11 +36,6 @@ std::vector<uint8_t> MessageSerializer::SerializeRequest(const Request & request
     std::vector<uint8_t> buffer;
     size_t offset = 0;
 
-    // Serialize connection ID
-    buffer.resize(sizeof(request.connectionId));
-    std::memcpy(buffer.data(), &request.connectionId, sizeof(request.connectionId));
-    offset += sizeof(request.connectionId);
-
     // Serialize endpoint type
     buffer.push_back(static_cast<uint8_t>(request.endpointType));
     offset += sizeof(uint8_t);
@@ -61,10 +56,6 @@ Request MessageSerializer::DeserializeRequest(const std::vector<uint8_t> & buffe
 {
     Request request;
     size_t offset = 0;
-
-    // Deserialize connection ID
-    std::memcpy(&request.connectionId, buffer.data() + offset, sizeof(request.connectionId));
-    offset += sizeof(request.connectionId);
 
     // Deserialize endpoint type
     request.endpointType = static_cast<RdmaEndpointType>(buffer[offset]);
