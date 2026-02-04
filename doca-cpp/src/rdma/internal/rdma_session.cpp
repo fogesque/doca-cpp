@@ -101,21 +101,19 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 
         DOCA_CPP_LOG_DEBUG("Fetched endpoint");
 
-        // If endpoint is read/write, prepare memory descriptor
-        if (endpoint->Type() == RdmaEndpointType::read || endpoint->Type() == RdmaEndpointType::write) {
-            // Export memory descriptor for endpoint's buffer
-            auto [descriptor, descErr] = endpoint->Buffer()->ExportMemoryDescriptor(executor->GetDevice());
-            if (descErr) {
-                response.responceCode = Responce::Code::operationInternalError;
-                auto err = co_await session->SendResponse(response);
-                if (err) {
-                    co_return errors::Join(descErr, errors::Wrap(err, "Failed to send responce"));
-                }
-                co_return errors::Wrap(err, "Failed to export memory descriptor");
+        // Export memory descriptor for endpoint's buffer
+        auto [descriptor, descErr] = endpoint->Buffer()->ExportMemoryDescriptor(executor->GetDevice());
+        if (descErr) {
+            response.responceCode = Responce::Code::operationInternalError;
+            auto err = co_await session->SendResponse(response);
+            if (err) {
+                co_return errors::Join(descErr, errors::Wrap(err, "Failed to send responce"));
             }
-            response.memoryDescriptor = *descriptor;
-            DOCA_CPP_LOG_DEBUG(std::format("Descriptor created, size {}", response.memoryDescriptor.size()));
+            co_return errors::Wrap(err, "Failed to export memory descriptor");
         }
+        response.memoryDescriptor = *descriptor;
+
+        DOCA_CPP_LOG_DEBUG(std::format("Descriptor created, size {}", response.memoryDescriptor.size()));
 
         // Try to lock requested endpoint
         auto [locked, lockErr] = endpointsStorage->TryLockEndpoint(requestedEndpointId);
