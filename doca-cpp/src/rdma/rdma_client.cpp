@@ -130,7 +130,6 @@ error RdmaClient::RequestEndpointProcessing(const RdmaEndpointId & endpointId)
     DOCA_CPP_LOG_DEBUG("Fetched endpoint from storage");
 
     // Get active connection
-    // FIXME: temporary solution: think how to manage client connections
     const auto connectionId = RdmaConnectionId{ 0 };
     auto [connection, connErr] = this->executor->GetActiveConnection(connectionId);
     if (connErr) {
