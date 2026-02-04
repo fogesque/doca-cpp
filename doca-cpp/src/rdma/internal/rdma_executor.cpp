@@ -392,13 +392,6 @@ error RdmaExecutor::ListenToPort(uint16_t port)
 
     DOCA_CPP_LOG_DEBUG("Started to listen to port");
 
-    // FIXME: Testing shit
-    DOCA_CPP_LOG_DEBUG("Waiting for established connection........................................");
-    while (this->activeConnection == nullptr) {
-        this->progressEngine->Progress();
-    };
-    DOCA_CPP_LOG_DEBUG("....................................................................Got it");
-
     return nullptr;
 }
 

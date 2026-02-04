@@ -96,6 +96,10 @@ int main()
         return 1;
     }
 
+    // FIXME: Testing shit
+    std::println("Press enter: ");
+    std::getchar();
+
     std::println("[Client Sample] Requesting server to process every endpoint");
 
     // Request RDMA operation for every endpoint 20 times
