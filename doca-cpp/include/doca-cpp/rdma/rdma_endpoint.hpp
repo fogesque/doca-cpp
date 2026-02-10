@@ -241,10 +241,10 @@ public:
     /// [Endpoint Locking]
 
     /// @brief Tries to lock endpoint for exclusive access
-    std::tuple<bool, error> TryLockEndpoint(const RdmaEndpointId & endpointId);
+    std::tuple<bool, error> TryLockEndpointsByPath(const RdmaEndpointPath & endpointsPath);
 
     /// @brief Unlocks previously locked endpoint
-    error UnlockEndpoint(const RdmaEndpointId & endpointId);
+    error UnlockEndpointsByPath(const RdmaEndpointPath & endpointsPath);
 
     /// [Memory Management]
 

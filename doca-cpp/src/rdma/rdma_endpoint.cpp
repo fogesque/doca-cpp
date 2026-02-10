@@ -214,34 +214,41 @@ error RdmaEndpointStorage::MapEndpointsMemory(doca::DevicePtr device)
     }
 }
 
-std::tuple<bool, error> RdmaEndpointStorage::TryLockEndpoint(const RdmaEndpointId & endpointId)
+std::tuple<bool, error> RdmaEndpointStorage::TryLockEndpointsByPath(const RdmaEndpointPath & endpointsPath)
 {
-    if (!this->endpointsMap.contains(endpointId)) {
-        return { false, errors::New("RDMA endpoint with given ID is not registered: " + endpointId) };
+    auto wasLocked = false;
+    auto pathFound = false;
+    for (auto & [endpointId, endpointPtr] : this->endpointsMap) {
+        if (endpointPtr->endpoint->Path() == endpointsPath) {
+            // If was not locked lock endpoint with path
+            std::lock_guard<std::mutex> lock(endpointPtr->endpointMutex);
+            if (!endpointPtr->endpointLocked.load()) {
+                endpointPtr->endpointLocked.store(true);
+                wasLocked = true;
+            }
+            pathFound = true;
+        }
     }
-
-    auto & storedEndpoint = this->endpointsMap.at(endpointId);
-
-    std::lock_guard<std::mutex> lock(storedEndpoint->endpointMutex);
-    if (storedEndpoint->endpointLocked.load()) {
-        return { false, nullptr };
+    if (!pathFound) {
+        return { wasLocked, errors::New("No endpoints with specified path found") };
     }
-    storedEndpoint->endpointLocked.store(true);
-    return { true, nullptr };
+    return { wasLocked, nullptr };
 }
 
-error RdmaEndpointStorage::UnlockEndpoint(const RdmaEndpointId & endpointId)
+error RdmaEndpointStorage::UnlockEndpointsByPath(const RdmaEndpointPath & endpointsPath)
 {
-    if (!this->endpointsMap.contains(endpointId)) {
-        return errors::New("RDMA endpoint with given ID is not registered: " + endpointId);
+    auto pathFound = false;
+    for (auto & [endpointId, endpointPtr] : this->endpointsMap) {
+        if (endpointPtr->endpoint->Path() == endpointsPath) {
+            std::lock_guard<std::mutex> lock(endpointPtr->endpointMutex);
+            if (endpointPtr->endpointLocked.load()) {
+                endpointPtr->endpointLocked.store(false);
+            }
+            pathFound = true;
+        }
     }
-
-    auto & storedEndpoint = this->endpointsMap.at(endpointId);
-
-    std::lock_guard<std::mutex> lock(storedEndpoint->endpointMutex);
-    if (!storedEndpoint->endpointLocked.load()) {
-        return nullptr;  // already unlocked; do nothing
+    if (!pathFound) {
+        return errors::New("No endpoints with specified path found");
     }
-    storedEndpoint->endpointLocked.store(false);
     return nullptr;
 }

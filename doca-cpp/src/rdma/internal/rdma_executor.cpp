@@ -363,14 +363,10 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
     DOCA_CPP_LOG_DEBUG("Waiting for connection to get to established state...");
 
     // Wait for connection to be established
-    const auto startTime = std::chrono::steady_clock::now();
     const auto waitTimeout = 5s;
-    while (this->activeConnection == nullptr) {
-        if (this->timeoutExpired(startTime, waitTimeout)) {
-            return ErrorTypes::TimeoutExpired;
-        }
-        std::this_thread::sleep_for(10us);
-        std::ignore = this->progressEngine->Progress();
+    auto [__, connErr] = this->WaitForEstablishedConnection(waitTimeout);
+    if (connErr) {
+        return errors::Wrap(err, "Failed to wait for established connection");
     }
 
     DOCA_CPP_LOG_DEBUG("Connection was established");
