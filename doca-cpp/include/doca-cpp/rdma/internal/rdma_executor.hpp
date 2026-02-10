@@ -67,6 +67,8 @@ public:
     error ListenToPort(uint16_t port);
     /// @brief Gets active RDMA connection
     std::tuple<RdmaConnectionPtr, error> GetActiveConnection();
+    /// @brief Waits for RDMA connection to become active
+    std::tuple<RdmaConnectionPtr, error> WaitForEstablishedConnection(std::chrono::milliseconds waitTimeout = 0ms);
 
     /// @brief Method called when RDMA connection is requested
     /// @warning This method is considered as private. Do not use it outside executor

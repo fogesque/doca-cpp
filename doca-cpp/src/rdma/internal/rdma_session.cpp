@@ -79,8 +79,9 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 
         DOCA_CPP_LOG_DEBUG(std::format("Requested endpoint: {}", requestedEndpointId));
 
-        // Check for active RDMA connection
-        auto [connection, connErr] = executor->GetActiveConnection();
+        // Wait for active connection
+        const auto connectionTimeout = 3000ms;
+        auto [connection, connErr] = executor->WaitForEstablishedConnection(connectionTimeout);
         if (connErr) {
             co_return errors::Wrap(connErr, "Failed to get active connection from executor");
         }

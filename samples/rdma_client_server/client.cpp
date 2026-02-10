@@ -97,8 +97,8 @@ int main()
     }
 
     // FIXME: Testing shit
-    std::println("Press enter: ");
-    std::getchar();
+    // std::println("Press enter: ");
+    // std::getchar();
 
     std::println("[Client Sample] Requesting server to process every endpoint");
 
