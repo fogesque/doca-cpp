@@ -363,14 +363,10 @@ error RdmaExecutor::ConnectToAddress(const std::string & serverAddress, uint16_t
     DOCA_CPP_LOG_DEBUG("Waiting for connection to get to established state...");
 
     // Wait for connection to be established
-    const auto startTime = std::chrono::steady_clock::now();
     const auto waitTimeout = 5s;
-    while (this->activeConnection == nullptr) {
-        if (this->timeoutExpired(startTime, waitTimeout)) {
-            return ErrorTypes::TimeoutExpired;
-        }
-        std::this_thread::sleep_for(10us);
-        std::ignore = this->progressEngine->Progress();
+    auto [__, connErr] = this->WaitForEstablishedConnection(waitTimeout);
+    if (connErr) {
+        return errors::Wrap(err, "Failed to wait for established connection");
     }
 
     DOCA_CPP_LOG_DEBUG("Connection was established");
@@ -443,6 +439,20 @@ std::tuple<RdmaConnectionPtr, error> RdmaExecutor::GetActiveConnection()
     return { this->activeConnection, nullptr };
 }
 
+std::tuple<RdmaConnectionPtr, error> doca::rdma::RdmaExecutor::WaitForEstablishedConnection(
+    std::chrono::milliseconds waitTimeout)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    while (this->activeConnection == nullptr) {
+        if (this->timeoutExpired(startTime, waitTimeout)) {
+            return { nullptr, ErrorTypes::TimeoutExpired };
+        }
+        std::this_thread::sleep_for(10us);
+        std::ignore = this->progressEngine->Progress();
+    }
+    return this->GetActiveConnection();
+}
+
 void doca::rdma::RdmaExecutor::Progress()
 {
     this->progressEngine->Progress();
@@ -494,8 +504,6 @@ void RdmaExecutor::workerLoop()
 
         // Set operation promise responce value
         request.responcePromise->set_value(responce);
-
-        // Connection promise is handled separately for different operation type, will be set if no error occurs
 
         DOCA_CPP_LOG_DEBUG("Worker thread executed RDMA operation");
     }

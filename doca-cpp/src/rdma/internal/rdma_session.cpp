@@ -79,8 +79,9 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
 
         DOCA_CPP_LOG_DEBUG(std::format("Requested endpoint: {}", requestedEndpointId));
 
-        // Check for active RDMA connection
-        auto [connection, connErr] = executor->GetActiveConnection();
+        // Wait for active connection
+        const auto connectionTimeout = 3000ms;
+        auto [connection, connErr] = executor->WaitForEstablishedConnection(connectionTimeout);
         if (connErr) {
             co_return errors::Wrap(connErr, "Failed to get active connection from executor");
         }
@@ -116,7 +117,7 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
         DOCA_CPP_LOG_DEBUG(std::format("Descriptor created, size {}", response.memoryDescriptor.size()));
 
         // Try to lock requested endpoint
-        auto [locked, lockErr] = endpointsStorage->TryLockEndpoint(requestedEndpointId);
+        auto [locked, lockErr] = endpointsStorage->TryLockEndpointsByPath(request.endpointPath);
         if (lockErr) {
             response.responceCode = Responce::Code::operationInternalError;
             auto err = co_await session->SendResponse(response);
@@ -151,7 +152,7 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
                     co_return errors::Wrap(err, "Failed to send responce");
                 }
                 // Service error, continue handle other requests
-                std::ignore = endpointsStorage->UnlockEndpoint(requestedEndpointId);
+                std::ignore = endpointsStorage->UnlockEndpointsByPath(request.endpointPath);
                 continue;
             }
         }
@@ -178,7 +179,7 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
         auto [ack, ackErr] = co_await session->ReceiveAcknowledge(ackTimeout);
         if (ackErr) {
             // Acknowledge was not received, so skip calling user service and unlock
-            std::ignore = endpointsStorage->UnlockEndpoint(requestedEndpointId);
+            std::ignore = endpointsStorage->UnlockEndpointsByPath(request.endpointPath);
             continue;
         }
 
@@ -193,13 +194,13 @@ asio::awaitable<error> doca::rdma::HandleServerSession(RdmaSessionServerPtr sess
                 // service after RDMA send/write??? Add another TCP message???
                 // FIXME: ignored for now
                 // Service error, continue handle other requests
-                std::ignore = endpointsStorage->UnlockEndpoint(requestedEndpointId);
+                std::ignore = endpointsStorage->UnlockEndpointsByPath(request.endpointPath);
                 continue;
             }
         }
 
         // Unlock endpoint after successful RDMA completion
-        std::ignore = endpointsStorage->UnlockEndpoint(requestedEndpointId);
+        std::ignore = endpointsStorage->UnlockEndpointsByPath(request.endpointPath);
 
         DOCA_CPP_LOG_DEBUG("Unlocked endpoint");
     }
