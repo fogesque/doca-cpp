@@ -92,7 +92,10 @@ int main()
     }
 
     std::println("Device opened successfully");
-    std::println("Example completed successfully!");
+
+    std::println("==================================");
+    std::println("   Device Discovery Sample End");
+    std::println("==================================\n");
 
     return 0;
 }

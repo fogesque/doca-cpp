@@ -16,99 +16,89 @@ namespace doca
 // Forward declarations
 class Context;
 class ProgressEngine;
-class TaskInterface;
+class ITask;
 
 using ProgressEnginePtr = std::shared_ptr<ProgressEngine>;
+using TaskInterfacePtr = std::shared_ptr<ITask>;
 
-enum class MaxTasksInBatch {
-    tasks16 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_16,
-    tasks32 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_32,
-    tasks64 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_64,
-    tasks128 = DOCA_TASK_BATCH_MAX_TASKS_NUMBER_128,
-};
-
-enum class EventsInBatch {
-    events1 = DOCA_EVENT_BATCH_EVENTS_NUMBER_1,
-    events2 = DOCA_EVENT_BATCH_EVENTS_NUMBER_2,
-    events4 = DOCA_EVENT_BATCH_EVENTS_NUMBER_4,
-    events8 = DOCA_EVENT_BATCH_EVENTS_NUMBER_8,
-    events16 = DOCA_EVENT_BATCH_EVENTS_NUMBER_16,
-    events32 = DOCA_EVENT_BATCH_EVENTS_NUMBER_32,
-    events64 = DOCA_EVENT_BATCH_EVENTS_NUMBER_64,
-    events128 = DOCA_EVENT_BATCH_EVENTS_NUMBER_128,
-};
-
-enum class TaskSubmitFlags {
-    none = DOCA_TASK_SUBMIT_FLAG_NONE,
-    flush = DOCA_TASK_SUBMIT_FLAG_FLUSH,
-    optimizeReports = DOCA_TASK_SUBMIT_FLAG_OPTIMIZE_REPORTS,
-};
-
-enum class ProgressEngineEventMode {
-    progressSelective = DOCA_PE_EVENT_MODE_PROGRESS_SELECTIVE,
-    progressAll = DOCA_PE_EVENT_MODE_PROGRESS_ALL,
-};
-
-// ----------------------------------------------------------------------------
-// TaskInterface
-// ----------------------------------------------------------------------------
-class TaskInterface
+///
+/// @brief
+/// Interface for DOCA task instance
+///
+class ITask
 {
 public:
-    virtual ~TaskInterface() = default;
+    virtual ~ITask() = default;
 
-    // TODO: implement commented out
+    /// @brief Submits task to hardware
     virtual error Submit() = 0;
-    // virtual error SubmitWithFlag(TaskSubmitFlags flag) = 0;
-    // virtual error TrySubmit() = 0;
+
+    /// @brief Removes task
     virtual void Free() = 0;
-    // virtual error GetError() = 0;
-    // virtual Context & GetContext() = 0;
 };
 
-using TaskInterfacePtr = std::shared_ptr<TaskInterface>;
-
-// ----------------------------------------------------------------------------
-// ProgressEngine
-// ----------------------------------------------------------------------------
+///
+/// @brief
+/// ProgressEngine is execution model in DOCA that runs its IO event loop checking tasks completions
+///
 class ProgressEngine
 {
 public:
-    // Creates new ProgressEngine with RAII
+    /// [Fabric Methods]
+
+    /// @brief Creates new progress engine instance
     static std::tuple<ProgressEnginePtr, error> Create();
 
-    // Progresses all tasks in all contexts associated with ProgressEngine
+    /// [Functionality]
+
+    /// @brief Progresses all tasks in all contexts associated with ProgressEngine
     std::tuple<uint32_t, error> Progress();
 
-    // Connects Context to this ProgressEngine
+    /// @brief Connects Context to this ProgressEngine
     error ConnectContext(ContextPtr ctx);
 
-    // Get number of all inflight tasks in this ProgressEngine
+    /// @brief Gets number of all inflight tasks in this ProgressEngine
     std::tuple<std::size_t, error> GetNumInflightTasks() const;
 
-    // Set ProgressEngine event mode
-    error SetEventMode(ProgressEngineEventMode mode);
+    /// [Unsafe]
 
-    // Get raw C-style pointer to doca_pe
+    /// @brief Gets native pointer to DOCA structure
+    /// @warning Avoid using this function since it is unsafe
     DOCA_CPP_UNSAFE doca_pe * GetNative() const;
 
-    // Move-only type
+    /// [Construction & Destruction]
+
+    /// @brief Copy constructor is deleted
     ProgressEngine(const ProgressEngine &) = delete;
+
+    /// @brief Copy operator is deleted
     ProgressEngine & operator=(const ProgressEngine &) = delete;
+
+    /// @brief Move constructor
     ProgressEngine(ProgressEngine && other) noexcept = default;
+
+    /// @brief Move operator
     ProgressEngine & operator=(ProgressEngine && other) noexcept = default;
 
+    /// @brief Deleter is used to decide whether native DOCA object must be destroyed or unaffected. When it is passed
+    /// to Constructor, object will be destroyed in Destructor; otherwise nothing will happen
     struct Deleter {
         void Delete(doca_pe * pe);
     };
     using DeleterPtr = std::shared_ptr<Deleter>;
 
-    explicit ProgressEngine(doca_pe * initialProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
+    /// @brief Constructor
+    /// @warning Avoid using this constructor since class has static fabric methods
+    explicit ProgressEngine(doca_pe * nativeProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
+
+    /// @brief Destructor
     ~ProgressEngine();
 
 private:
+    /// @brief Native DOCA structure
     doca_pe * progressEngine = nullptr;
 
+    /// @brief Native DOCA structure deleter
     DeleterPtr deleter = nullptr;
 };
 

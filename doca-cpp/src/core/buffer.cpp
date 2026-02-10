@@ -5,9 +5,7 @@ using doca::BufferInventory;
 using doca::BufferInventoryPtr;
 using doca::BufferPtr;
 
-// ----------------------------------------------------------------------------
-// Buffer
-// ----------------------------------------------------------------------------
+#pragma region Buffer
 
 Buffer::Buffer(doca_buf * nativeBuffer, DeleterPtr deleter) : buffer(nativeBuffer), deleter(deleter) {}
 
@@ -40,7 +38,7 @@ BufferPtr Buffer::Create(doca_buf * nativeBuffer)
 
 std::tuple<size_t, error> Buffer::GetLength() const
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return { 0, errors::New("Buffer is not initialized") };
     }
     size_t len = 0;
@@ -53,7 +51,7 @@ std::tuple<size_t, error> Buffer::GetLength() const
 
 std::tuple<size_t, error> Buffer::GetDataLength() const
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return { 0, errors::New("Buffer is not initialized") };
     }
     size_t dataLen = 0;
@@ -64,9 +62,9 @@ std::tuple<size_t, error> Buffer::GetDataLength() const
     return { dataLen, nullptr };
 }
 
-std::tuple<void *, error> Buffer::GetData() const
+std::tuple<void *, error> Buffer::GetData()
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return { nullptr, errors::New("Buffer is not initialized") };
     }
     void * data = nullptr;
@@ -77,7 +75,7 @@ std::tuple<void *, error> Buffer::GetData() const
     return { data, nullptr };
 }
 
-std::tuple<std::span<std::byte>, error> Buffer::GetBytes() const
+std::tuple<std::vector<std::byte>, error> Buffer::GetBytes()
 {
     auto [data, dataErr] = this->GetData();
     if (dataErr) {
@@ -89,12 +87,14 @@ std::tuple<std::span<std::byte>, error> Buffer::GetBytes() const
         return { {}, lenErr };
     }
 
-    return { std::span<std::byte>(static_cast<std::byte *>(data), dataLen / sizeof(std::byte)), nullptr };
+    auto * dataPtr = static_cast<std::byte *>(data);
+
+    return { std::vector<std::byte>(dataPtr, dataPtr + dataLen), nullptr };
 }
 
 error Buffer::SetData(void * data, size_t dataLen)
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return errors::New("Buffer is not initialized");
     }
     auto err = FromDocaError(doca_buf_set_data(this->buffer, data, dataLen));
@@ -104,14 +104,14 @@ error Buffer::SetData(void * data, size_t dataLen)
     return nullptr;
 }
 
-error Buffer::SetData(std::span<std::byte> data)
+error Buffer::SetData(std::vector<std::byte> data)
 {
-    return this->SetData(static_cast<void *>(data.data()), data.size_bytes());
+    return this->SetData(static_cast<void *>(data.data()), data.size());
 }
 
 error Buffer::ResetData()
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return errors::New("Buffer is not initialized");
     }
     auto err = FromDocaError(doca_buf_reset_data_len(this->buffer));
@@ -123,7 +123,7 @@ error Buffer::ResetData()
 
 std::tuple<uint16_t, error> Buffer::IncRefcount()
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return { 0, errors::New("Buffer is not initialized") };
     }
     uint16_t refcount = 0;
@@ -136,7 +136,7 @@ std::tuple<uint16_t, error> Buffer::IncRefcount()
 
 std::tuple<uint16_t, error> Buffer::DecRefcount()
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return { 0, errors::New("Buffer is not initialized") };
     }
     uint16_t refcount = 0;
@@ -149,7 +149,7 @@ std::tuple<uint16_t, error> Buffer::DecRefcount()
 
 std::tuple<uint16_t, error> Buffer::GetRefcount() const
 {
-    if (!this->buffer) {
+    if (this->buffer == nullptr) {
         return { 0, errors::New("Buffer is not initialized") };
     }
     uint16_t refcount = 0;
@@ -160,14 +160,14 @@ std::tuple<uint16_t, error> Buffer::GetRefcount() const
     return { refcount, nullptr };
 }
 
-doca_buf * Buffer::GetNative() const
+doca_buf * Buffer::GetNative()
 {
     return this->buffer;
 }
 
-// ----------------------------------------------------------------------------
-// Buffer::Builder
-// ----------------------------------------------------------------------------
+#pragma endregion
+
+#pragma region BufferInventory
 
 BufferInventory::Builder::Builder(doca_buf_inventory * plainInventory) : inventory(plainInventory), buildErr(nullptr) {}
 
@@ -257,36 +257,63 @@ void doca::BufferInventory::Deleter::Delete(doca_buf_inventory * inv)
     }
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, void * addr, size_t length)
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(MemoryMapPtr mmap, void * address, size_t length)
 {
     if (!this->inventory) {
-        return { nullptr, errors::New("inventory is null") };
+        return { nullptr, errors::New("Buffer inventory is null") };
     }
-
     doca_buf * buf = nullptr;
     auto err =
-        FromDocaError(doca_buf_inventory_buf_get_by_addr(this->inventory, mmap->GetNative(), addr, length, &buf));
+        FromDocaError(doca_buf_inventory_buf_get_by_addr(this->inventory, mmap->GetNative(), address, length, &buf));
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to allocate buffer from inventory") };
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by address from inventory") };
     }
-
     auto managedBuffer = Buffer::CreateRef(buf);
     return { managedBuffer, nullptr };
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, std::span<std::uint8_t> data)
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(MemoryMapPtr mmap, void * data, size_t length)
 {
     if (!this->inventory) {
-        return { nullptr, errors::New("inventory is null") };
+        return { nullptr, errors::New("Buffer inventory is null") };
     }
-
     doca_buf * buf = nullptr;
-    auto err = FromDocaError(doca_buf_inventory_buf_get_by_data(
-        this->inventory, mmap->GetNative(), static_cast<void *>(data.data()), data.size_bytes(), &buf));
+    auto err =
+        FromDocaError(doca_buf_inventory_buf_get_by_data(this->inventory, mmap->GetNative(), data, length, &buf));
     if (err) {
-        return { nullptr, errors::Wrap(err, "Failed to allocate buffer from inventory") };
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by data from inventory") };
     }
+    auto managedBuffer = Buffer::CreateRef(buf);
+    return { managedBuffer, nullptr };
+}
 
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(RemoteMemoryMapPtr mmap, void * address,
+                                                                   size_t length)
+{
+    if (!this->inventory) {
+        return { nullptr, errors::New("Buffer inventory is null") };
+    }
+    doca_buf * buf = nullptr;
+    auto err =
+        FromDocaError(doca_buf_inventory_buf_get_by_addr(this->inventory, mmap->GetNative(), address, length, &buf));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by address from inventory") };
+    }
+    auto managedBuffer = Buffer::CreateRef(buf);
+    return { managedBuffer, nullptr };
+}
+
+std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(RemoteMemoryMapPtr mmap, void * data, size_t length)
+{
+    if (!this->inventory) {
+        return { nullptr, errors::New("Buffer inventory is null") };
+    }
+    doca_buf * buf = nullptr;
+    auto err =
+        FromDocaError(doca_buf_inventory_buf_get_by_data(this->inventory, mmap->GetNative(), data, length, &buf));
+    if (err) {
+        return { nullptr, errors::Wrap(err, "Failed to allocate buffer by data from inventory") };
+    }
     auto managedBuffer = Buffer::CreateRef(buf);
     return { managedBuffer, nullptr };
 }
@@ -294,7 +321,7 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBuffer(MemoryMapPtr mmap, std
 error BufferInventory::Stop()
 {
     if (!this->inventory) {
-        return errors::New("inventory is null");
+        return errors::New("Buffer inventory is null");
     }
     auto err = FromDocaError(doca_buf_inventory_stop(this->inventory));
     if (err) {
@@ -303,7 +330,9 @@ error BufferInventory::Stop()
     return nullptr;
 }
 
-doca_buf_inventory * BufferInventory::GetNative() const
+doca_buf_inventory * BufferInventory::GetNative()
 {
     return this->inventory;
 }
+
+#pragma endregion

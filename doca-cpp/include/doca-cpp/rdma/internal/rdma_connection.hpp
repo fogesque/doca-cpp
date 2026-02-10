@@ -18,11 +18,18 @@
 namespace doca::rdma
 {
 
+// Forward declarations
 class RdmaAddress;
-using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
 class RdmaConnection;
+
+// Type aliases
+using RdmaAddressPtr = std::shared_ptr<RdmaAddress>;
 using RdmaConnectionPtr = std::shared_ptr<RdmaConnection>;
 
+/// @brief RDMA connection ID alias
+using RdmaConnectionId = std::uint32_t;
+
+/// @brief RDMA connection type enumeration
 enum class RdmaConnectionType {
     outOfBand,
     connManagerIpv4,
@@ -30,58 +37,92 @@ enum class RdmaConnectionType {
     connManagerGid,
 };
 
+/// @brief RDMA connection role enumeration
 enum class RdmaConnectionRole {
     server,
     client,
 };
 
-// TODO: change to UUID
-using RdmaConnectionId = std::uint32_t;
-
-// ----------------------------------------------------------------------------
-// RdmaAddress
-// ----------------------------------------------------------------------------
+///
+/// @brief
+/// RDMA address wrapper for DOCA RDMA address. Provides address type and port configuration.
+/// Used to specify connection endpoints for RDMA communication.
+///
 class RdmaAddress
 {
 public:
+    /// [Nested Types]
+
+    /// @brief RDMA address type enumeration
     enum class Type {
         ipv4 = DOCA_RDMA_ADDR_TYPE_IPv4,
         ipv6 = DOCA_RDMA_ADDR_TYPE_IPv6,
         gid = DOCA_RDMA_ADDR_TYPE_GID,
     };
 
+    /// [Fabric Methods]
+
+    /// @brief Creates RDMA address with specified type, address string, and port
     static std::tuple<RdmaAddressPtr, error> Create(RdmaAddress::Type addressType, const std::string & address,
                                                     uint16_t port);
 
+    /// [Native Access]
+
+    /// @brief Gets native DOCA RDMA address pointer
     DOCA_CPP_UNSAFE doca_rdma_addr * GetNative();
 
-    // Move-only type
+    /// [Construction & Destruction]
+
+#pragma region RdmaAddress::Construct
+
+    /// @brief Copy constructor is deleted
     RdmaAddress(const RdmaAddress &) = delete;
+
+    /// @brief Copy operator is deleted
     RdmaAddress & operator=(const RdmaAddress &) = delete;
+
+    /// @brief Move constructor
     RdmaAddress(RdmaAddress && other) noexcept = default;
+
+    /// @brief Move operator
     RdmaAddress & operator=(RdmaAddress && other) noexcept = default;
 
+    /// @brief Custom deleter for DOCA RDMA address
     struct Deleter {
         void Delete(doca_rdma_addr * address);
     };
     using DeleterPtr = std::shared_ptr<Deleter>;
 
-    ~RdmaAddress();
-
+    /// @brief Constructor
+    /// @warning Avoid using this constructor since class has static fabric methods
     explicit RdmaAddress(doca_rdma_addr * initialRdmaAddress, DeleterPtr deleter);
 
+    /// @brief Destructor
+    ~RdmaAddress();
+
+#pragma endregion
+
 private:
+    /// [Properties]
+
+    /// @brief Native DOCA RDMA address pointer
     doca_rdma_addr * rdmaAddress = nullptr;
 
+    /// @brief Custom deleter for RDMA address
     DeleterPtr deleter = nullptr;
 };
 
-// ----------------------------------------------------------------------------
-// RdmaConnection
-// ----------------------------------------------------------------------------
+///
+/// @brief
+/// RDMA connection wrapper for DOCA RDMA connection. Provides connection state management and
+/// connection handling operations.
+///
 class RdmaConnection
 {
 public:
+    /// [Nested Types]
+
+    /// @brief RDMA connection state enumeration
     enum class State {
         idle,
         requested,
@@ -90,38 +131,60 @@ public:
         disconnected,
     };
 
+    /// [Fabric Methods]
+
+    /// @brief Creates RDMA connection wrapper from native DOCA connection
     static RdmaConnectionPtr Create(doca_rdma_connection * nativeConnection);
 
+    /// [Native Access]
+
+    /// @brief Gets native DOCA RDMA connection pointer
     DOCA_CPP_UNSAFE doca_rdma_connection * GetNative() const;
 
+    /// [Data Methods]
+
+    /// @brief Sets user data associated with connection
     error SetUserData(doca::Data & userData);
 
-    void SetState(State newState);
-    RdmaConnection::State GetState() const;
-
-    // void SetId(RdmaConnectionId connId);
+    /// @brief Gets connection identifier
     std::tuple<RdmaConnectionId, error> GetId() const;
 
-    bool IsAccepted() const;
-    void SetAccepted();
+    /// [Connection Control]
 
+    /// @brief Accepts incoming connection request
     error Accept();
+    /// @brief Rejects incoming connection request
     error Reject();
+    /// @brief Disconnects established connection
+    error Disconnect();
 
-    // Move-only type
+    /// [Construction & Destruction]
+
+#pragma region RdmaConnection::Construct
+
+    /// @brief Copy constructor is deleted
     RdmaConnection(const RdmaConnection &) = delete;
+
+    /// @brief Copy operator is deleted
     RdmaConnection & operator=(const RdmaConnection &) = delete;
+
+    /// @brief Move constructor
     RdmaConnection(RdmaConnection && other) noexcept = default;
+
+    /// @brief Move operator
     RdmaConnection & operator=(RdmaConnection && other) noexcept = default;
 
+    /// @brief Constructor
+    /// @warning Avoid using this constructor since class has static fabric methods
     explicit RdmaConnection(doca_rdma_connection * nativeConnection);
 
+#pragma endregion
+
 private:
+    /// [Properties]
+
+    /// @brief Native DOCA RDMA connection pointer
     doca_rdma_connection * rdmaConnection = nullptr;
-
-    RdmaConnection::State connectionState = RdmaConnection::State::idle;
-
-    bool accepted = false;
 };
 
 }  // namespace doca::rdma

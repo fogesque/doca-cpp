@@ -8,9 +8,7 @@ using doca::DeviceListPtr;
 using doca::DevicePtr;
 using doca::PciFuncType;
 
-// ----------------------------------------------------------------------------
-// DeviceInfo
-// ----------------------------------------------------------------------------
+#pragma region DeviceInfo
 
 DeviceInfo::DeviceInfo(doca_devinfo * plainDevInfo) : devInfo(plainDevInfo) {}
 
@@ -22,16 +20,6 @@ std::tuple<std::string, error> DeviceInfo::GetPciAddress() const
         return { {}, errors::Wrap(err, "Failed to get PCI address") };
     }
     return { std::string(pciAddr.data()), nullptr };
-}
-
-std::tuple<PciFuncType, error> DeviceInfo::GetPciFuncType() const
-{
-    doca_pci_func_type type;
-    auto err = FromDocaError(doca_devinfo_get_pci_func_type(this->devInfo, &type));
-    if (err) {
-        return { PciFuncType::physicalFunction, errors::Wrap(err, "Failed to get device PCI function type") };
-    }
-    return { static_cast<PciFuncType>(type), nullptr };
 }
 
 std::tuple<bool, error> DeviceInfo::HasPciAddress(const std::string & pciAddr) const
@@ -104,16 +92,6 @@ std::tuple<std::string, error> DeviceInfo::GetIbdevName() const
     return { std::string(ibdevName.data()), nullptr };
 }
 
-std::tuple<uint32_t, error> DeviceInfo::GetSubfunctionIndex() const
-{
-    uint32_t sfIndex = 0;
-    auto err = FromDocaError(doca_devinfo_get_sf_index(this->devInfo, &sfIndex));
-    if (err) {
-        return { {}, errors::Wrap(err, "Failed to get subfunction index") };
-    }
-    return { sfIndex, nullptr };
-}
-
 std::tuple<uint16_t, error> DeviceInfo::GetPortLogicalId() const
 {
     uint16_t portLid = 0;
@@ -132,16 +110,6 @@ std::tuple<uint64_t, error> DeviceInfo::GetActiveRate() const
         return { {}, errors::Wrap(err, "Failed to get port active rate") };
     }
     return { activeRate, nullptr };
-}
-
-std::tuple<uint32_t, error> DeviceInfo::GetInterfaceIndex() const
-{
-    uint32_t interfaceIndex = 0;
-    auto err = FromDocaError(doca_devinfo_get_iface_index(this->devInfo, &interfaceIndex));
-    if (err) {
-        return { {}, errors::Wrap(err, "Failed to get interface index") };
-    }
-    return { interfaceIndex, nullptr };
 }
 
 std::tuple<bool, error> DeviceInfo::IsAccelerateResourceReclaimSupported() const
@@ -163,10 +131,10 @@ std::tuple<std::string, error> DeviceInfo::GetMacAddress() const
     }
     // Format bytes to string with hex
     std::stringstream ss;
-    ss << std::hex << std::uppercase << std::setfill('0');  // Set hex output, uppercase, and fill with '0'
+    ss << std::hex << std::uppercase << std::setfill('0');
 
     for (size_t i = 0; i < macAddr.size(); ++i) {
-        ss << std::setw(2) << static_cast<int>(macAddr[i]);  // Format each byte as two hex digits
+        ss << std::setw(2) << static_cast<int>(macAddr[i]);
         if (i < macAddr.size() - 1) {
             ss << ":";  // Add colon separator between bytes
         }
@@ -179,9 +147,9 @@ doca_devinfo * DeviceInfo::GetNative() const
     return this->devInfo;
 }
 
-// ----------------------------------------------------------------------------
-// DeviceList
-// ----------------------------------------------------------------------------
+#pragma endregion
+
+#pragma region DeviceList
 
 std::tuple<DeviceListPtr, error> DeviceList::Create()
 {
@@ -207,7 +175,7 @@ DeviceList::DeviceList(doca_devinfo ** list, uint32_t count, DeleterPtr deleter)
 {
 }
 
-std::tuple<DeviceInfoPtr, error> DeviceList::GetIbDeviceInfo(const std::string_view & ibDevname) const
+std::tuple<DeviceInfoPtr, error> DeviceList::GetIbDeviceInfo(const std::string & ibDevname) const
 {
     for (auto iter = this->Begin(); iter != this->End(); ++iter) {
         const auto & devInfo = *iter;
@@ -228,9 +196,9 @@ size_t DeviceList::Size() const
     return this->numDevices;
 }
 
-// ----------------------------------------------------------------------------
-// DeviceList::Iterator
-// ----------------------------------------------------------------------------
+#pragma endregion
+
+#pragma region DeviceList::Iterator
 
 DeviceList::Iterator::Iterator(doca_devinfo ** list, size_t idx) : deviceList(list), index(idx) {}
 
@@ -260,9 +228,9 @@ DeviceList::Iterator DeviceList::End() const
     return Iterator(this->deviceList, this->numDevices);
 }
 
-// ----------------------------------------------------------------------------
-// Device
-// ----------------------------------------------------------------------------
+#pragma endregion
+
+#pragma region Device
 
 std::tuple<DevicePtr, error> Device::Open(const DeviceInfo & devInfo)
 {
@@ -350,3 +318,5 @@ std::tuple<doca::DevicePtr, error> doca::OpenIbDevice(const std::string & ibDevi
 
     return { nullptr, errors::New("Failed to open InfiniBand device: no device found with given name") };
 }
+
+#pragma endregion

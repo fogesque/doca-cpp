@@ -12,25 +12,34 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Find DOCA (system dependency)
 find_package(DOCA REQUIRED)
 
+# Find Asio
+find_package(asio CONFIG REQUIRED)
+
 # Find errors
 find_package(errors CONFIG REQUIRED)
+
+# Find kvalog
+find_package(kvalog CONFIG REQUIRED)
 
 # Library sources
 set(DOCA_CPP_SOURCES
     # Core
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/device.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/buffer.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/context.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/device.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/mmap.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/progress_engine.cpp
     # RDMA
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_server.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_buffer.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_client.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_endpoint.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_executor.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_buffer.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_server.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_awaitable.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_communication.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_connection.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_engine.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_executor.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_session.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_task.cpp
 )
 
@@ -52,20 +61,32 @@ target_include_directories(${TARGET_NAME}
 
 target_link_libraries(${TARGET_NAME}
     PRIVATE
+        asio::asio
         errors::errors
+        kvalog::kvalog
         DOCA::common
         DOCA::rdma
         # Add other DOCA libs as needed
 )
+
+# Enable logging option
+option(ENABLE_LOGGING "Enable logging" ON)
+
+if(ENABLE_LOGGING)
+    target_compile_definitions(${TARGET_NAME}
+        PUBLIC
+            DOCA_CPP_ENABLE_LOGGING
+    )
+endif()
 
 # Build samples and tests (optional, controlled by option)
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_SAMPLES "Build samples" OFF)
 
 if(BUILD_TESTS)
-    add_subdirectory(doca-cpp/tests)
+    add_subdirectory(tests)
 endif()
 
 if(BUILD_SAMPLES)
-    add_subdirectory(doca-cpp/samples)
+    add_subdirectory(samples)
 endif()

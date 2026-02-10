@@ -37,7 +37,7 @@ std::tuple<RdmaAddressPtr, error> RdmaAddress::Create(RdmaAddress::Type addressT
     auto err = FromDocaError(doca_rdma_addr_create(static_cast<doca_rdma_addr_type>(addressType), address.c_str(), port,
                                                    &nativeRdmaAddress));
     if (err) {
-        return { nullptr, errors::Wrap(err, "failed to create RDMA address") };
+        return { nullptr, errors::Wrap(err, "Failed to create RDMA address") };
     }
 
     auto rdmaAddress = std::make_shared<RdmaAddress>(nativeRdmaAddress, std::make_shared<RdmaAddress::Deleter>());
@@ -69,61 +69,41 @@ RdmaConnection::RdmaConnection(doca_rdma_connection * nativeConnection) : rdmaCo
 error RdmaConnection::SetUserData(doca::Data & userData)
 {
     if (this->rdmaConnection == nullptr) {
-        return errors::New("Rdma connection is null");
+        return errors::New("RDMA connection is null");
     }
 
     auto err = FromDocaError(doca_rdma_connection_set_user_data(this->rdmaConnection, userData.ToNative()));
     if (err) {
-        return errors::Wrap(err, "failed to set user data to RDMA connection");
+        return errors::Wrap(err, "Failed to set user data to RDMA connection");
     }
 
     return nullptr;
 }
 
-void RdmaConnection::SetState(State newState)
-{
-    this->connectionState = newState;
-}
-
-RdmaConnection::State RdmaConnection::GetState() const
-{
-    return this->connectionState;
-}
-
 std::tuple<doca::rdma::RdmaConnectionId, error> RdmaConnection::GetId() const
 {
     if (this->rdmaConnection == nullptr) {
-        return { 0, errors::New("Rdma connection is null") };
+        return { 0, errors::New("RDMA connection is null") };
     }
 
     uint32_t connectionId = 0;
     auto err = FromDocaError(doca_rdma_connection_get_id(this->rdmaConnection, &connectionId));
     if (err) {
-        return { 0, errors::Wrap(err, "failed to get RDMA connection ID") };
+        return { 0, errors::Wrap(err, "Failed to get RDMA connection ID") };
     }
 
     return { connectionId, nullptr };
 }
 
-bool RdmaConnection::IsAccepted() const
-{
-    return this->accepted;
-}
-
-void RdmaConnection::SetAccepted()
-{
-    this->accepted = true;
-}
-
 error doca::rdma::RdmaConnection::Accept()
 {
     if (this->rdmaConnection == nullptr) {
-        return errors::New("Rdma connection is null");
+        return errors::New("RDMA connection is null");
     }
 
     auto err = FromDocaError(doca_rdma_connection_accept(this->rdmaConnection, nullptr, 0));
     if (err) {
-        return errors::Wrap(err, "failed to accept RDMA connection");
+        return errors::Wrap(err, "Failed to accept RDMA connection");
     }
 
     return nullptr;
@@ -132,13 +112,29 @@ error doca::rdma::RdmaConnection::Accept()
 error doca::rdma::RdmaConnection::Reject()
 {
     if (this->rdmaConnection == nullptr) {
-        return errors::New("Rdma connection is null");
+        return errors::New("RDMA connection is null");
     }
 
     auto err = FromDocaError(doca_rdma_connection_reject(this->rdmaConnection));
     if (err) {
-        return errors::Wrap(err, "failed to reject RDMA connection");
+        return errors::Wrap(err, "Failed to reject RDMA connection");
     }
+
+    return nullptr;
+}
+
+error doca::rdma::RdmaConnection::Disconnect()
+{
+    if (this->rdmaConnection == nullptr) {
+        return errors::New("RDMA connection is null");
+    }
+
+    auto err = FromDocaError(doca_rdma_connection_disconnect(this->rdmaConnection));
+    if (err) {
+        return errors::Wrap(err, "Failed to disconnect and close RDMA connection");
+    }
+
+    this->rdmaConnection = nullptr;
 
     return nullptr;
 }
