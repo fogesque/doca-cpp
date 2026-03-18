@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(doca-cpp VERSION 0.1.0 LANGUAGES CXX)
+project(doca-cpp VERSION 0.1.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +48,8 @@ add_library(${TARGET_NAME}
     ${DOCA_CPP_SOURCES}
 )
 
+add_library(${TARGET_NAME}::${TARGET_NAME} ALIAS ${TARGET_NAME})
+
 # Require C++23 minimum
 target_compile_features(doca-cpp INTERFACE cxx_std_23)
 
@@ -56,7 +58,7 @@ target_include_directories(${TARGET_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/doca-cpp/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
-        ${DOCA_INCLUDE_DIRS} 
+        ${DOCA_INCLUDE_DIRS}
 )
 
 target_link_libraries(${TARGET_NAME}
@@ -90,3 +92,46 @@ endif()
 if(BUILD_SAMPLES)
     add_subdirectory(samples)
 endif()
+
+#  Installation 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS ${TARGET_NAME}
+    EXPORT ${TARGET_NAME}-targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY doca-cpp/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(EXPORT ${TARGET_NAME}-targets
+    FILE ${TARGET_NAME}-targets.cmake
+    NAMESPACE ${TARGET_NAME}::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${TARGET_NAME}
+)
+
+install(FILES cmake/FindDOCA.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${TARGET_NAME}
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${TARGET_NAME}-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}-config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${TARGET_NAME}
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}-config-version.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}-config-version.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${TARGET_NAME}
+)

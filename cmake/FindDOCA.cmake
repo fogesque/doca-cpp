@@ -55,10 +55,13 @@ endforeach()
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(DOCA
-    REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_COMMON_LIBRARY 
-)
-find_package_handle_standard_args(DOCA
-    REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_RDMA_LIBRARY 
+    REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_COMMON_LIBRARY DOCA_RDMA_LIBRARY
+    REASON_FAILURE_MESSAGE
+        "NVIDIA DOCA SDK was not found on this system.\n"
+        "   doca-cpp requires DOCA SDK to be installed separately.\n"
+        "   1. Download from: https://developer.nvidia.com/networking/doca\n"
+        "   2. Default install path: /opt/mellanox/doca\n"
+        "   3. Or set DOCA_ROOT environment variable to your install prefix."
 )
 
 if(DOCA_FOUND)

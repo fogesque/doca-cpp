@@ -1,9 +1,10 @@
 {
     "name": "doca-cpp",
-    "version": "0.1.0",
-    "description": "C++ Adapter For NVIDIA DOCA Framework",
+    "version": "0.1.3",
+    "description": "C++ Adapter For NVIDIA DOCA Framework. Requires NVIDIA DOCA SDK installed on the system (https://developer.nvidia.com/networking/doca).",
     "homepage": "https://github.com/fogesque/doca-cpp",
     "license": "MIT",
+    "supports": "linux",
     "dependencies": [
         {
             "name": "vcpkg-cmake",

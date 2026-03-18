@@ -1,0 +1,29 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# DOCA SDK is a system dependency that must be installed separately.
+# It is NOT managed by vcpkg.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+find_package(DOCA QUIET)
+if(NOT DOCA_FOUND)
+    message(FATAL_ERROR
+        "doca-cpp requires NVIDIA DOCA SDK to be installed on the system.\n"
+        "\n"
+        "DOCA SDK was not found. Please install it before using doca-cpp:\n"
+        "  1. Download DOCA SDK from: https://developer.nvidia.com/networking/doca\n"
+        "  2. Follow the installation guide for your platform\n"
+        "  3. Default installation path: /opt/mellanox/doca\n"
+        "\n"
+        "If DOCA is installed in a non-standard location, set the DOCA_ROOT\n"
+        "environment variable to the installation prefix.\n"
+    )
+endif()
+
+find_dependency(asio CONFIG)
+find_dependency(errors CONFIG)
+find_dependency(kvalog CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/doca-cpp-targets.cmake")
+
+check_required_components(doca-cpp)
