@@ -54,14 +54,16 @@ foreach(lib rdma dma flow)
 endforeach()
 
 include(FindPackageHandleStandardArgs)
+
+set(_doca_reason "NVIDIA DOCA SDK was not found on this system. ")
+string(APPEND _doca_reason "doca-cpp requires DOCA SDK to be installed separately. ")
+string(APPEND _doca_reason "1) Download from: https://developer.nvidia.com/networking/doca  ")
+string(APPEND _doca_reason "2) Default install path: /opt/mellanox/doca  ")
+string(APPEND _doca_reason "3) Or set DOCA_ROOT environment variable to your install prefix.")
+
 find_package_handle_standard_args(DOCA
     REQUIRED_VARS DOCA_INCLUDE_DIR DOCA_COMMON_LIBRARY DOCA_RDMA_LIBRARY
-    REASON_FAILURE_MESSAGE
-        "NVIDIA DOCA SDK was not found on this system.\n"
-        "   doca-cpp requires DOCA SDK to be installed separately.\n"
-        "   1. Download from: https://developer.nvidia.com/networking/doca\n"
-        "   2. Default install path: /opt/mellanox/doca\n"
-        "   3. Or set DOCA_ROOT environment variable to your install prefix."
+    REASON_FAILURE_MESSAGE "${_doca_reason}"
 )
 
 if(DOCA_FOUND)
