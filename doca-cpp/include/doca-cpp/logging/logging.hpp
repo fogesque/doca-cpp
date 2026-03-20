@@ -26,9 +26,12 @@
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 
-#include <atomic>
+#include <doca_log.h>
 
-#include "kvalog/kvalog.hpp"
+#include <atomic>
+#include <kvalog/kvalog.hpp>
+
+#include "doca-cpp/core/error.hpp"
 
 namespace doca::logging
 {
@@ -69,6 +72,29 @@ inline void SetLogLevel(LogLevel level)
 inline LogLevel GetLogLevel()
 {
     return globalLogLevel.load(std::memory_order_relaxed);
+}
+
+using DocaSdkLogLevel = doca_log_level;
+
+inline error RegisterDocaSdkLogging(const DocaSdkLogLevel level)
+{
+    auto err = doca::FromDocaError(doca_log_backend_create_standard());
+    if (err) {
+        return errors::Wrap(err, "Failed to create DOCA logging backend");
+    }
+
+    struct doca_log_backend * sdkLog = nullptr;
+    err = doca::FromDocaError(doca_log_backend_create_with_file_sdk(stdout, &sdkLog));
+    if (err) {
+        return errors::Wrap(err, "Failed to create DOCA logger with stdout");
+    }
+
+    err = doca::FromDocaError(doca_log_backend_set_sdk_level(sdkLog, level));
+    if (err) {
+        return errors::Wrap(err, "Failed to set DOCA logger log level");
+    }
+
+    return nullptr;
 }
 
 }  // namespace doca::logging
