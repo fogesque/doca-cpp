@@ -34,6 +34,7 @@ struct SampleConfig {
     ClientConfig clientCfg;
 
     doca::logging::LogLevel loggingLevel = doca::logging::LogLevel::Off;
+    doca::logging::DocaSdkLogLevel docaSdkLogLevel = doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_DISABLE;
 };
 using SampleConfigPtr = std::shared_ptr<SampleConfig>;
 
@@ -113,8 +114,17 @@ inline std::tuple<SampleConfigPtr, error> ParseSampleConfigs(const std::string &
                 return { nullptr, errors::New("Failed to parse 'log-level' field in sample node") };
             }
         }
+        if (sampleNode["doca-log-level"]) {
+            try {
+                cfg->docaSdkLogLevel =
+                    static_cast<doca::logging::DocaSdkLogLevel>(sampleNode["doca-log-level"].as<uint32_t>());
+            } catch (std::runtime_error & e) {
+                return { nullptr, errors::New("Failed to parse 'doca-log-level' field in sample node") };
+            }
+        }
     } catch (std::runtime_error & e) {
         cfg->loggingLevel = doca::logging::LogLevel::Off;
+        cfg->docaSdkLogLevel = doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_DISABLE;
     }
 
     return { cfg, nullptr };
@@ -141,19 +151,41 @@ inline std::string LogLevelToString(const doca::logging::LogLevel level)
     return "Unknown";
 }
 
+inline std::string DocaSdkLogLevelToString(const doca::logging::DocaSdkLogLevel level)
+{
+    switch (level) {
+        case doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_TRACE:
+            return "Trace";
+        case doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_DEBUG:
+            return "Debug";
+        case doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_INFO:
+            return "Info";
+        case doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_WARNING:
+            return "Warning";
+        case doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_ERROR:
+            return "Error";
+        case doca::logging::DocaSdkLogLevel::DOCA_LOG_LEVEL_CRIT:
+            return "Critical";
+        default:
+            return "Off";
+    }
+    return "Unknown";
+}
+
 // Prints parsed configs (for debugging)
 inline void PrintSampleConfigs(const SampleConfigPtr cfg)
 {
     std::println();
     std::println("========= Parsed configs =========");
     std::println("  Server:");
-    std::println("    Device:          {}", cfg->serverCfg.deviceServerIbName);
-    std::println("    IPv4:            {}", cfg->serverCfg.serverAddress);
-    std::println("    Port:            {}", cfg->serverCfg.serverPort);
+    std::println("    Device:             {}", cfg->serverCfg.deviceServerIbName);
+    std::println("    IPv4:               {}", cfg->serverCfg.serverAddress);
+    std::println("    Port:               {}", cfg->serverCfg.serverPort);
     std::println("  Client:");
-    std::println("    Device:          {}", cfg->clientCfg.deviceClientIbName);
+    std::println("    Device:             {}", cfg->clientCfg.deviceClientIbName);
     std::println("  Sample:");
-    std::println("    Log Level:       {}", LogLevelToString(cfg->loggingLevel));
+    std::println("    Log Level:          {}", LogLevelToString(cfg->loggingLevel));
+    std::println("    DOCA Log Level:     {}", DocaSdkLogLevelToString(cfg->docaSdkLogLevel));
     std::println("==================================");
     std::println();
 }
