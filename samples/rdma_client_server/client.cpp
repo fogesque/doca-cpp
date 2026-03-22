@@ -30,6 +30,12 @@ int main()
 
     doca::logging::SetLogLevel(cfg->loggingLevel);
 
+    // Register DOCA SDK logging
+    err = doca::logging::RegisterDocaSdkLogging(cfg->docaSdkLogLevel);
+    if (err) {
+        std::println("[Server Sample] Failed to register DOCA SDK logging, continue ignoring this");
+    }
+
     std::println("[Client Sample] Opening InfiniBand device {}", cfg->clientCfg.deviceClientIbName);
 
     // Open InfiniBand device
