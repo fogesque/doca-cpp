@@ -132,7 +132,7 @@ public:
     /// [Memory Registration]
 
     /// @brief Registers remote memory range
-    error RegisterRemoteMemoryRange(RemoteMemoryRangePtr memoryRange);
+    error RegisterRemoteMemoryRange(RemoteMemoryRangeHandle memoryRange);
 
     /// [Memory Access]
 
@@ -140,7 +140,7 @@ public:
     std::tuple<RemoteMemoryMapPtr, error> GetMemoryMap();
 
     /// @brief Gets registered remote memory range
-    std::tuple<RemoteMemoryRangePtr, error> GetMemoryRange();
+    std::tuple<RemoteMemoryRangeHandlePtr, error> GetMemoryRange();
 
     /// [Construction & Destruction]
 
@@ -171,7 +171,7 @@ private:
     /// [Properties]
 
     /// @brief Registered remote memory range
-    RemoteMemoryRangePtr memoryRange = nullptr;
+    RemoteMemoryRangeHandlePtr memoryRange;
 
     /// @brief Associated device
     doca::DevicePtr device = nullptr;
