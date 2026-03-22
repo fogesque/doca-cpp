@@ -15,15 +15,18 @@ namespace doca
 {
 
 // Forward declarations
-using MemoryRange = std::vector<std::uint8_t>;
-struct RemoteMemoryRange;
 class MemoryMap;
 class RemoteMemoryMap;
 
+// Type aliases
+using MemoryRange = std::vector<std::uint8_t>;
 using MemoryRangePtr = std::shared_ptr<MemoryRange>;
-using RemoteMemoryRangePtr = std::shared_ptr<RemoteMemoryRange>;
+using MemoryRangeHandle = std::span<std::uint8_t>;
+using RemoteMemoryRangeHandle = std::span<std::uint8_t>;
+using RemoteMemoryRangeHandlePtr = std::shared_ptr<RemoteMemoryRangeHandle>;
 using MemoryMapPtr = std::shared_ptr<MemoryMap>;
 using RemoteMemoryMapPtr = std::shared_ptr<RemoteMemoryMap>;
+using DmaBufDescriptor = int;
 
 ///
 /// @brief
@@ -78,6 +81,9 @@ public:
 
         /// @brief Sets memory region
         Builder & SetMemoryRange(MemoryRangePtr memoryRange);
+
+        /// @brief Sets DMA buf memory region
+        Builder & SetDmaBufMemoryRange(MemoryRangeHandle memoryRange, DmaBufDescriptor dmaBufDescriptor);
 
         /// @brief Sets devices count threshold
         Builder & SetMaxNumDevices(uint32_t maxDevices);
@@ -139,16 +145,6 @@ private:
 
 ///
 /// @brief
-/// RemoteMemoryRange is structure that points to memory that has information about remote host memory region. This
-/// memory initialized with remote memory descriptor exported from memory map
-///
-struct RemoteMemoryRange {
-    std::uint8_t * memoryAddress = nullptr;
-    std::size_t memorySize = 0;
-};
-
-///
-/// @brief
 /// MemoryMap is instance that maps remote host allocated memory to local DOCA device
 ///
 class RemoteMemoryMap
@@ -169,7 +165,7 @@ public:
     error RemoveDevice();
 
     /// @brief Gets memory region mapped in memory map
-    std::tuple<RemoteMemoryRangePtr, error> GetRemoteMemoryRange();
+    std::tuple<RemoteMemoryRangeHandle, error> GetRemoteMemoryRange();
 
     /// [Unsafe]
 

@@ -8,8 +8,7 @@ using doca::MemoryRange;
 using doca::MemoryRangePtr;
 using doca::RemoteMemoryMap;
 using doca::RemoteMemoryMapPtr;
-using doca::RemoteMemoryRange;
-using doca::RemoteMemoryRangePtr;
+using doca::RemoteMemoryRangeHandle;
 
 #pragma region MemoryMap
 
@@ -58,6 +57,22 @@ MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(MemoryRangePtr memoryRan
         auto err = FromDocaError(doca_mmap_set_memrange(this->mmap, dataPtr, dataLength));
         if (err) {
             this->buildErr = errors::Wrap(err, "Failed to set memory range");
+        }
+    }
+    return *this;
+}
+
+MemoryMap::Builder & MemoryMap::Builder::SetDmaBufMemoryRange(MemoryRangeHandle memoryRange,
+                                                              DmaBufDescriptor dmaBufDescriptor)
+{
+    if (this->mmap && !this->buildErr) {
+        const auto dmaBufOffset = 0;
+        auto dataPtr = static_cast<void *>(memoryRange.data());
+        auto dataLength = memoryRange.size();
+        auto err = FromDocaError(
+            doca_mmap_set_dmabuf_memrange(this->mmap, dmaBufDescriptor, dataPtr, dmaBufOffset, dataLength));
+        if (err) {
+            this->buildErr = errors::Wrap(err, "Failed to set DMA buf memory range");
         }
     }
     return *this;
@@ -310,7 +325,7 @@ std::tuple<RemoteMemoryMapPtr, error> RemoteMemoryMap::CreateFromExport(std::vec
     return { remoteMmap, nullptr };
 }
 
-std::tuple<RemoteMemoryRangePtr, error> RemoteMemoryMap::GetRemoteMemoryRange()
+std::tuple<RemoteMemoryRangeHandle, error> RemoteMemoryMap::GetRemoteMemoryRange()
 {
     if (!this->device) {
         return { {}, errors::New("No device associated with memory map") };
@@ -321,16 +336,12 @@ std::tuple<RemoteMemoryRangePtr, error> RemoteMemoryMap::GetRemoteMemoryRange()
 
     void * memrange = nullptr;
     size_t memsize = 0;
-
     auto err = FromDocaError(doca_mmap_get_memrange(this->memoryMap, &memrange, &memsize));
     if (err) {
         return { {}, errors::Wrap(err, "Failed to get memory range from memory map") };
     }
 
-    auto remoteMemrange = std::make_shared<RemoteMemoryRange>();
-    remoteMemrange->memoryAddress = static_cast<std::uint8_t *>(memrange);
-    remoteMemrange->memorySize = memsize;
-
+    auto remoteMemrange = std::span<uint8_t>(static_cast<uint8_t *>(memrange), memsize);
     return { remoteMemrange, nullptr };
 }
 

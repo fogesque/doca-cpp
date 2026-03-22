@@ -7,8 +7,8 @@ using doca::MemoryRange;
 using doca::MemoryRangePtr;
 using doca::RemoteMemoryMap;
 using doca::RemoteMemoryMapPtr;
-using doca::RemoteMemoryRange;
-using doca::RemoteMemoryRangePtr;
+using doca::RemoteMemoryRangeHandle;
+using doca::RemoteMemoryRangeHandlePtr;
 using doca::rdma::RdmaBuffer;
 using doca::rdma::RdmaBufferPtr;
 using doca::rdma::RdmaRemoteBuffer;
@@ -131,12 +131,12 @@ std::tuple<RdmaRemoteBufferPtr, error> RdmaRemoteBuffer::FromExportedRemoteDescr
     return { remoteBuffer, nullptr };
 }
 
-error RdmaRemoteBuffer::RegisterRemoteMemoryRange(RemoteMemoryRangePtr memoryRange)
+error RdmaRemoteBuffer::RegisterRemoteMemoryRange(RemoteMemoryRangeHandle memoryRange)
 {
     if (this->memoryRange != nullptr) {
         return ErrorTypes::MemoryRangeAlreadyRegistered;
     }
-    this->memoryRange = memoryRange;
+    this->memoryRange = std::make_shared<std::span<uint8_t>>(memoryRange);
     return nullptr;
 }
 
@@ -148,7 +148,7 @@ std::tuple<RemoteMemoryMapPtr, error> RdmaRemoteBuffer::GetMemoryMap()
     return { this->memoryMap, nullptr };
 }
 
-std::tuple<RemoteMemoryRangePtr, error> RdmaRemoteBuffer::GetMemoryRange()
+std::tuple<RemoteMemoryRangeHandlePtr, error> RdmaRemoteBuffer::GetMemoryRange()
 {
     if (this->memoryRange == nullptr) {
         return { nullptr, ErrorTypes::MemoryRangeNotRegistered };
