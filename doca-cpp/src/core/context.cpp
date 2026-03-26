@@ -36,12 +36,13 @@ error doca::Context::Start()
 error doca::Context::Stop()
 {
     if (this->ctx == nullptr) {
-        return errors::New("Context is null");
+        return nullptr;
     }
     auto err = FromDocaError(doca_ctx_stop(this->ctx));
     if (err) {
         return errors::Wrap(err, "Failed to stop context");
     }
+    this->ctx = nullptr;
     return nullptr;
 }
 
