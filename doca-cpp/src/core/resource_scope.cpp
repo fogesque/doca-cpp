@@ -1,4 +1,4 @@
-#include "doca-cpp/core/resource_manager.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
 
 #include "doca-cpp/logging/logging.hpp"
 
@@ -68,8 +68,8 @@ error ResourceScope::TearDown()
 
     error errs = nullptr;
 
-    // Pass 1: Stop all stoppable resources in tier order (ascending).
-    // Within each tier, stop in reverse insertion order (LIFO).
+    // Stop all stoppable resources in tier order
+    // Within each tier, stop in reverse insertion order
     for (auto & [tier, resources] : this->stoppables) {
         DOCA_CPP_LOG_DEBUG(std::format("Stopping tier '{}' ({} resources)", ResourceTierName(tier), resources.size()));
         for (auto it = resources.rbegin(); it != resources.rend(); ++it) {
@@ -81,8 +81,8 @@ error ResourceScope::TearDown()
         }
     }
 
-    // Pass 2: Destroy all destroyable resources in tier order (ascending).
-    // Within each tier, destroy in reverse insertion order (LIFO).
+    // Destroy all destroyable resources in tier order
+    // Within each tier, destroy in reverse insertion order
     for (auto & [tier, resources] : this->destroyables) {
         DOCA_CPP_LOG_DEBUG(
             std::format("Destroying tier '{}' ({} resources)", ResourceTierName(tier), resources.size()));

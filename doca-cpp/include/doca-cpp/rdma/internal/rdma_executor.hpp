@@ -16,7 +16,7 @@
 #include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
-#include "doca-cpp/core/resource_manager.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
 #include "doca-cpp/rdma/internal/rdma_awaitable.hpp"
 #include "doca-cpp/rdma/internal/rdma_engine.hpp"
 #include "doca-cpp/rdma/internal/rdma_operation.hpp"

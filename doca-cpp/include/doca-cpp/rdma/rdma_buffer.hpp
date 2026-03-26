@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "doca-cpp/core/mmap.hpp"
-#include "doca-cpp/core/resource_manager.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
 
 namespace doca::rdma
 {

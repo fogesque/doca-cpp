@@ -29,7 +29,7 @@ set(DOCA_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/device.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/mmap.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/progress_engine.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/resource_manager.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/resource_scope.cpp
     # RDMA
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_buffer.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_client.cpp

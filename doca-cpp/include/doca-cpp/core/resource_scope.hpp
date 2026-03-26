@@ -16,14 +16,13 @@ class ResourceScope;
 // Type aliases
 using ResourceScopePtr = std::shared_ptr<ResourceScope>;
 
-/// @brief Resource tiers define the teardown order. Lower tier = stopped/destroyed first.
-/// This enum is the single source of truth for DOCA resource dependency ordering.
+/// @brief Resource tiers define the teardown order. Lower tier = stopped/destroyed first
 enum class ResourceTier : uint8_t {
-    rdmaContext = 0,       ///< Must stop first: flushes pending RDMA operations
-    bufferInventory = 1,   ///< Stop before releasing buffers
-    memoryMap = 2,         ///< Stop + destroy mmaps after context is done with them
-    rdmaEngine = 3,        ///< Destroy after context stopped, before progress engine
-    progressEngine = 4,    ///< Destroy last: context was connected to it
+    rdmaContext = 0,
+    bufferInventory = 1,
+    memoryMap = 2,
+    rdmaEngine = 3,
+    progressEngine = 4,
 };
 
 ///
