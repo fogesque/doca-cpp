@@ -132,9 +132,7 @@ std::tuple<doca::ContextPtr, error> RdmaEngine::AsContext()
         // This creates Context that will be under RAII
         this->rdmaContext = doca::Context::CreateFromNative(contextPtr);
     }
-    // This will create Context pointer that will not destroy it in Destructor
-    auto contextRef = doca::Context::CreateReferenceFromNative(this->rdmaContext->GetNative());
-    return { contextRef, nullptr };
+    return { this->rdmaContext, nullptr };
 }
 
 error RdmaEngine::ConnectToAddress(RdmaAddressPtr address, doca::Data & connectionUserData)

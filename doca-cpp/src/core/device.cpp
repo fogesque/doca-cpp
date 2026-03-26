@@ -291,12 +291,12 @@ error Device::Destroy()
     return nullptr;
 }
 
-doca::Device::~Device()
+Device::~Device()
 {
     std::ignore = this->Destroy();
 }
 
-std::tuple<doca::DevicePtr, error> doca::OpenIbDevice(const std::string & ibDeviceName)
+std::tuple<DevicePtr, error> OpenIbDevice(const std::string & ibDeviceName)
 {
     // Get devices list
     auto [devices, err] = doca::DeviceList::Create();
