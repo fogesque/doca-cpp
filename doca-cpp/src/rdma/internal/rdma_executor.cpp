@@ -1,5 +1,6 @@
 #include "doca-cpp/rdma/internal/rdma_executor.hpp"
 
+#include "doca-cpp/core/resource_manager.hpp"
 #include "doca-cpp/logging/logging.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
@@ -76,6 +77,9 @@ RdmaExecutor::~RdmaExecutor()
     if (this->workerThread->joinable()) {
         this->workerThread->join();
     }
+
+    std::ignore = this->activeConnection->Disconnect();
+
     DOCA_CPP_LOG_DEBUG("Executor destroyed successfully");
 }
 
@@ -97,6 +101,8 @@ error RdmaExecutor::Start()
         return errors::Wrap(peErr, "Failed to create RDMA progress engine");
     }
     this->progressEngine = engine;
+    auto resourceGroup = doca::internal::ResourceGroup::Create();
+    resourceGroup->AddDestroyableResource(this->progressEngine);
 
     DOCA_CPP_LOG_DEBUG("Created progress engine");
 
@@ -106,6 +112,7 @@ error RdmaExecutor::Start()
         return errors::Wrap(ctxErr, "Failed to get RDMA context");
     }
     this->rdmaContext = context;
+    resourceGroup->AddStoppableResource(this->rdmaContext);
 
     // Connect RDMA Context to ProgressEngine
     auto err = this->progressEngine->ConnectContext(this->rdmaContext);
@@ -270,6 +277,7 @@ error RdmaExecutor::Start()
         return errors::Wrap(err, "Failed to create and start buffer inventory");
     }
     this->bufferInventory = inventory;
+    resourceGroup->AddStoppableResource(this->bufferInventory);
 
     DOCA_CPP_LOG_DEBUG("Created buffer inventory");
 
@@ -300,6 +308,8 @@ error RdmaExecutor::Start()
     this->workerThread = std::make_unique<std::thread>([this] { this->workerLoop(); });
 
     DOCA_CPP_LOG_DEBUG("Started executor working thread");
+
+    doca::internal::ResourceManager::Instance()->AddResourceGroup(1, resourceGroup);
 
     return nullptr;
 }

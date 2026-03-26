@@ -1,5 +1,6 @@
 #include "doca-cpp/rdma/internal/rdma_session.hpp"
 
+#include "doca-cpp/core/resource_manager.hpp"
 #include "doca-cpp/logging/logging.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING

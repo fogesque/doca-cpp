@@ -1,5 +1,7 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
+#include "doca-cpp/core/resource_manager.hpp"
+
 using doca::DevicePtr;
 using doca::MemoryMap;
 using doca::MemoryMapPtr;
@@ -51,6 +53,10 @@ error RdmaBuffer::MapMemory(doca::DevicePtr device, doca::AccessFlags permission
     if (err) {
         return errors::Wrap(err, "Failed to create memory map");
     }
+    auto resourceGroup = doca::internal::ResourceGroup::Create();
+    resourceGroup->AddStoppableResource(mmap);
+    resourceGroup->AddDestroyableResource(mmap);
+    doca::internal::ResourceManager::Instance()->AddResourceGroup(0, resourceGroup);
 
     // Store memory map and device
     this->memoryMap = mmap;
@@ -112,6 +118,10 @@ std::tuple<RdmaRemoteBufferPtr, error> RdmaRemoteBuffer::FromExportedRemoteDescr
     if (mapErr) {
         return { nullptr, errors::Wrap(mapErr, "Failed to create memory map for remote descriptor") };
     }
+    auto resourceGroup = doca::internal::ResourceGroup::Create();
+    resourceGroup->AddStoppableResource(remoteMmap);
+    resourceGroup->AddDestroyableResource(remoteMmap);
+    doca::internal::ResourceManager::Instance()->AddResourceGroup(2, resourceGroup);
 
     // Get memory range from descriptor mmap
     auto [remoteMemrange, rgnErr] = remoteMmap->GetRemoteMemoryRange();

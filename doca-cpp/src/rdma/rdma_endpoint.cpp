@@ -202,16 +202,14 @@ bool RdmaEndpointStorage::Empty() const
 
 error RdmaEndpointStorage::MapEndpointsMemory(doca::DevicePtr device)
 {
-    {
-        for (auto & [_, element] : this->endpointsMap) {
-            auto err = element->endpoint->Buffer()->MapMemory(
-                device, doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite);
-            if (err) {
-                return errors::Wrap(err, "Failed to map endpoint memory");
-            }
+    for (auto & [_, element] : this->endpointsMap) {
+        auto err = element->endpoint->Buffer()->MapMemory(
+            device, doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite);
+        if (err) {
+            return errors::Wrap(err, "Failed to map endpoint memory");
         }
-        return nullptr;
     }
+    return nullptr;
 }
 
 std::tuple<bool, error> RdmaEndpointStorage::TryLockEndpointsByPath(const RdmaEndpointPath & endpointsPath)
