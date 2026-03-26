@@ -18,8 +18,9 @@ class Context;
 class ProgressEngine;
 class ITask;
 
+// Type aliases
 using ProgressEnginePtr = std::shared_ptr<ProgressEngine>;
-using TaskInterfacePtr = std::shared_ptr<ITask>;
+using ITaskPtr = std::shared_ptr<ITask>;
 
 ///
 /// @brief
@@ -41,7 +42,7 @@ public:
 /// @brief
 /// ProgressEngine is execution model in DOCA that runs its IO event loop checking tasks completions
 ///
-class ProgressEngine
+class ProgressEngine : public IDestroyable
 {
 public:
     /// [Fabric Methods]
@@ -66,40 +67,38 @@ public:
     /// @warning Avoid using this function since it is unsafe
     DOCA_CPP_UNSAFE doca_pe * GetNative() const;
 
+    /// [Resource Management]
+
+    error Destroy() override final;
+
     /// [Construction & Destruction]
+
+#pragma region ProgressEngine::Construct
 
     /// @brief Copy constructor is deleted
     ProgressEngine(const ProgressEngine &) = delete;
-
     /// @brief Copy operator is deleted
     ProgressEngine & operator=(const ProgressEngine &) = delete;
-
     /// @brief Move constructor
     ProgressEngine(ProgressEngine && other) noexcept = default;
-
     /// @brief Move operator
     ProgressEngine & operator=(ProgressEngine && other) noexcept = default;
 
-    /// @brief Deleter is used to decide whether native DOCA object must be destroyed or unaffected. When it is passed
-    /// to Constructor, object will be destroyed in Destructor; otherwise nothing will happen
-    struct Deleter {
-        void Delete(doca_pe * pe);
-    };
-    using DeleterPtr = std::shared_ptr<Deleter>;
-
+    /// @brief Default constructor is deleted
+    explicit ProgressEngine() = delete;
     /// @brief Constructor
     /// @warning Avoid using this constructor since class has static fabric methods
-    explicit ProgressEngine(doca_pe * nativeProgressEngine, DeleterPtr deleter = std::make_shared<Deleter>());
-
+    explicit ProgressEngine(doca_pe * nativeProgressEngine);
     /// @brief Destructor
     ~ProgressEngine();
 
+#pragma endregion
+
 private:
+    /// [Properties]
+
     /// @brief Native DOCA structure
     doca_pe * progressEngine = nullptr;
-
-    /// @brief Native DOCA structure deleter
-    DeleterPtr deleter = nullptr;
 };
 
 }  // namespace doca
