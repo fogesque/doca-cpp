@@ -6,7 +6,6 @@
 #include <stack>
 #include <string>
 
-#include "doca-cpp/core/interfaces.hpp"
 #include "doca-cpp/core/types.hpp"
 
 namespace doca::internal

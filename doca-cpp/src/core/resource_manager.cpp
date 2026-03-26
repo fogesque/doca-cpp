@@ -1,7 +1,5 @@
 #include "doca-cpp/core/resource_manager.hpp"
 
-#include "resource_manager.hpp"
-
 namespace doca::internal
 {
 
