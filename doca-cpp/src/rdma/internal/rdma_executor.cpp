@@ -769,7 +769,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getSourceLocalBuffer(RdmaBuffer
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByData(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByData(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
@@ -797,7 +797,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getDestinationLocalBuffer(RdmaB
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByAddress(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
@@ -825,7 +825,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getSourceRemoteBuffer(RdmaRemot
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByData(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByData(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
@@ -853,7 +853,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getDestinationRemoteBuffer(Rdma
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByAddress(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
