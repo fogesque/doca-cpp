@@ -22,7 +22,8 @@ enum class ResourceTier : uint8_t {
     rdmaContext = 0,       ///< Must stop first: flushes pending RDMA operations
     bufferInventory = 1,   ///< Stop before releasing buffers
     memoryMap = 2,         ///< Stop + destroy mmaps after context is done with them
-    progressEngine = 3,    ///< Destroy last: context was connected to it
+    rdmaEngine = 3,        ///< Destroy after context stopped, before progress engine
+    progressEngine = 4,    ///< Destroy last: context was connected to it
 };
 
 ///

@@ -108,9 +108,19 @@ RdmaEngine::RdmaEngine(doca_rdma * plainRdma) : rdmaInstance(plainRdma) {}
 
 RdmaEngine::~RdmaEngine()
 {
-    if (this->rdmaInstance) {
-        std::ignore = doca_rdma_destroy(this->rdmaInstance);
+    std::ignore = this->Destroy();
+}
+
+error RdmaEngine::Destroy()
+{
+    if (this->rdmaInstance != nullptr) {
+        auto err = FromDocaError(doca_rdma_destroy(this->rdmaInstance));
+        if (err) {
+            return errors::Wrap(err, "Failed to destroy RDMA engine");
+        }
+        this->rdmaInstance = nullptr;
     }
+    return nullptr;
 }
 
 doca_rdma * RdmaEngine::GetNative()

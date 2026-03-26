@@ -109,6 +109,7 @@ error RdmaExecutor::Start()
     }
     this->progressEngine = engine;
     this->resourceScope->AddDestroyable(doca::internal::ResourceTier::progressEngine, this->progressEngine);
+    this->resourceScope->AddDestroyable(doca::internal::ResourceTier::rdmaEngine, this->rdmaEngine);
 
     DOCA_CPP_LOG_DEBUG("Created progress engine");
 
