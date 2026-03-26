@@ -1,7 +1,42 @@
 #include "doca-cpp/core/resource_manager.hpp"
 
+#include "doca-cpp/logging/logging.hpp"
+
+#ifdef DOCA_CPP_ENABLE_LOGGING
+namespace
+{
+inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
+inline const auto loggerContext = kvalog::Logger::Context{
+    .appName = "doca-cpp",
+    .moduleName = "resource",
+};
+}  // namespace
+DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
+#endif
+
 namespace doca::internal
 {
+
+namespace
+{
+const std::string ResourceTierName(ResourceTier tier)
+{
+    switch (tier) {
+        case ResourceTier::rdmaContext:
+            return "rdmaContext";
+        case ResourceTier::bufferInventory:
+            return "bufferInventory";
+        case ResourceTier::memoryMap:
+            return "memoryMap";
+        case ResourceTier::rdmaEngine:
+            return "rdmaEngine";
+        case ResourceTier::progressEngine:
+            return "progressEngine";
+        default:
+            return "unknown";
+    }
+}
+}  // namespace
 
 // ─────────────────────────────────────────────────────────
 // ResourceScope
@@ -29,14 +64,18 @@ error ResourceScope::TearDown()
     }
     this->tornDown = true;
 
+    DOCA_CPP_LOG_DEBUG("Starting teardown");
+
     error errs = nullptr;
 
     // Pass 1: Stop all stoppable resources in tier order (ascending).
     // Within each tier, stop in reverse insertion order (LIFO).
     for (auto & [tier, resources] : this->stoppables) {
+        DOCA_CPP_LOG_DEBUG(std::format("Stopping tier '{}' ({} resources)", ResourceTierName(tier), resources.size()));
         for (auto it = resources.rbegin(); it != resources.rend(); ++it) {
             auto err = (*it)->Stop();
             if (err) {
+                DOCA_CPP_LOG_ERROR(std::format("Failed to stop resource in tier '{}'", ResourceTierName(tier)));
                 errs = errors::Join(errs, errors::Wrap(err, "Failed to stop resource"));
             }
         }
@@ -45,9 +84,12 @@ error ResourceScope::TearDown()
     // Pass 2: Destroy all destroyable resources in tier order (ascending).
     // Within each tier, destroy in reverse insertion order (LIFO).
     for (auto & [tier, resources] : this->destroyables) {
+        DOCA_CPP_LOG_DEBUG(
+            std::format("Destroying tier '{}' ({} resources)", ResourceTierName(tier), resources.size()));
         for (auto it = resources.rbegin(); it != resources.rend(); ++it) {
             auto err = (*it)->Destroy();
             if (err) {
+                DOCA_CPP_LOG_ERROR(std::format("Failed to destroy resource in tier '{}'", ResourceTierName(tier)));
                 errs = errors::Join(errs, errors::Wrap(err, "Failed to destroy resource"));
             }
         }
@@ -56,6 +98,8 @@ error ResourceScope::TearDown()
     // Clear all references
     this->stoppables.clear();
     this->destroyables.clear();
+
+    DOCA_CPP_LOG_DEBUG("Teardown completed");
 
     return errs;
 }
