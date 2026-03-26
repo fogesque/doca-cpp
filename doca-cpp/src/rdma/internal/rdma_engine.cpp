@@ -108,9 +108,19 @@ RdmaEngine::RdmaEngine(doca_rdma * plainRdma) : rdmaInstance(plainRdma) {}
 
 RdmaEngine::~RdmaEngine()
 {
-    if (this->rdmaInstance) {
-        std::ignore = doca_rdma_destroy(this->rdmaInstance);
+    std::ignore = this->Destroy();
+}
+
+error RdmaEngine::Destroy()
+{
+    if (this->rdmaInstance != nullptr) {
+        auto err = FromDocaError(doca_rdma_destroy(this->rdmaInstance));
+        if (err) {
+            return errors::Wrap(err, "Failed to destroy RDMA engine");
+        }
+        this->rdmaInstance = nullptr;
     }
+    return nullptr;
 }
 
 doca_rdma * RdmaEngine::GetNative()
@@ -132,9 +142,7 @@ std::tuple<doca::ContextPtr, error> RdmaEngine::AsContext()
         // This creates Context that will be under RAII
         this->rdmaContext = doca::Context::CreateFromNative(contextPtr);
     }
-    // This will create Context pointer that will not destroy it in Destructor
-    auto contextRef = doca::Context::CreateReferenceFromNative(this->rdmaContext->GetNative());
-    return { contextRef, nullptr };
+    return { this->rdmaContext, nullptr };
 }
 
 error RdmaEngine::ConnectToAddress(RdmaAddressPtr address, doca::Data & connectionUserData)

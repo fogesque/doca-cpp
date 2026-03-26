@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
 #include "doca-cpp/rdma/internal/rdma_communication.hpp"
 #include "doca-cpp/rdma/internal/rdma_executor.hpp"
 #include "doca-cpp/rdma/internal/rdma_session.hpp"
@@ -83,6 +84,9 @@ private:
 
     /// @brief RDMA executor for operation management
     RdmaExecutorPtr executor = nullptr;
+
+    /// @brief Resource scope for lifecycle management
+    doca::internal::ResourceScopePtr resourceScope = nullptr;
 
     /// @brief Server address for connection
     std::string serverAddress;

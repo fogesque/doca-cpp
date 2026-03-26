@@ -1,28 +1,15 @@
 #include "doca-cpp/core/buffer.hpp"
 
-using doca::Buffer;
-using doca::BufferInventory;
-using doca::BufferInventoryPtr;
-using doca::BufferPtr;
+namespace doca
+{
 
 #pragma region Buffer
 
-Buffer::Buffer(doca_buf * nativeBuffer, DeleterPtr deleter) : buffer(nativeBuffer), deleter(deleter) {}
+// ─────────────────────────────────────────────────────────
+// Buffer
+// ─────────────────────────────────────────────────────────
 
-void Buffer::Deleter::Delete(doca_buf * buf)
-{
-    if (buf) {
-        uint16_t refcount = 0;
-        std::ignore = doca_buf_dec_refcount(buf, &refcount);
-    }
-}
-
-Buffer::~Buffer()
-{
-    if (this->deleter && this->buffer) {
-        this->deleter->Delete(this->buffer);
-    }
-}
+Buffer::Buffer(doca_buf * nativeBuffer) : buffer(nativeBuffer) {}
 
 BufferPtr Buffer::CreateRef(doca_buf * nativeBuffer)
 {
@@ -32,7 +19,7 @@ BufferPtr Buffer::CreateRef(doca_buf * nativeBuffer)
 
 BufferPtr Buffer::Create(doca_buf * nativeBuffer)
 {
-    auto buffer = std::make_shared<Buffer>(nativeBuffer, std::make_shared<Buffer::Deleter>());
+    auto buffer = std::make_shared<Buffer>(nativeBuffer);
     return buffer;
 }
 
@@ -81,14 +68,11 @@ std::tuple<std::vector<std::byte>, error> Buffer::GetBytes()
     if (dataErr) {
         return { {}, dataErr };
     }
-
     auto [dataLen, lenErr] = this->GetDataLength();
     if (lenErr) {
         return { {}, lenErr };
     }
-
     auto * dataPtr = static_cast<std::byte *>(data);
-
     return { std::vector<std::byte>(dataPtr, dataPtr + dataLen), nullptr };
 }
 
@@ -169,6 +153,10 @@ doca_buf * Buffer::GetNative()
 
 #pragma region BufferInventory
 
+// ─────────────────────────────────────────────────────────
+// BufferInventory
+// ─────────────────────────────────────────────────────────
+
 BufferInventory::Builder::Builder(doca_buf_inventory * plainInventory) : inventory(plainInventory), buildErr(nullptr) {}
 
 BufferInventory::Builder::~Builder()
@@ -176,26 +164,6 @@ BufferInventory::Builder::~Builder()
     if (this->inventory) {
         doca_buf_inventory_destroy(this->inventory);
     }
-}
-
-BufferInventory::Builder::Builder(Builder && other) noexcept : inventory(other.inventory), buildErr(other.buildErr)
-{
-    other.inventory = nullptr;
-    other.buildErr = nullptr;
-}
-
-BufferInventory::Builder & BufferInventory::Builder::operator=(Builder && other) noexcept
-{
-    if (this != &other) {
-        if (this->inventory) {
-            doca_buf_inventory_destroy(inventory);
-        }
-        this->inventory = other.inventory;
-        this->buildErr = other.buildErr;
-        other.inventory = nullptr;
-        other.buildErr = nullptr;
-    }
-    return *this;
 }
 
 std::tuple<BufferInventoryPtr, error> BufferInventory::Builder::Start()
@@ -238,28 +206,16 @@ BufferInventory::Builder BufferInventory::Create(size_t numElements)
     return Builder(inventory);
 }
 
-BufferInventory::BufferInventory(doca_buf_inventory * initialInventory) : inventory(initialInventory)
-{
-    this->deleter = std::make_shared<Deleter>();
-}
+BufferInventory::BufferInventory(doca_buf_inventory * initialInventory) : inventory(initialInventory) {}
 
 doca::BufferInventory::~BufferInventory()
 {
-    if (this->deleter && this->inventory) {
-        this->deleter->Delete(this->inventory);
-    }
+    std::ignore = this->Stop();
 }
 
-void doca::BufferInventory::Deleter::Delete(doca_buf_inventory * inv)
+std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByAddress(MemoryMapPtr mmap, void * address, size_t length)
 {
-    if (inv) {
-        std::ignore = doca_buf_inventory_destroy(inv);
-    }
-}
-
-std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(MemoryMapPtr mmap, void * address, size_t length)
-{
-    if (!this->inventory) {
+    if (this->inventory == nullptr) {
         return { nullptr, errors::New("Buffer inventory is null") };
     }
     doca_buf * buf = nullptr;
@@ -272,9 +228,9 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(MemoryMapPtr 
     return { managedBuffer, nullptr };
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(MemoryMapPtr mmap, void * data, size_t length)
+std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByData(MemoryMapPtr mmap, void * data, size_t length)
 {
-    if (!this->inventory) {
+    if (this->inventory == nullptr) {
         return { nullptr, errors::New("Buffer inventory is null") };
     }
     doca_buf * buf = nullptr;
@@ -287,10 +243,10 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(MemoryMapPtr mma
     return { managedBuffer, nullptr };
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(RemoteMemoryMapPtr mmap, void * address,
-                                                                   size_t length)
+std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByAddress(RemoteMemoryMapPtr mmap, void * address,
+                                                                      size_t length)
 {
-    if (!this->inventory) {
+    if (this->inventory == nullptr) {
         return { nullptr, errors::New("Buffer inventory is null") };
     }
     doca_buf * buf = nullptr;
@@ -303,9 +259,9 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBufferByAddress(RemoteMemoryM
     return { managedBuffer, nullptr };
 }
 
-std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(RemoteMemoryMapPtr mmap, void * data, size_t length)
+std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByData(RemoteMemoryMapPtr mmap, void * data, size_t length)
 {
-    if (!this->inventory) {
+    if (this->inventory == nullptr) {
         return { nullptr, errors::New("Buffer inventory is null") };
     }
     doca_buf * buf = nullptr;
@@ -320,7 +276,7 @@ std::tuple<BufferPtr, error> BufferInventory::AllocBufferByData(RemoteMemoryMapP
 
 error BufferInventory::Stop()
 {
-    if (!this->inventory) {
+    if (this->inventory == nullptr) {
         return errors::New("Buffer inventory is null");
     }
     auto err = FromDocaError(doca_buf_inventory_stop(this->inventory));
@@ -336,3 +292,5 @@ doca_buf_inventory * BufferInventory::GetNative()
 }
 
 #pragma endregion
+
+}  // namespace doca

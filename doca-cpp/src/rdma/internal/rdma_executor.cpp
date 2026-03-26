@@ -30,10 +30,14 @@ namespace constants
 constexpr std::size_t initialBufferInventorySize = 16;
 }  // namespace constants
 
-std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialDevice)
+std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialDevice,
+                                                        doca::internal::ResourceScopePtr resourceScope)
 {
     if (initialDevice == nullptr) {
         return { nullptr, errors::New("Device is null") };
+    }
+    if (resourceScope == nullptr) {
+        return { nullptr, errors::New("Resource scope is null") };
     }
 
     // Create RDMA engine
@@ -53,14 +57,16 @@ std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialD
     auto executorConfig = Config{
         .initialRdmaEngine = rdmaEngine,
         .initialDevice = initialDevice,
+        .resourceScope = resourceScope,
     };
     auto rdmaExecutor = std::make_shared<RdmaExecutor>(executorConfig);
     return { rdmaExecutor, nullptr };
 }
 
 RdmaExecutor::RdmaExecutor(const Config & initialConfig)
-    : rdmaEngine(initialConfig.initialRdmaEngine), device(initialConfig.initialDevice), workerRunning(false),
-      workerThread(nullptr), rdmaContext(nullptr), progressEngine(nullptr), bufferInventory(nullptr)
+    : rdmaEngine(initialConfig.initialRdmaEngine), device(initialConfig.initialDevice),
+      resourceScope(initialConfig.resourceScope), workerRunning(false), workerThread(nullptr), rdmaContext(nullptr),
+      progressEngine(nullptr), bufferInventory(nullptr)
 {
 }
 
@@ -73,9 +79,14 @@ RdmaExecutor::~RdmaExecutor()
     }
     this->queueCondVar.notify_one();
 
-    if (this->workerThread->joinable()) {
+    if (this->workerThread && this->workerThread->joinable()) {
         this->workerThread->join();
     }
+
+    if (this->activeConnection) {
+        std::ignore = this->activeConnection->Disconnect();
+    }
+
     DOCA_CPP_LOG_DEBUG("Executor destroyed successfully");
 }
 
@@ -97,6 +108,8 @@ error RdmaExecutor::Start()
         return errors::Wrap(peErr, "Failed to create RDMA progress engine");
     }
     this->progressEngine = engine;
+    this->resourceScope->AddDestroyable(doca::internal::ResourceTier::progressEngine, this->progressEngine);
+    this->resourceScope->AddDestroyable(doca::internal::ResourceTier::rdmaEngine, this->rdmaEngine);
 
     DOCA_CPP_LOG_DEBUG("Created progress engine");
 
@@ -266,10 +279,15 @@ error RdmaExecutor::Start()
 
     // Create BufferInventory
     auto [inventory, invErr] = doca::BufferInventory::Create(constants::initialBufferInventorySize).Start();
-    if (err) {
-        return errors::Wrap(err, "Failed to create and start buffer inventory");
+    if (invErr) {
+        return errors::Wrap(invErr, "Failed to create and start buffer inventory");
     }
     this->bufferInventory = inventory;
+
+    // Register stoppable resources at their respective tiers.
+    // ResourceScope stops tiers in ascending order, so rdmaContext (tier 0) stops before bufferInventory (tier 1).
+    this->resourceScope->AddStoppable(doca::internal::ResourceTier::rdmaContext, this->rdmaContext);
+    this->resourceScope->AddStoppable(doca::internal::ResourceTier::bufferInventory, this->bufferInventory);
 
     DOCA_CPP_LOG_DEBUG("Created buffer inventory");
 
@@ -461,6 +479,11 @@ void doca::rdma::RdmaExecutor::Progress()
 doca::DevicePtr doca::rdma::RdmaExecutor::GetDevice()
 {
     return this->device;
+}
+
+doca::internal::ResourceScopePtr doca::rdma::RdmaExecutor::GetResourceScope()
+{
+    return this->resourceScope;
 }
 
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(RdmaOperationRequest request)
@@ -769,7 +792,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getSourceLocalBuffer(RdmaBuffer
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByData(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByData(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
@@ -797,7 +820,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getDestinationLocalBuffer(RdmaB
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByAddress(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
@@ -825,7 +848,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getSourceRemoteBuffer(RdmaRemot
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByData(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByData(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };
@@ -853,7 +876,7 @@ std::tuple<doca::BufferPtr, error> RdmaExecutor::getDestinationRemoteBuffer(Rdma
     }
 
     // Get doca::Buffer from BufferInventory
-    auto [buffer, bufErr] = this->bufferInventory->AllocBufferByAddress(
+    auto [buffer, bufErr] = this->bufferInventory->RetrieveBufferByAddress(
         memoryMap, static_cast<void *>(memoryRange->data()), memoryRange->size());
     if (bufErr) {
         return { nullptr, errors::Wrap(bufErr, "Failed to allocate buffer from buffer inventory") };

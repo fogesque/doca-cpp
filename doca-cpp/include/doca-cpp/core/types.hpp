@@ -19,6 +19,8 @@
 #include <span>
 #include <string>
 
+#include "doca-cpp/core/interfaces.hpp"
+
 #ifndef DOCA_CPP_UNSAFE
 #define DOCA_CPP_UNSAFE [[nodiscard("This function may be unsafe and should be used with caution")]]
 #endif

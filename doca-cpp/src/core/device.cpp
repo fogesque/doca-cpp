@@ -1,14 +1,13 @@
 #include "doca-cpp/core/device.hpp"
 
-using doca::Device;
-using doca::DeviceInfo;
-using doca::DeviceInfoPtr;
-using doca::DeviceList;
-using doca::DeviceListPtr;
-using doca::DevicePtr;
-using doca::PciFuncType;
+namespace doca
+{
 
 #pragma region DeviceInfo
+
+// ─────────────────────────────────────────────────────────
+// DeviceInfo
+// ─────────────────────────────────────────────────────────
 
 DeviceInfo::DeviceInfo(doca_devinfo * plainDevInfo) : devInfo(plainDevInfo) {}
 
@@ -151,6 +150,17 @@ doca_devinfo * DeviceInfo::GetNative() const
 
 #pragma region DeviceList
 
+// ─────────────────────────────────────────────────────────
+// DeviceList
+// ─────────────────────────────────────────────────────────
+
+DeviceList::DeviceList(doca_devinfo ** list, uint32_t count) : deviceList(list), numDevices(count) {}
+
+DeviceList::~DeviceList()
+{
+    std::ignore = this->Destroy();
+}
+
 std::tuple<DeviceListPtr, error> DeviceList::Create()
 {
     doca_devinfo ** devList = nullptr;
@@ -159,20 +169,8 @@ std::tuple<DeviceListPtr, error> DeviceList::Create()
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to create device list") };
     }
-    auto managedList = std::make_shared<DeviceList>(devList, nbDevs, std::make_shared<DeviceList::Deleter>());
+    auto managedList = std::make_shared<DeviceList>(devList, nbDevs);
     return { managedList, nullptr };
-}
-
-DeviceList::~DeviceList()
-{
-    if (this->deleter && this->deviceList) {
-        this->deleter->Delete(this->deviceList);
-    }
-}
-
-DeviceList::DeviceList(doca_devinfo ** list, uint32_t count, DeleterPtr deleter)
-    : deviceList(list), numDevices(count), deleter(deleter)
-{
 }
 
 std::tuple<DeviceInfoPtr, error> DeviceList::GetIbDeviceInfo(const std::string & ibDevname) const
@@ -189,6 +187,18 @@ std::tuple<DeviceInfoPtr, error> DeviceList::GetIbDeviceInfo(const std::string &
         }
     }
     return { nullptr, errors::New("No matching IB device found") };
+}
+
+error DeviceList::Destroy()
+{
+    if (this->deviceList != nullptr) {
+        auto err = FromDocaError(doca_devinfo_destroy_list(this->deviceList));
+        if (err) {
+            return errors::Wrap(err, "Failed to destroy device list");
+        }
+        this->deviceList = nullptr;
+    }
+    return nullptr;
 }
 
 size_t DeviceList::Size() const
@@ -232,6 +242,10 @@ DeviceList::Iterator DeviceList::End() const
 
 #pragma region Device
 
+// ─────────────────────────────────────────────────────────
+// Device
+// ─────────────────────────────────────────────────────────
+
 std::tuple<DevicePtr, error> Device::Open(const DeviceInfo & devInfo)
 {
     doca_dev * dev = nullptr;
@@ -240,14 +254,11 @@ std::tuple<DevicePtr, error> Device::Open(const DeviceInfo & devInfo)
         return { nullptr, errors::Wrap(err, "Failed to open device") };
     }
 
-    auto managedDev = std::make_shared<Device>(dev, std::make_shared<Device::Deleter>());
+    auto managedDev = std::make_shared<Device>(dev);
     return { managedDev, nullptr };
 }
 
-Device::Device(doca_dev * initialDevice, Device::DeleterPtr initialDeleter)
-    : device(initialDevice), deleter(initialDeleter)
-{
-}
+Device::Device(doca_dev * initialDevice) : device(initialDevice) {}
 
 error Device::AccelerateResourceReclaim() const
 {
@@ -268,28 +279,24 @@ doca_dev * Device::GetNative() const
     return this->device;
 }
 
-doca::Device::~Device()
+error Device::Destroy()
 {
-    if (this->deleter && this->device) {
-        this->deleter->Delete(this->device);
+    if (this->device != nullptr) {
+        auto err = FromDocaError(doca_dev_close(this->device));
+        if (err) {
+            return errors::Wrap(err, "Failed to close device");
+        }
+        this->device = nullptr;
     }
+    return nullptr;
 }
 
-void doca::Device::Deleter::Delete(doca_dev * dev)
+Device::~Device()
 {
-    if (dev) {
-        doca_dev_close(dev);
-    }
+    std::ignore = this->Destroy();
 }
 
-void doca::DeviceList::Deleter::Delete(doca_devinfo ** devList)
-{
-    if (devList) {
-        doca_devinfo_destroy_list(devList);
-    }
-}
-
-std::tuple<doca::DevicePtr, error> doca::OpenIbDevice(const std::string & ibDeviceName)
+std::tuple<DevicePtr, error> OpenIbDevice(const std::string & ibDeviceName)
 {
     // Get devices list
     auto [devices, err] = doca::DeviceList::Create();
@@ -320,3 +327,5 @@ std::tuple<doca::DevicePtr, error> doca::OpenIbDevice(const std::string & ibDevi
 }
 
 #pragma endregion
+
+}  // namespace doca

@@ -237,8 +237,8 @@ asio::awaitable<error> doca::rdma::HandleClientSession(RdmaSessionClientPtr sess
     DOCA_CPP_LOG_DEBUG("RDMA permitted");
 
     // Form remote RDMA buffer from given descriptor
-    auto [remoteBuffer, rmErr] =
-        RdmaRemoteBuffer::FromExportedRemoteDescriptor(responce.memoryDescriptor, executor->GetDevice());
+    auto [remoteBuffer, rmErr] = RdmaRemoteBuffer::FromExportedRemoteDescriptor(
+        responce.memoryDescriptor, executor->GetDevice(), executor->GetResourceScope());
     if (rmErr) {
         co_return errors::Wrap(rmErr, "Failed to make remote RDMA buffer from export descriptor");
     }

@@ -1,29 +1,29 @@
 #include "doca-cpp/core/context.hpp"
 
+namespace doca
+{
+
 #pragma region Context
 
-doca::Context::Context(doca_ctx * nativeContext, DeleterPtr deleter) : ctx(nativeContext), deleter(deleter) {}
+// ─────────────────────────────────────────────────────────
+// Context
+// ─────────────────────────────────────────────────────────
+
+doca::Context::Context(doca_ctx * nativeContext) : ctx(nativeContext) {}
 
 doca::Context::~Context()
 {
-    if (this->deleter) {
-        this->deleter->Delete(this->ctx);
-    }
+    std::ignore = this->Stop();
 }
 
 doca::ContextPtr doca::Context::CreateFromNative(doca_ctx * nativeContext)
-{
-    return std::make_shared<doca::Context>(nativeContext, std::make_shared<Deleter>());
-}
-
-doca::ContextPtr doca::Context::CreateReferenceFromNative(doca_ctx * nativeContext)
 {
     return std::make_shared<doca::Context>(nativeContext);
 }
 
 error doca::Context::Start()
 {
-    if (!this->ctx) {
+    if (this->ctx == nullptr) {
         return errors::New("Context is null");
     }
     auto err = FromDocaError(doca_ctx_start(this->ctx));
@@ -35,19 +35,20 @@ error doca::Context::Start()
 
 error doca::Context::Stop()
 {
-    if (!this->ctx) {
-        return errors::New("Context is null");
+    if (this->ctx == nullptr) {
+        return nullptr;
     }
     auto err = FromDocaError(doca_ctx_stop(this->ctx));
     if (err) {
         return errors::Wrap(err, "Failed to stop context");
     }
+    this->ctx = nullptr;
     return nullptr;
 }
 
 std::tuple<size_t, error> doca::Context::GetNumInflightTasks() const
 {
-    if (!this->ctx) {
+    if (this->ctx == nullptr) {
         return { 0, errors::New("Context is null") };
     }
     size_t numTasks = 0;
@@ -60,7 +61,7 @@ std::tuple<size_t, error> doca::Context::GetNumInflightTasks() const
 
 std::tuple<doca::Context::State, error> doca::Context::GetState() const
 {
-    if (!this->ctx) {
+    if (this->ctx == nullptr) {
         return { Context::State::idle, errors::New("Context is null") };
     }
     doca_ctx_states state;
@@ -73,7 +74,7 @@ std::tuple<doca::Context::State, error> doca::Context::GetState() const
 
 error doca::Context::FlushTasks()
 {
-    if (!this->ctx) {
+    if (this->ctx == nullptr) {
         return errors::New("Context is null");
     }
     doca_ctx_flush_tasks(this->ctx);
@@ -87,7 +88,7 @@ doca_ctx * doca::Context::GetNative() const
 
 DOCA_CPP_UNSAFE error doca::Context::SetUserData(const Data & data)
 {
-    if (!this->ctx) {
+    if (this->ctx == nullptr) {
         return errors::New("Context is null");
     }
     auto err = FromDocaError(doca_ctx_set_user_data(ctx, data.ToNative()));
@@ -99,7 +100,7 @@ DOCA_CPP_UNSAFE error doca::Context::SetUserData(const Data & data)
 
 error doca::Context::SetContextStateChangedCallback(ContextStateChangedCallback callback)
 {
-    if (!this->ctx) {
+    if (this->ctx == nullptr) {
         return errors::New("Context is null");
     }
     auto err = FromDocaError(doca_ctx_set_state_changed_cb(ctx, callback));
@@ -109,12 +110,6 @@ error doca::Context::SetContextStateChangedCallback(ContextStateChangedCallback 
     return nullptr;
 }
 
-void doca::Context::Deleter::Delete(doca_ctx * ctx)
-{
-    if (ctx) {
-        doca_ctx_flush_tasks(ctx);
-        std::ignore = doca_ctx_stop(ctx);
-    }
-}
-
 #pragma endregion
+
+}  // namespace doca

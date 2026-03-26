@@ -16,6 +16,7 @@
 #include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
 #include "doca-cpp/rdma/internal/rdma_awaitable.hpp"
 #include "doca-cpp/rdma/internal/rdma_engine.hpp"
 #include "doca-cpp/rdma/internal/rdma_operation.hpp"
@@ -49,8 +50,9 @@ class RdmaExecutor
 public:
     /// [Fabric Methods]
 
-    /// @brief Creates RDMA executor associated with given device
-    static std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr initialDevice);
+    /// @brief Creates RDMA executor associated with given device and resource scope
+    static std::tuple<RdmaExecutorPtr, error> Create(doca::DevicePtr initialDevice,
+                                                     doca::internal::ResourceScopePtr resourceScope);
 
     /// [Run & Stop]
 
@@ -92,6 +94,9 @@ public:
     /// @brief Gets associated device
     doca::DevicePtr GetDevice();
 
+    /// @brief Gets resource scope
+    doca::internal::ResourceScopePtr GetResourceScope();
+
     /// [Construction & Destruction]
 
 #pragma region RdmaExecutor::Construct
@@ -115,6 +120,7 @@ public:
     struct Config {
         RdmaEnginePtr initialRdmaEngine = nullptr;
         doca::DevicePtr initialDevice = nullptr;
+        doca::internal::ResourceScopePtr resourceScope = nullptr;
     };
 
     /// @brief Constructor
@@ -189,6 +195,9 @@ private:
 
     /// @brief Associated device
     doca::DevicePtr device = nullptr;
+
+    /// @brief Resource scope for lifecycle management
+    doca::internal::ResourceScopePtr resourceScope = nullptr;
 
     /// [Connections Storage]
 

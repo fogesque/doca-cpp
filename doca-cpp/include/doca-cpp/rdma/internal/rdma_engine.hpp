@@ -52,7 +52,7 @@ using ConnectionDisconnectCallback = doca_rdma_connection_disconnection_cb_t;
 /// RDMA engine wrapper for DOCA RDMA instance. Provides RDMA context management,
 /// connection handling, task allocation, and callback configuration.
 ///
-class RdmaEngine
+class RdmaEngine : public IDestroyable
 {
 public:
     class Builder;
@@ -124,6 +124,11 @@ public:
                                                           doca::BufferPtr destBuffer, doca::Data taskUserData);
 
     /// [Native Access]
+
+    /// [Resource Management]
+
+    /// @brief Destroys native DOCA RDMA instance
+    error Destroy() override final;
 
     /// @brief Gets native DOCA RDMA pointer
     DOCA_CPP_UNSAFE doca_rdma * GetNative();
