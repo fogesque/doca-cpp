@@ -154,6 +154,13 @@ doca_devinfo * DeviceInfo::GetNative() const
 // DeviceList
 // ─────────────────────────────────────────────────────────
 
+DeviceList::DeviceList(doca_devinfo ** list, uint32_t count) : deviceList(list), numDevices(count) {}
+
+DeviceList::~DeviceList()
+{
+    std::ignore = this->Destroy();
+}
+
 std::tuple<DeviceListPtr, error> DeviceList::Create()
 {
     doca_devinfo ** devList = nullptr;
