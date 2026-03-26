@@ -200,11 +200,12 @@ bool RdmaEndpointStorage::Empty() const
     return this->endpointsMap.empty();
 }
 
-error RdmaEndpointStorage::MapEndpointsMemory(doca::DevicePtr device)
+error RdmaEndpointStorage::MapEndpointsMemory(doca::DevicePtr device, doca::internal::ResourceScopePtr resourceScope)
 {
     for (auto & [_, element] : this->endpointsMap) {
         auto err = element->endpoint->Buffer()->MapMemory(
-            device, doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite);
+            device, doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaRead | doca::AccessFlags::rdmaWrite,
+            resourceScope);
         if (err) {
             return errors::Wrap(err, "Failed to map endpoint memory");
         }

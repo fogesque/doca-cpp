@@ -4,141 +4,65 @@ namespace doca::internal
 {
 
 // ─────────────────────────────────────────────────────────
-// ResourceManager
+// ResourceScope
 // ─────────────────────────────────────────────────────────
 
-ResourceManagerPtr ResourceManager::Instance()
+ResourceScopePtr ResourceScope::Create()
 {
-    static auto instance = std::make_shared<ResourceManager>();
-    return instance;
+    return std::make_shared<ResourceScope>();
 }
 
-error ResourceManager::AddResourceGroup(const ResourceGroupId & groupId, ResourceGroupPtr group)
+void ResourceScope::AddStoppable(ResourceTier tier, IStoppablePtr resource)
 {
-    if (this->resouceGroups.contains(groupId)) {
-        return errors::New("Resources group with provided ID is already registered");
-    }
-    this->resouceGroups.insert(std::pair{ groupId, group });
-    return nullptr;
+    this->stoppables[tier].push_back(resource);
 }
 
-error ResourceManager::StopResourcesInGroup(const ResourceGroupId & groupId)
+void ResourceScope::AddDestroyable(ResourceTier tier, IDestroyablePtr resource)
 {
-    if (!this->resouceGroups.contains(groupId)) {
-        return errors::New("Resources group with provided ID was not found");
-    }
-    auto err = this->resouceGroups.at(groupId)->StopResources();
-    if (err) {
-        return errors::Wrap(err, "Failed to stop resources in group");
-    }
-    return nullptr;
+    this->destroyables[tier].push_back(resource);
 }
 
-error ResourceManager::DestroyResourcesInGroup(const ResourceGroupId & groupId)
+error ResourceScope::TearDown()
 {
-    if (!this->resouceGroups.contains(groupId)) {
-        return errors::New("Resources group with provided ID was not found");
+    if (this->tornDown) {
+        return nullptr;
     }
+    this->tornDown = true;
+
     error errs = nullptr;
-    auto group = this->resouceGroups.at(groupId);
-    auto sErr = group->StopResources();
-    auto dErr = group->DestroyResources();
-    errs = errors::Join(sErr, dErr);
-    if (errs) {
-        return errors::Wrap(errs, "Failed to destroy resources in group");
-    }
-    return nullptr;
-}
 
-error ResourceManager::StopAll()
-{
-    error errs = nullptr;
-    for (auto & [groupId, group] : this->resouceGroups) {
-        auto err = group->StopResources();
-        errs = errors::Join(errs, err);
-    }
-    if (errs) {
-        return errors::Wrap(errs, "Failed to stop resources in group");
-    }
-    return nullptr;
-}
-
-error ResourceManager::DestroyAll()
-{
-    error errs = nullptr;
-    // First pass: stop all stoppable resources across all groups (ascending order)
-    for (auto & [groupId, group] : this->resouceGroups) {
-        auto err = group->StopResources();
-        errs = errors::Join(errs, err);
-    }
-    // Second pass: destroy all destroyable resources across all groups (ascending order)
-    for (auto & [groupId, group] : this->resouceGroups) {
-        auto err = group->DestroyResources();
-        errs = errors::Join(errs, err);
-    }
-    if (errs) {
-        return errors::Wrap(errs, "Failed to destroy resources in group");
-    }
-    return nullptr;
-}
-
-ResourceManager::~ResourceManager()
-{
-    std::ignore = this->DestroyAll();
-}
-
-// ─────────────────────────────────────────────────────────
-// ResourceGroup
-// ─────────────────────────────────────────────────────────
-
-ResourceGroupPtr ResourceGroup::Create()
-{
-    return std::make_shared<ResourceGroup>();
-}
-
-void ResourceGroup::AddDestroyableResource(IDestroyablePtr resource)
-{
-    this->destroyableResources.push(resource);
-}
-
-void ResourceGroup::AddStoppableResource(IStoppablePtr resource)
-{
-    this->stoppableResources.push(resource);
-}
-
-error ResourceGroup::StopResources()
-{
-    error errs = nullptr;
-    while (!this->stoppableResources.empty()) {
-        auto resource = this->stoppableResources.top();
-        auto err = resource->Stop();
-        if (err) {
-            auto wrapped = errors::Wrap(err, "Failed to stop resource");
-            errs = errors::Join(errs, wrapped);
+    // Pass 1: Stop all stoppable resources in tier order (ascending).
+    // Within each tier, stop in reverse insertion order (LIFO).
+    for (auto & [tier, resources] : this->stoppables) {
+        for (auto it = resources.rbegin(); it != resources.rend(); ++it) {
+            auto err = (*it)->Stop();
+            if (err) {
+                errs = errors::Join(errs, errors::Wrap(err, "Failed to stop resource"));
+            }
         }
-        this->stoppableResources.pop();
     }
+
+    // Pass 2: Destroy all destroyable resources in tier order (ascending).
+    // Within each tier, destroy in reverse insertion order (LIFO).
+    for (auto & [tier, resources] : this->destroyables) {
+        for (auto it = resources.rbegin(); it != resources.rend(); ++it) {
+            auto err = (*it)->Destroy();
+            if (err) {
+                errs = errors::Join(errs, errors::Wrap(err, "Failed to destroy resource"));
+            }
+        }
+    }
+
+    // Clear all references
+    this->stoppables.clear();
+    this->destroyables.clear();
+
     return errs;
 }
 
-error ResourceGroup::DestroyResources()
+ResourceScope::~ResourceScope()
 {
-    auto errs = this->StopResources();
-    while (!this->destroyableResources.empty()) {
-        auto resource = this->destroyableResources.top();
-        auto err = resource->Destroy();
-        if (err) {
-            auto wrapped = errors::Wrap(err, "Failed to destroy resource");
-            errs = errors::Join(errs, wrapped);
-        }
-        this->destroyableResources.pop();
-    }
-    return errs;
-}
-
-ResourceGroup::~ResourceGroup()
-{
-    std::ignore = this->DestroyResources();
+    std::ignore = this->TearDown();
 }
 
 }  // namespace doca::internal

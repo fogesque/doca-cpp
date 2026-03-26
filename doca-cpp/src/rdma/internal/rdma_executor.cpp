@@ -1,6 +1,5 @@
 #include "doca-cpp/rdma/internal/rdma_executor.hpp"
 
-#include "doca-cpp/core/resource_manager.hpp"
 #include "doca-cpp/logging/logging.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
@@ -31,10 +30,14 @@ namespace constants
 constexpr std::size_t initialBufferInventorySize = 16;
 }  // namespace constants
 
-std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialDevice)
+std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialDevice,
+                                                        doca::internal::ResourceScopePtr resourceScope)
 {
     if (initialDevice == nullptr) {
         return { nullptr, errors::New("Device is null") };
+    }
+    if (resourceScope == nullptr) {
+        return { nullptr, errors::New("Resource scope is null") };
     }
 
     // Create RDMA engine
@@ -54,14 +57,16 @@ std::tuple<RdmaExecutorPtr, error> RdmaExecutor::Create(doca::DevicePtr initialD
     auto executorConfig = Config{
         .initialRdmaEngine = rdmaEngine,
         .initialDevice = initialDevice,
+        .resourceScope = resourceScope,
     };
     auto rdmaExecutor = std::make_shared<RdmaExecutor>(executorConfig);
     return { rdmaExecutor, nullptr };
 }
 
 RdmaExecutor::RdmaExecutor(const Config & initialConfig)
-    : rdmaEngine(initialConfig.initialRdmaEngine), device(initialConfig.initialDevice), workerRunning(false),
-      workerThread(nullptr), rdmaContext(nullptr), progressEngine(nullptr), bufferInventory(nullptr)
+    : rdmaEngine(initialConfig.initialRdmaEngine), device(initialConfig.initialDevice),
+      resourceScope(initialConfig.resourceScope), workerRunning(false), workerThread(nullptr), rdmaContext(nullptr),
+      progressEngine(nullptr), bufferInventory(nullptr)
 {
 }
 
@@ -103,8 +108,7 @@ error RdmaExecutor::Start()
         return errors::Wrap(peErr, "Failed to create RDMA progress engine");
     }
     this->progressEngine = engine;
-    auto resourceGroup = doca::internal::ResourceGroup::Create();
-    resourceGroup->AddDestroyableResource(this->progressEngine);
+    this->resourceScope->AddDestroyable(doca::internal::ResourceTier::progressEngine, this->progressEngine);
 
     DOCA_CPP_LOG_DEBUG("Created progress engine");
 
@@ -279,10 +283,10 @@ error RdmaExecutor::Start()
     }
     this->bufferInventory = inventory;
 
-    // Add stoppable resources in correct order: bufferInventory first (bottom of stack),
-    // rdmaContext last (top of stack) so context is stopped FIRST during teardown
-    resourceGroup->AddStoppableResource(this->bufferInventory);
-    resourceGroup->AddStoppableResource(this->rdmaContext);
+    // Register stoppable resources at their respective tiers.
+    // ResourceScope stops tiers in ascending order, so rdmaContext (tier 0) stops before bufferInventory (tier 1).
+    this->resourceScope->AddStoppable(doca::internal::ResourceTier::rdmaContext, this->rdmaContext);
+    this->resourceScope->AddStoppable(doca::internal::ResourceTier::bufferInventory, this->bufferInventory);
 
     DOCA_CPP_LOG_DEBUG("Created buffer inventory");
 
@@ -313,8 +317,6 @@ error RdmaExecutor::Start()
     this->workerThread = std::make_unique<std::thread>([this] { this->workerLoop(); });
 
     DOCA_CPP_LOG_DEBUG("Started executor working thread");
-
-    doca::internal::ResourceManager::Instance()->AddResourceGroup(0, resourceGroup);
 
     return nullptr;
 }
@@ -476,6 +478,11 @@ void doca::rdma::RdmaExecutor::Progress()
 doca::DevicePtr doca::rdma::RdmaExecutor::GetDevice()
 {
     return this->device;
+}
+
+doca::internal::ResourceScopePtr doca::rdma::RdmaExecutor::GetResourceScope()
+{
+    return this->resourceScope;
 }
 
 std::tuple<RdmaAwaitable, error> RdmaExecutor::SubmitOperation(RdmaOperationRequest request)

@@ -3,8 +3,7 @@
 #include <errors/errors.hpp>
 #include <map>
 #include <memory>
-#include <stack>
-#include <string>
+#include <vector>
 
 #include "doca-cpp/core/types.hpp"
 
@@ -12,130 +11,77 @@ namespace doca::internal
 {
 
 // Forward declarations
-class ResourceManager;
-class ResourceGroup;
+class ResourceScope;
 
 // Type aliases
-using ResourceManagerPtr = std::shared_ptr<ResourceManager>;
-using ResourceGroupPtr = std::shared_ptr<ResourceGroup>;
-using ResourceGroupId = std::uint32_t;
+using ResourceScopePtr = std::shared_ptr<ResourceScope>;
 
-///
-/// @brief
-/// ResourceManager is global library object that holds DOCA resources groups and manages correct order of
-/// deinitialization
-/// @warning Do not use it manually since it is managed by library itself
-///
-class ResourceManager
-{
-public:
-    /// [Fabric Methods]
-
-    /// @brief Return static instance of global resource manager
-    static ResourceManagerPtr Instance();
-
-    /// [Resources Management]
-
-    /// @brief Adds resource group with given group ID
-    error AddResourceGroup(const ResourceGroupId & groupId, ResourceGroupPtr group);
-
-    /// @brief Stops resources in group with given group ID
-    error StopResourcesInGroup(const ResourceGroupId & groupId);
-
-    /// @brief Stops then destroys resources in group with given group ID
-    error DestroyResourcesInGroup(const ResourceGroupId & groupId);
-
-    /// @brief Stops all resources in all groups from lowest to highest group ID
-    error StopAll();
-
-    /// @brief Stops then destroys all resources in all groups from lowest to highest group ID
-    error DestroyAll();
-
-    /// [Construction & Destruction]
-
-#pragma region ResourceManager::Construct
-
-    /// @brief Copy constructor is deleted
-    ResourceManager(const ResourceManager &) = delete;
-    /// @brief Copy operator is deleted
-    ResourceManager & operator=(const ResourceManager &) = delete;
-    /// @brief Move constructor is deleted
-    ResourceManager(ResourceManager && other) noexcept = delete;
-    /// @brief Move operator is deleted
-    ResourceManager & operator=(ResourceManager && other) noexcept = delete;
-
-    /// @brief Constructor
-    /// @warning Avoid using this constructor since class has static fabric methods
-    explicit ResourceManager() = default;
-    /// @brief Destructor
-    ~ResourceManager();
-
-#pragma endregion
-
-private:
-    /// [Properties]
-
-    /// @brief Resouce groups map
-    std::map<ResourceGroupId, ResourceGroupPtr> resouceGroups;
+/// @brief Resource tiers define the teardown order. Lower tier = stopped/destroyed first.
+/// This enum is the single source of truth for DOCA resource dependency ordering.
+enum class ResourceTier : uint8_t {
+    rdmaContext = 0,       ///< Must stop first: flushes pending RDMA operations
+    bufferInventory = 1,   ///< Stop before releasing buffers
+    memoryMap = 2,         ///< Stop + destroy mmaps after context is done with them
+    progressEngine = 3,    ///< Destroy last: context was connected to it
 };
 
 ///
 /// @brief
-/// ResourceManager is global library object that creates DOCA resources groups and manages correct order of
-/// deinitialization
-/// @warning Do not use it manually since it is managed by library itself
+/// ResourceScope is a per-client/server object that tracks DOCA resources and manages correct
+/// order of deinitialization. Resources are organized by tier and torn down in tier order.
+/// Within each tier, resources are stopped/destroyed in reverse insertion order (LIFO).
+/// @note Create one ResourceScope per RdmaClient or RdmaServer instance.
 ///
-class ResourceGroup
+class ResourceScope
 {
 public:
     /// [Fabric Methods]
 
-    /// @brief Return static instance of global resource manager
-    static ResourceGroupPtr Create();
+    /// @brief Creates a new resource scope
+    static ResourceScopePtr Create();
 
     /// [Resources Management]
 
-    /// @brief Add stoppable resource to stack
-    void AddStoppableResource(IStoppablePtr resource);
+    /// @brief Adds stoppable resource to scope at specified tier
+    void AddStoppable(ResourceTier tier, IStoppablePtr resource);
 
-    /// @brief Add destroyable resource to stack
-    void AddDestroyableResource(IDestroyablePtr resource);
+    /// @brief Adds destroyable resource to scope at specified tier
+    void AddDestroyable(ResourceTier tier, IDestroyablePtr resource);
 
-    /// @brief Stops all stoppable resources in addition reverse order
-    error StopResources();
-
-    /// @brief Stops and then destroys all destroyable resources in addition reverse order
-    error DestroyResources();
+    /// @brief Tears down all resources: stops all tiers first, then destroys all tiers
+    error TearDown();
 
     /// [Construction & Destruction]
 
-#pragma region ResourceGroup::Construct
+#pragma region ResourceScope::Construct
 
     /// @brief Copy constructor is deleted
-    ResourceGroup(const ResourceGroup &) = delete;
+    ResourceScope(const ResourceScope &) = delete;
     /// @brief Copy operator is deleted
-    ResourceGroup & operator=(const ResourceGroup &) = delete;
+    ResourceScope & operator=(const ResourceScope &) = delete;
     /// @brief Move constructor is deleted
-    ResourceGroup(ResourceGroup && other) noexcept = delete;
+    ResourceScope(ResourceScope && other) noexcept = delete;
     /// @brief Move operator is deleted
-    ResourceGroup & operator=(ResourceGroup && other) noexcept = delete;
+    ResourceScope & operator=(ResourceScope && other) noexcept = delete;
 
     /// @brief Constructor
-    /// @warning Avoid using this constructor since class has static fabric methods
-    explicit ResourceGroup() = default;
+    explicit ResourceScope() = default;
     /// @brief Destructor
-    ~ResourceGroup();
+    ~ResourceScope();
 
 #pragma endregion
 
 private:
     /// [Properties]
 
-    /// @brief Stoppable resources stack
-    std::stack<IStoppablePtr> stoppableResources;
+    /// @brief Stoppable resources organized by tier
+    std::map<ResourceTier, std::vector<IStoppablePtr>> stoppables;
 
-    /// @brief Destroyable resources stack
-    std::stack<IDestroyablePtr> destroyableResources;
+    /// @brief Destroyable resources organized by tier
+    std::map<ResourceTier, std::vector<IDestroyablePtr>> destroyables;
+
+    /// @brief Flag to prevent double teardown
+    bool tornDown = false;
 };
 
 }  // namespace doca::internal

@@ -48,8 +48,11 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
         return errors::New("No endpoints to process; register endpoints before serving");
     }
 
+    // Create resource scope for lifecycle management
+    this->resourceScope = doca::internal::ResourceScope::Create();
+
     // Map all buffers in endpoints before serving
-    auto mapErr = this->endpointsStorage->MapEndpointsMemory(this->device);
+    auto mapErr = this->endpointsStorage->MapEndpointsMemory(this->device, this->resourceScope);
     if (mapErr) {
         return errors::Wrap(mapErr, "Failed to map endpoints memory");
     }
@@ -57,7 +60,7 @@ error RdmaClient::Connect(const std::string & serverAddress, uint16_t serverPort
     DOCA_CPP_LOG_DEBUG("Mapped all endpoint buffers");
 
     // Create Executor
-    auto [executor, err] = RdmaExecutor::Create(this->device);
+    auto [executor, err] = RdmaExecutor::Create(this->device, this->resourceScope);
     if (err) {
         return errors::Wrap(err, "Failed to create RDMA executor");
     }

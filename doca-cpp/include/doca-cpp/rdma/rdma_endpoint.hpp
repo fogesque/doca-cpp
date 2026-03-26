@@ -249,7 +249,7 @@ public:
     /// [Memory Management]
 
     /// @brief Maps all endpoints memory to device
-    error MapEndpointsMemory(doca::DevicePtr device);
+    error MapEndpointsMemory(doca::DevicePtr device, doca::internal::ResourceScopePtr resourceScope);
 
     /// [Construction & Destruction]
 

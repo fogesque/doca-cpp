@@ -1,15 +1,5 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
-#include <atomic>
-
-#include "doca-cpp/core/resource_manager.hpp"
-
-namespace
-{
-// Start from 1 since executor uses group ID 0
-std::atomic<doca::internal::ResourceGroupId> nextGroupId{ 1 };
-}  // namespace
-
 using doca::DevicePtr;
 using doca::MemoryMap;
 using doca::MemoryMapPtr;
@@ -43,7 +33,8 @@ error RdmaBuffer::RegisterMemoryRange(doca::MemoryRangePtr memoryRange)
     return nullptr;
 };
 
-error RdmaBuffer::MapMemory(doca::DevicePtr device, doca::AccessFlags permissions)
+error RdmaBuffer::MapMemory(doca::DevicePtr device, doca::AccessFlags permissions,
+                            doca::internal::ResourceScopePtr resourceScope)
 {
     if (this->memoryMap != nullptr) {
         return nullptr;  // Already mapped so do nothing
@@ -61,10 +52,9 @@ error RdmaBuffer::MapMemory(doca::DevicePtr device, doca::AccessFlags permission
     if (err) {
         return errors::Wrap(err, "Failed to create memory map");
     }
-    auto resourceGroup = doca::internal::ResourceGroup::Create();
-    resourceGroup->AddStoppableResource(mmap);
-    resourceGroup->AddDestroyableResource(mmap);
-    doca::internal::ResourceManager::Instance()->AddResourceGroup(nextGroupId.fetch_add(1), resourceGroup);
+
+    resourceScope->AddStoppable(doca::internal::ResourceTier::memoryMap, mmap);
+    resourceScope->AddDestroyable(doca::internal::ResourceTier::memoryMap, mmap);
 
     // Store memory map and device
     this->memoryMap = mmap;
@@ -119,17 +109,16 @@ std::size_t RdmaBuffer::MemoryRangeSize() const
 RdmaRemoteBuffer::RdmaRemoteBuffer(RemoteMemoryMapPtr remoteMemoryMap) : memoryMap(remoteMemoryMap) {}
 
 std::tuple<RdmaRemoteBufferPtr, error> RdmaRemoteBuffer::FromExportedRemoteDescriptor(
-    std::vector<uint8_t> & descPayload, doca::DevicePtr device)
+    std::vector<uint8_t> & descPayload, doca::DevicePtr device, doca::internal::ResourceScopePtr resourceScope)
 {
     // Create memory map from exported descriptor
     auto [remoteMmap, mapErr] = doca::RemoteMemoryMap::CreateFromExport(descPayload, device);
     if (mapErr) {
         return { nullptr, errors::Wrap(mapErr, "Failed to create memory map for remote descriptor") };
     }
-    auto resourceGroup = doca::internal::ResourceGroup::Create();
-    resourceGroup->AddStoppableResource(remoteMmap);
-    resourceGroup->AddDestroyableResource(remoteMmap);
-    doca::internal::ResourceManager::Instance()->AddResourceGroup(nextGroupId.fetch_add(1), resourceGroup);
+
+    resourceScope->AddStoppable(doca::internal::ResourceTier::memoryMap, remoteMmap);
+    resourceScope->AddDestroyable(doca::internal::ResourceTier::memoryMap, remoteMmap);
 
     // Get memory range from descriptor mmap
     auto [remoteMemrange, rgnErr] = remoteMmap->GetRemoteMemoryRange();

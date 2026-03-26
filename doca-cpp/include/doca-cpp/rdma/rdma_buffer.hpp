@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "doca-cpp/core/mmap.hpp"
+#include "doca-cpp/core/resource_manager.hpp"
 
 namespace doca::rdma
 {
@@ -57,7 +58,8 @@ public:
     error RegisterMemoryRange(MemoryRangePtr memoryRange);
 
     /// @brief Maps memory to device with specified permissions
-    error MapMemory(doca::DevicePtr device, doca::AccessFlags permissions);
+    error MapMemory(doca::DevicePtr device, doca::AccessFlags permissions,
+                    doca::internal::ResourceScopePtr resourceScope);
 
     /// [Memory Access]
 
@@ -126,8 +128,8 @@ public:
     /// [Fabric Methods]
 
     /// @brief Creates RDMA remote buffer from exported descriptor payload
-    static std::tuple<RdmaRemoteBufferPtr, error> FromExportedRemoteDescriptor(std::vector<uint8_t> & descPayload,
-                                                                               doca::DevicePtr device);
+    static std::tuple<RdmaRemoteBufferPtr, error> FromExportedRemoteDescriptor(
+        std::vector<uint8_t> & descPayload, doca::DevicePtr device, doca::internal::ResourceScopePtr resourceScope);
 
     /// [Memory Registration]
 
