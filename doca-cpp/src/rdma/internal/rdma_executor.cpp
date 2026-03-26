@@ -74,11 +74,13 @@ RdmaExecutor::~RdmaExecutor()
     }
     this->queueCondVar.notify_one();
 
-    if (this->workerThread->joinable()) {
+    if (this->workerThread && this->workerThread->joinable()) {
         this->workerThread->join();
     }
 
-    std::ignore = this->activeConnection->Disconnect();
+    if (this->activeConnection) {
+        std::ignore = this->activeConnection->Disconnect();
+    }
 
     DOCA_CPP_LOG_DEBUG("Executor destroyed successfully");
 }
@@ -112,7 +114,6 @@ error RdmaExecutor::Start()
         return errors::Wrap(ctxErr, "Failed to get RDMA context");
     }
     this->rdmaContext = context;
-    resourceGroup->AddStoppableResource(this->rdmaContext);
 
     // Connect RDMA Context to ProgressEngine
     auto err = this->progressEngine->ConnectContext(this->rdmaContext);
@@ -273,11 +274,15 @@ error RdmaExecutor::Start()
 
     // Create BufferInventory
     auto [inventory, invErr] = doca::BufferInventory::Create(constants::initialBufferInventorySize).Start();
-    if (err) {
-        return errors::Wrap(err, "Failed to create and start buffer inventory");
+    if (invErr) {
+        return errors::Wrap(invErr, "Failed to create and start buffer inventory");
     }
     this->bufferInventory = inventory;
+
+    // Add stoppable resources in correct order: bufferInventory first (bottom of stack),
+    // rdmaContext last (top of stack) so context is stopped FIRST during teardown
     resourceGroup->AddStoppableResource(this->bufferInventory);
+    resourceGroup->AddStoppableResource(this->rdmaContext);
 
     DOCA_CPP_LOG_DEBUG("Created buffer inventory");
 
@@ -309,7 +314,7 @@ error RdmaExecutor::Start()
 
     DOCA_CPP_LOG_DEBUG("Started executor working thread");
 
-    doca::internal::ResourceManager::Instance()->AddResourceGroup(1, resourceGroup);
+    doca::internal::ResourceManager::Instance()->AddResourceGroup(0, resourceGroup);
 
     return nullptr;
 }

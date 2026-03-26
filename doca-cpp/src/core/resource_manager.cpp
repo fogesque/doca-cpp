@@ -66,10 +66,15 @@ error ResourceManager::StopAll()
 error ResourceManager::DestroyAll()
 {
     error errs = nullptr;
+    // First pass: stop all stoppable resources across all groups (ascending order)
     for (auto & [groupId, group] : this->resouceGroups) {
-        auto sErr = group->StopResources();
-        auto dErr = group->DestroyResources();
-        errs = errors::Join(errs, sErr, dErr);
+        auto err = group->StopResources();
+        errs = errors::Join(errs, err);
+    }
+    // Second pass: destroy all destroyable resources across all groups (ascending order)
+    for (auto & [groupId, group] : this->resouceGroups) {
+        auto err = group->DestroyResources();
+        errs = errors::Join(errs, err);
     }
     if (errs) {
         return errors::Wrap(errs, "Failed to destroy resources in group");

@@ -1,6 +1,14 @@
 #include "doca-cpp/rdma/rdma_buffer.hpp"
 
+#include <atomic>
+
 #include "doca-cpp/core/resource_manager.hpp"
+
+namespace
+{
+// Start from 1 since executor uses group ID 0
+std::atomic<doca::internal::ResourceGroupId> nextGroupId{ 1 };
+}  // namespace
 
 using doca::DevicePtr;
 using doca::MemoryMap;
@@ -56,7 +64,7 @@ error RdmaBuffer::MapMemory(doca::DevicePtr device, doca::AccessFlags permission
     auto resourceGroup = doca::internal::ResourceGroup::Create();
     resourceGroup->AddStoppableResource(mmap);
     resourceGroup->AddDestroyableResource(mmap);
-    doca::internal::ResourceManager::Instance()->AddResourceGroup(0, resourceGroup);
+    doca::internal::ResourceManager::Instance()->AddResourceGroup(nextGroupId.fetch_add(1), resourceGroup);
 
     // Store memory map and device
     this->memoryMap = mmap;
@@ -121,7 +129,7 @@ std::tuple<RdmaRemoteBufferPtr, error> RdmaRemoteBuffer::FromExportedRemoteDescr
     auto resourceGroup = doca::internal::ResourceGroup::Create();
     resourceGroup->AddStoppableResource(remoteMmap);
     resourceGroup->AddDestroyableResource(remoteMmap);
-    doca::internal::ResourceManager::Instance()->AddResourceGroup(2, resourceGroup);
+    doca::internal::ResourceManager::Instance()->AddResourceGroup(nextGroupId.fetch_add(1), resourceGroup);
 
     // Get memory range from descriptor mmap
     auto [remoteMemrange, rgnErr] = remoteMmap->GetRemoteMemoryRange();
