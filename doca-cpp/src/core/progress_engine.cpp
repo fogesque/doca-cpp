@@ -5,6 +5,10 @@
 namespace doca
 {
 
+// ─────────────────────────────────────────────────────────
+// ProgressEngine
+// ─────────────────────────────────────────────────────────
+
 std::tuple<ProgressEnginePtr, error> ProgressEngine::Create()
 {
     doca_pe * pe = nullptr;

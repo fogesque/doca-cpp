@@ -32,27 +32,23 @@ using DmaBufDescriptor = int;
 /// @brief
 /// MemoryMap is instance that maps application allocated memory to DOCA device
 ///
-class MemoryMap
+class MemoryMap : public IStoppable, public IDestroyable
 {
 public:
     /// [Fabric Methods]
 
     class Builder;
 
-    /// @brief Creates memory map instance
+    /// @brief Creates memory map builder instance
     static Builder Create();
 
     /// [Functionality]
-
-    /// @brief Stops memory map and allows reconfiguration
-    error Stop();
 
     /// @brief Detaches device from memory map
     error RemoveDevice();
 
     /// @brief Exports memory map info for PCI device
     std::tuple<std::vector<std::uint8_t>, error> ExportPci() const;
-
     /// @brief Exports memory map info for RDMA device
     std::tuple<std::vector<std::uint8_t>, error> ExportRdma() const;
 
@@ -65,72 +61,94 @@ public:
     /// @warning Avoid using this function since it is unsafe
     DOCA_CPP_UNSAFE doca_mmap * GetNative() const;
 
-    /// [Construction & Destruction]
+    /// [Resource Management]
+
+    /// @brief Stops memory map instance
+    /// @warning Refer to DOCA documentation to see what operations are allowed after stopping
+    error Stop() override final;
+
+    /// @brief Destroys memory map instance
+    /// @warning Avoid using this object after destroying
+    error Destroy() override final;
+
+    /// [Builder]
+
+#pragma region MemoryMap::Builder
 
     /// @brief Builds class instance
     class Builder
     {
     public:
-        ~Builder();
-
-        /// @brief Attaches device to memory map
-        Builder & AddDevice(DevicePtr device);
-
-        /// @brief Sets memory permissions
-        Builder & SetPermissions(AccessFlags permissions);
-
-        /// @brief Sets memory region
-        Builder & SetMemoryRange(MemoryRangePtr memoryRange);
-
-        /// @brief Sets DMA buf memory region
-        Builder & SetDmaBufMemoryRange(MemoryRangeHandle memoryRange, DmaBufDescriptor dmaBufDescriptor);
-
-        /// @brief Sets devices count threshold
-        Builder & SetMaxNumDevices(uint32_t maxDevices);
+        /// [Fabric Methods]
 
         /// @brief Starts memory map and locks reconfiguration
         std::tuple<MemoryMapPtr, error> Start();
 
-    private:
-        friend class MemoryMap;
-        explicit Builder(doca_mmap * nativeMmap);
-        explicit Builder(doca_mmap * nativeMmap, DevicePtr device);
+        /// [Configuration]
 
+        /// @brief Attaches device to memory map
+        Builder & AddDevice(DevicePtr device);
+        /// @brief Sets memory permissions
+        Builder & SetPermissions(AccessFlags permissions);
+        /// @brief Sets memory region
+        Builder & SetMemoryRange(MemoryRangePtr memoryRange);
+        /// @brief Sets DMA buf memory region
+        Builder & SetDmaBufMemoryRange(MemoryRangeHandle memoryRange, DmaBufDescriptor dmaBufDescriptor);
+        /// @brief Sets devices count threshold
+        Builder & SetDevicesMaxAmount(uint32_t devicesAmount);
+
+        /// [Construction & Destruction]
+
+        /// @brief Copy constructor is deleted
         Builder(const Builder &) = delete;
+        /// @brief Copy operator is deleted
         Builder & operator=(const Builder &) = delete;
-        Builder(Builder && other) noexcept = default;
-        Builder & operator=(Builder && other) noexcept = default;
+        /// @brief Move constructor
+        Builder(Builder && other) = default;
+        /// @brief Move operator
+        Builder & operator=(Builder && other) = default;
+        /// @brief Default constructor
+        Builder() = default;
+        /// @brief Constructor
+        explicit Builder(doca_mmap * nativeMmap);
+        /// @brief Destructor
+        ~Builder();
 
+    private:
+        /// [Properties]
+
+        /// @brief Build error accumulator
+        error buildErr = nullptr;
+        /// @brief Native memory map
         doca_mmap * mmap = nullptr;
-        error buildErr;
+        /// @brief Device instance
         DevicePtr device = nullptr;
     };
 
+#pragma endregion
+
+    /// [Construction & Destruction]
+
+#pragma region MemoryMap::Construct
+
     /// @brief Copy constructor is deleted
     MemoryMap(const MemoryMap &) = delete;
-
     /// @brief Copy operator is deleted
     MemoryMap & operator=(const MemoryMap &) = delete;
-
     /// @brief Move constructor
     MemoryMap(MemoryMap && other) noexcept = default;
-
     /// @brief Move operator
     MemoryMap & operator=(MemoryMap && other) noexcept = default;
 
-    /// @brief Deleter is used to decide whether native DOCA object must be destroyed or unaffected. When it is passed
-    /// to Constructor, object will be destroyed in Destructor; otherwise nothing will happen
-    struct Deleter {
-        void Delete(doca_mmap * mmap);
-    };
-    using DeleterPtr = std::shared_ptr<Deleter>;
-
+    /// @brief Default constructor is deleted
+    explicit MemoryMap() = delete;
     /// @brief Constructor
     /// @warning Avoid using this constructor since class has static fabric methods
-    explicit MemoryMap(doca_mmap * nativeMemoryMap, DevicePtr device, DeleterPtr deleter);
-
+    explicit MemoryMap(doca_mmap * nativeMemoryMap, DevicePtr device);
     /// @brief Destructor
     ~MemoryMap();
+
+#pragma endregion
 
 private:
     /// @brief Native DOCA structure
@@ -138,28 +156,22 @@ private:
 
     /// @brief Attached device
     DevicePtr device = nullptr;
-
-    /// @brief Native DOCA structure deleter
-    DeleterPtr deleter = nullptr;
 };
 
 ///
 /// @brief
 /// MemoryMap is instance that maps remote host allocated memory to local DOCA device
 ///
-class RemoteMemoryMap
+class RemoteMemoryMap : public IStoppable, public IDestroyable
 {
 public:
     /// [Fabric Methods]
 
     /// @brief Creates remote memory map instance
-    static std::tuple<RemoteMemoryMapPtr, error> CreateFromExport(std::vector<std::uint8_t> & exportDesc,
+    static std::tuple<RemoteMemoryMapPtr, error> CreateFromExport(const std::vector<std::uint8_t> & exportDesc,
                                                                   DevicePtr device);
 
     /// [Functionality]
-
-    /// @brief Stops memory map
-    error Stop();
 
     /// @brief Detaches device from memory map
     error RemoveDevice();
@@ -173,36 +185,38 @@ public:
     /// @warning Avoid using this function since it is unsafe
     DOCA_CPP_UNSAFE doca_mmap * GetNative();
 
+    /// [Resource Management]
+
+    /// @brief Stops memory map instance
+    /// @warning Refer to DOCA documentation to see what operations are allowed after stopping
+    error Stop() override final;
+
+    /// @brief Destroys memory map instance
+    /// @warning Avoid using this object after destroying
+    error Destroy() override final;
+
     /// [Construction & Destruction]
+
+#pragma region RemoteMemoryMap::Construct
 
     /// @brief Copy constructor is deleted
     RemoteMemoryMap(const RemoteMemoryMap &) = delete;
-
     /// @brief Copy operator is deleted
     RemoteMemoryMap & operator=(const RemoteMemoryMap &) = delete;
-
     /// @brief Move constructor
     RemoteMemoryMap(RemoteMemoryMap && other) noexcept = default;
-
     /// @brief Move operator
     RemoteMemoryMap & operator=(RemoteMemoryMap && other) noexcept = default;
 
-    /// @brief Deleter is used to decide whether native DOCA object must be destroyed or unaffected. When it is passed
-    /// to Constructor, object will be destroyed in Destructor; otherwise nothing will happen
-    struct Deleter {
-        /// @brief Deletes native object
-        void Delete(doca_mmap * mmap);
-    };
-    using DeleterPtr = std::shared_ptr<Deleter>;
-
-    RemoteMemoryMap() = delete;
-
+    /// @brief Default constructor is deleted
+    explicit RemoteMemoryMap() = delete;
     /// @brief Constructor
     /// @warning Avoid using this constructor since class has static fabric methods
-    explicit RemoteMemoryMap(doca_mmap * nativeMemoryMap, DevicePtr device, DeleterPtr deleter);
-
+    explicit RemoteMemoryMap(doca_mmap * nativeMemoryMap, DevicePtr device);
     /// @brief Destructor
     ~RemoteMemoryMap();
+
+#pragma endregion
 
 private:
     /// @brief Native DOCA structure
@@ -210,9 +224,6 @@ private:
 
     /// @brief Attached device
     DevicePtr device = nullptr;
-
-    /// @brief Native DOCA structure deleter
-    DeleterPtr deleter = nullptr;
 };
 
 }  // namespace doca

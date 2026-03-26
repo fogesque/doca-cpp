@@ -69,6 +69,8 @@ public:
 
     /// [Resource Management]
 
+    /// @brief Destroys progress engine instance
+    /// @warning Avoid using this object after destroying
     error Destroy() override final;
 
     /// [Construction & Destruction]
