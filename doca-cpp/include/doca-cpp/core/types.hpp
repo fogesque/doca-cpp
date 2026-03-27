@@ -184,4 +184,57 @@ constexpr size_t supportedDeviceSize = 2;
 template <typename T>
 concept BufferData = std::is_trivial_v<T> || std::is_same_v<T, std::byte>;
 
+// ────────────────────────────────────────────────────
+// Streaming configuration
+// ────────────────────────────────────────────────────
+
+/**
+ * @brief Direction of the RDMA data stream.
+ *
+ * Determines whether the local side is a data producer or consumer.
+ * - write: local side fills buffers, RDMA Write sends them to remote peer
+ * - read:  remote peer has data, RDMA Read fetches into local buffers
+ */
+enum class StreamDirection {
+    write,
+    read,
+};
+
+/**
+ * @brief Unified streaming configuration for both CPU and GPU RDMA.
+ *
+ * Library allocates and manages all memory based on these parameters.
+ * Memory layout: numBuffers × bufferSize allocated as one contiguous region,
+ * divided into 3 groups for rotation (RDMA Ready, RDMA Performing, Processing).
+ */
+struct StreamConfig
+{
+    /// Number of user-visible buffers. Each buffer is one processing block.
+    /// Range: [3, 128]. Library splits into 3 groups for rotation.
+    uint32_t numBuffers = 64;
+
+    /// Size of each buffer in bytes. This is the user's processing block size.
+    /// Range: [65536 (64 KB), 2147483648 (2 GB)].
+    /// Alignment: 64 B for CPU, 64 KB for GPU.
+    uint32_t bufferSize = 65536;
+
+    /// Data direction (determines producer/consumer roles)
+    StreamDirection direction = StreamDirection::write;
+};
+
+/**
+ * @brief Validation limits for StreamConfig
+ */
+namespace stream_limits
+{
+constexpr uint32_t MinBuffers = 3;
+constexpr uint32_t MaxBuffers = 128;
+constexpr uint32_t MinBufferSize = 65536;           // 64 KB
+constexpr uint32_t MaxBufferSize = 2147483648u;     // 2 GB
+constexpr uint32_t CpuAlignment = 64;               // 64 B
+constexpr uint32_t GpuAlignment = 65536;             // 64 KB
+constexpr uint32_t MaxConnections = 16;
+constexpr uint32_t NumGroups = 3;                    // fixed: RDMA Ready, Performing, Processing
+}  // namespace stream_limits
+
 }  // namespace doca

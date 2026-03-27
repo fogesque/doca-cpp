@@ -5,3 +5,5 @@ set(TARGET_PREFIX sample_)
 
 add_subdirectory(device_discovery)
 add_subdirectory(rdma_client_server)
+add_subdirectory(rdma_streaming)
+add_subdirectory(rdma_streaming_chain)

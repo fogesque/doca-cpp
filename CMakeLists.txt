@@ -42,6 +42,14 @@ set(DOCA_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_executor.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_session.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_task.cpp
+    # Transport
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/transport/session_manager.cpp
+    # RDMA Streaming
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/streaming/rdma_buffer_pool.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/streaming/rdma_pipeline.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/streaming/rdma_server.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/streaming/rdma_client.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/streaming/stream_chain.cpp
 )
 
 # Library target
@@ -80,6 +88,42 @@ if(ENABLE_LOGGING)
         PUBLIC
             DOCA_CPP_ENABLE_LOGGING
     )
+endif()
+
+# GPUNetIO module (requires CUDA)
+option(BUILD_GPUNETIO "Build GPUNetIO module (requires CUDA)" OFF)
+
+if(BUILD_GPUNETIO)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+
+    set(GPUNETIO_SOURCES
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_device.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_manager.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_memory_region.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_handler.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_server.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_client.cpp
+    )
+
+    set(GPUNETIO_CUDA_SOURCES
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/persistent_server_kernel.cu
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/persistent_client_kernel.cu
+    )
+
+    # Add GPUNetIO as a separate library that links to doca-cpp
+    add_library(doca-cpp-gpunetio ${GPUNETIO_SOURCES} ${GPUNETIO_CUDA_SOURCES})
+    target_link_libraries(doca-cpp-gpunetio
+        PUBLIC ${TARGET_NAME}
+        PRIVATE CUDA::cudart DOCA::gpunetio
+    )
+    target_include_directories(doca-cpp-gpunetio
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/doca-cpp/include>
+        PRIVATE
+            ${DOCA_INCLUDE_DIRS}
+    )
+    set_target_properties(doca-cpp-gpunetio PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 # Build samples and tests (optional, controlled by option)
