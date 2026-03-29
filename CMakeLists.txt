@@ -30,18 +30,19 @@ set(DOCA_CPP_SOURCES
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/mmap.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/progress_engine.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/core/resource_scope.cpp
-    # RDMA
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_buffer.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_client.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_endpoint.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_server.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_awaitable.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_communication.cpp
+    # RDMA Internal (shared between old and new)
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_connection.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_engine.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_executor.cpp
-    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_session.cpp
     ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_task.cpp
+    # RDMA Streaming (new)
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_stream_config.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_buffer_view.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_stream_server.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_stream_client.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/rdma_stream_chain.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_session_manager.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_buffer_pool.cpp
+    ${CMAKE_SOURCE_DIR}/doca-cpp/src/rdma/internal/rdma_pipeline.cpp
 )
 
 # Library target
@@ -80,6 +81,76 @@ if(ENABLE_LOGGING)
         PUBLIC
             DOCA_CPP_ENABLE_LOGGING
     )
+endif()
+
+# GPUNetIO module (requires CUDA and DOCA GPUNetIO)
+option(BUILD_GPUNETIO "Build GPUNetIO module for GPU RDMA streaming" OFF)
+
+if(BUILD_GPUNETIO)
+    enable_language(CUDA)
+    find_package(CUDAToolkit 13.0 REQUIRED)
+
+    # Define DOCA_CPP_ENABLE_GPUNETIO on the main doca-cpp target so headers
+    # can conditionally expose GPU-related APIs (e.g. SetDataPathOnGpu)
+    target_compile_definitions(${TARGET_NAME}
+        PUBLIC
+            DOCA_CPP_ENABLE_GPUNETIO
+    )
+
+    set(DOCA_CPP_GPUNETIO_TARGET doca-cpp-gpunetio)
+
+    set(DOCA_CPP_GPUNETIO_SOURCES
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_buffer_view.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_device.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_manager.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_memory_region.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_buffer_array.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_handler.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_pipeline.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_server.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_rdma_client.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/kernels/server_kernel.cu
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/kernels/client_kernel.cu
+    )
+
+    add_library(${DOCA_CPP_GPUNETIO_TARGET}
+        ${DOCA_CPP_GPUNETIO_SOURCES}
+    )
+
+    add_library(${DOCA_CPP_GPUNETIO_TARGET}::${DOCA_CPP_GPUNETIO_TARGET} ALIAS ${DOCA_CPP_GPUNETIO_TARGET})
+
+    set_target_properties(${DOCA_CPP_GPUNETIO_TARGET} PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        CUDA_ARCHITECTURES "70;75;80;90"
+    )
+
+    target_include_directories(${DOCA_CPP_GPUNETIO_TARGET}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/doca-cpp/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${DOCA_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(${DOCA_CPP_GPUNETIO_TARGET}
+        PUBLIC
+            ${TARGET_NAME}
+        PRIVATE
+            CUDA::cudart
+            errors::errors
+            kvalog::kvalog
+            DOCA::common
+            DOCA::rdma
+            DOCA::gpunetio
+    )
+
+    if(ENABLE_LOGGING)
+        target_compile_definitions(${DOCA_CPP_GPUNETIO_TARGET}
+            PUBLIC
+                DOCA_CPP_ENABLE_LOGGING
+        )
+    endif()
 endif()
 
 # Build samples and tests (optional, controlled by option)
