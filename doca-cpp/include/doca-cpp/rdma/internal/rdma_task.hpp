@@ -16,7 +16,6 @@
 #include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/core/types.hpp"
 #include "doca-cpp/rdma/internal/rdma_connection.hpp"
-#include "doca-cpp/rdma/rdma_buffer.hpp"
 
 namespace doca::rdma
 {
@@ -34,6 +33,12 @@ using RdmaSendTaskPtr = std::shared_ptr<RdmaSendTask>;
 using RdmaReceiveTaskPtr = std::shared_ptr<RdmaReceiveTask>;
 using RdmaWriteTaskPtr = std::shared_ptr<RdmaWriteTask>;
 using RdmaReadTaskPtr = std::shared_ptr<RdmaReadTask>;
+
+/// @brief Buffer role in RDMA task (source or destination)
+enum class RdmaTaskBufferType {
+    source,
+    destination,
+};
 
 ///
 /// @brief
@@ -56,10 +61,10 @@ public:
     /// [Buffer Management]
 
     /// @brief Sets buffer for specified buffer type
-    virtual error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) = 0;
+    virtual error SetBuffer(RdmaTaskBufferType type, doca::BufferPtr buffer) = 0;
 
     /// @brief Gets buffer for specified buffer type
-    virtual std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) = 0;
+    virtual std::tuple<doca::BufferPtr, error> GetBuffer(RdmaTaskBufferType type) = 0;
 
     /// [Construction & Destruction]
 
@@ -102,10 +107,10 @@ public:
     /// [Buffer Management]
 
     /// @brief Sets buffer for specified buffer type
-    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaTaskBufferType type, doca::BufferPtr buffer) override;
 
     /// @brief Gets buffer for specified buffer type
-    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaTaskBufferType type) override;
 
     /// [Task Operations]
 
@@ -170,10 +175,10 @@ public:
     /// [Buffer Management]
 
     /// @brief Sets buffer for specified buffer type
-    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaTaskBufferType type, doca::BufferPtr buffer) override;
 
     /// @brief Gets buffer for specified buffer type
-    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaTaskBufferType type) override;
 
     /// [Connection]
 
@@ -243,10 +248,10 @@ public:
     /// [Buffer Management]
 
     /// @brief Sets buffer for specified buffer type
-    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaTaskBufferType type, doca::BufferPtr buffer) override;
 
     /// @brief Gets buffer for specified buffer type
-    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaTaskBufferType type) override;
 
     /// [Task Operations]
 
@@ -311,10 +316,10 @@ public:
     /// [Buffer Management]
 
     /// @brief Sets buffer for specified buffer type
-    error SetBuffer(const RdmaBuffer::Type & type, doca::BufferPtr buffer) override;
+    error SetBuffer(RdmaTaskBufferType type, doca::BufferPtr buffer) override;
 
     /// @brief Gets buffer for specified buffer type
-    std::tuple<doca::BufferPtr, error> GetBuffer(const RdmaBuffer::Type & type) override;
+    std::tuple<doca::BufferPtr, error> GetBuffer(RdmaTaskBufferType type) override;
 
     /// [Task Operations]
 
