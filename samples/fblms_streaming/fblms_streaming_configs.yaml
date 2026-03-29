@@ -1,0 +1,50 @@
+# FBLMS 4-channel streaming sample config
+
+sample:
+  # Off:0 Trace:1 Debug:2 Info:3 Warning:4 Error:5 Critical:6
+  log-level: 3
+  # Off:10 Trace:70 Debug:60 Info:50 Warning:40 Error:30 Critical:20
+  doca-log-level: 0
+
+  # Streaming duration in seconds
+  streaming-duration: 30
+
+stream:
+  # Number of buffers per channel (3-128)
+  num-buffers: 128
+  # Buffer size in bytes (8 KB = 2048 complex floats)
+  buffer-size: 8192
+
+fblms:
+  # FBLMS block length (samples per processing block)
+  block-length: 1024
+  # FBLMS step size (learning rate mu)
+  step-size: 0.0000001
+  # Sample rate for signal generation (Hz)
+  sample-rate: 8000
+
+server:
+  gpu-pcie-bdf: "41:00.0"
+  # Per-channel NIC devices (4 channels)
+  channels:
+    - device: "mlx5_0"
+      port: 54321
+    - device: "mlx5_1"
+      port: 54322
+    - device: "mlx5_2"
+      port: 54323
+    - device: "mlx5_3"
+      port: 54324
+
+client:
+  server-ipv4: "192.168.88.20"
+  # Per-channel NIC devices (4 channels)
+  channels:
+    - device: "mlx5_0"
+      server-port: 54321
+    - device: "mlx5_1"
+      server-port: 54322
+    - device: "mlx5_2"
+      server-port: 54323
+    - device: "mlx5_3"
+      server-port: 54324
