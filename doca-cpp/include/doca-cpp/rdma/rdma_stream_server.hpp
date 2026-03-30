@@ -5,13 +5,21 @@
 #include <condition_variable>
 #include <cstdint>
 #include <errors/errors.hpp>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <tuple>
 #include <vector>
 
+#include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/core/progress_engine.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
+#include "doca-cpp/rdma/internal/rdma_buffer_pool.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_pipeline.hpp"
+#include "doca-cpp/rdma/internal/rdma_session_manager.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
 #include "doca-cpp/rdma/rdma_stream_service.hpp"
 

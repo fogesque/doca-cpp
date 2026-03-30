@@ -1,19 +1,9 @@
-#include <doca-cpp/rdma/rdma_stream_client.hpp>
-
-#include <format>
-
-#include <doca-cpp/core/context.hpp>
-#include <doca-cpp/core/progress_engine.hpp>
-#include <doca-cpp/core/resource_scope.hpp>
-#include <doca-cpp/rdma/internal/rdma_buffer_pool.hpp>
-#include <doca-cpp/rdma/internal/rdma_connection.hpp>
-#include <doca-cpp/rdma/internal/rdma_engine.hpp>
-#include <doca-cpp/rdma/internal/rdma_pipeline.hpp>
-#include <doca-cpp/rdma/internal/rdma_session_manager.hpp>
+#include "doca-cpp/rdma/rdma_stream_client.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
-#include <doca-cpp/logging/logging.hpp>
-namespace {
+#include "doca-cpp/logging/logging.hpp"
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -153,7 +143,6 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
                                    .SetMaxNumConnections(1)
                                    .SetTransportType(TransportType::rc)
                                    .SetSendQueueSize(this->config.streamConfig.numBuffers)
-                                   .SetReceiveQueueSize(this->config.streamConfig.numBuffers)
                                    .Build();
     if (engineErr) {
         return errors::Wrap(engineErr, "Failed to create RDMA engine");

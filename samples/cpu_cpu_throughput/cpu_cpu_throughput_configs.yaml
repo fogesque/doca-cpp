@@ -2,9 +2,9 @@
 
 sample:
   # Off:0 Trace:1 Debug:2 Info:3 Warning:4 Error:5 Critical:6
-  log-level: 3
+  log-level: 1
   # Off:10 Trace:70 Debug:60 Info:50 Warning:40 Error:30 Critical:20
-  doca-log-level: 0
+  doca-log-level: 40
 
   # Throughput measurement duration in seconds
   measurement-duration: 10
@@ -12,14 +12,14 @@ sample:
 stream:
   # Number of buffers for streaming (3-128)
   num-buffers: 64
-  # Buffer size in bytes (32 MB)
-  buffer-size: 33554432
+  # Buffer size in bytes (16 MB)
+  buffer-size: 16777216
 
 server:
   device: "mlx5_0"
   port: 54321
 
 client:
-  device: "mlx5_0"
-  server-ipv4: "192.168.88.20"
+  device: "mlx5_2"
+  server-ipv4: "192.168.88.25"
   server-port: 54321
