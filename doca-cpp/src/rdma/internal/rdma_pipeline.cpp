@@ -50,12 +50,6 @@ RdmaPipeline::Builder & RdmaPipeline::Builder::SetProgressEngine(doca::ProgressE
     return *this;
 }
 
-RdmaPipeline::Builder & RdmaPipeline::Builder::SetConnection(RdmaConnectionPtr connection)
-{
-    this->config.connection = connection;
-    return *this;
-}
-
 RdmaPipeline::Builder & RdmaPipeline::Builder::SetService(RdmaStreamServicePtr service)
 {
     this->config.service = service;
@@ -80,10 +74,6 @@ std::tuple<RdmaPipelinePtr, error> RdmaPipeline::Builder::Build()
         return { nullptr, errors::New("Progress engine is not set") };
     }
 
-    if (!this->config.connection) {
-        return { nullptr, errors::New("RDMA connection is not set") };
-    }
-
     auto pipeline = std::make_shared<RdmaPipeline>(this->config);
     return { pipeline, nullptr };
 }
@@ -103,12 +93,9 @@ RdmaPipeline::~RdmaPipeline()
     std::ignore = this->Stop();
 }
 
-error RdmaPipeline::Initialize()
+error RdmaPipeline::SetupCallbacks()
 {
-    const auto numBuffers = this->localPool->NumBuffers();
-    this->taskContexts.resize(numBuffers);
-
-    // Set task completion callbacks on the engine
+    // Set task completion callbacks on the engine (must be called before context start)
     if (this->direction == RdmaStreamDirection::write) {
         auto err =
             this->engine->SetWriteTaskCompletionCallbacks(RdmaPipeline::onWriteCompleted, RdmaPipeline::onWriteError);
@@ -122,6 +109,23 @@ error RdmaPipeline::Initialize()
             return errors::Wrap(err, "Failed to set read task callbacks");
         }
     }
+
+    return nullptr;
+}
+
+void RdmaPipeline::SetConnection(RdmaConnectionPtr connection)
+{
+    this->connection = connection;
+}
+
+error RdmaPipeline::Initialize()
+{
+    if (!this->connection) {
+        return errors::New("RDMA connection is not set (call SetConnection first)");
+    }
+
+    const auto numBuffers = this->localPool->NumBuffers();
+    this->taskContexts.resize(numBuffers);
 
     // Pre-allocate RDMA tasks paired with buffer slots
     for (uint32_t i = 0; i < numBuffers; ++i) {

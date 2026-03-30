@@ -205,6 +205,26 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
         return errors::Wrap(err, "Failed to set connection callbacks");
     }
 
+    // Create pipeline (without connection — will be set after RDMA handshake)
+    auto [pipeline, pipelineErr] = RdmaPipeline::Create()
+                                       .SetDirection(this->config.streamConfig.direction)
+                                       .SetLocalPool(this->bufferPool)
+                                       .SetEngine(engine)
+                                       .SetProgressEngine(progressEngine)
+                                       .SetService(this->config.service)
+                                       .Build();
+    if (pipelineErr) {
+        return errors::Wrap(pipelineErr, "Failed to create pipeline");
+    }
+
+    this->pipeline = pipeline;
+
+    // Setup task callbacks before starting context
+    err = this->pipeline->SetupCallbacks();
+    if (err) {
+        return errors::Wrap(err, "Failed to setup pipeline callbacks");
+    }
+
     // Start RDMA context
     err = context->Start();
     if (err) {
@@ -236,23 +256,11 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
         return errors::New("Timed out waiting for RDMA connection to server");
     }
 
-    // Create pipeline with established connection
-    auto [pipeline, pipelineErr] = RdmaPipeline::Create()
-                                       .SetDirection(this->config.streamConfig.direction)
-                                       .SetLocalPool(this->bufferPool)
-                                       .SetEngine(engine)
-                                       .SetProgressEngine(progressEngine)
-                                       .SetConnection(connectionState->activeConnection)
-                                       .SetService(this->config.service)
-                                       .Build();
-    if (pipelineErr) {
-        return errors::Wrap(pipelineErr, "Failed to create pipeline");
-    }
-
-    this->pipeline = pipeline;
     this->activeConnection = connectionState->activeConnection;
 
-    // Initialize pipeline (pre-allocate tasks)
+    // Set connection and initialize pipeline (pre-allocate tasks)
+    this->pipeline->SetConnection(connectionState->activeConnection);
+
     err = this->pipeline->Initialize();
     if (err) {
         return errors::Wrap(err, "Failed to initialize pipeline");

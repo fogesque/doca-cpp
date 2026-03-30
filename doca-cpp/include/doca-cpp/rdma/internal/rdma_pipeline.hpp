@@ -52,7 +52,13 @@ public:
 
     /// [Lifecycle]
 
-    /// @brief Pre-allocates all RDMA tasks and pairs them with buffer slots
+    /// @brief Registers task completion callbacks on the engine (must be called before context start)
+    error SetupCallbacks();
+
+    /// @brief Sets the RDMA connection (must be called after connection is established)
+    void SetConnection(RdmaConnectionPtr connection);
+
+    /// @brief Pre-allocates all RDMA tasks and pairs them with buffer slots (must be called after SetConnection)
     error Initialize();
 
     /// @brief Starts the streaming pipeline (launches polling thread)
@@ -129,8 +135,6 @@ public:
         Builder & SetEngine(RdmaEnginePtr engine);
         /// @brief Sets progress engine
         Builder & SetProgressEngine(doca::ProgressEnginePtr progressEngine);
-        /// @brief Sets RDMA connection
-        Builder & SetConnection(RdmaConnectionPtr connection);
         /// @brief Sets user stream service
         Builder & SetService(RdmaStreamServicePtr service);
 
