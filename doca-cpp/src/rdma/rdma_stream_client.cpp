@@ -161,11 +161,13 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
 
     auto permissions = doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaWrite;
 
+    const auto sendQueueSize = this->config.streamConfig.numBuffers + doca::rdma::NumBufferGroups;
+
     auto [engine, engineErr] = doca::rdma::RdmaEngine::Create(this->config.device)
                                    .SetPermissions(permissions)
                                    .SetMaxNumConnections(1)
                                    .SetTransportType(TransportType::rc)
-                                   .SetSendQueueSize(this->config.streamConfig.numBuffers)
+                                   .SetSendQueueSize(sendQueueSize)
                                    .Build();
     if (engineErr) {
         return errors::Wrap(engineErr, "Failed to create RDMA engine");
