@@ -165,7 +165,9 @@ private:
     /// [State]
 
     /// @brief Active RDMA connection (for disconnect on stop)
-    std::shared_ptr<RdmaConnection> activeConnection = nullptr;
+    RdmaConnectionPtr activeConnection = nullptr;
+    /// @brief Active RDMA connection address
+    RdmaAddressPtr activeConnectionAddress = nullptr;
     /// @brief Flag indicating client is connected
     std::atomic_bool connected = false;
     /// @brief Flag indicating streaming is active

@@ -263,6 +263,7 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
     if (addrErr) {
         return errors::Wrap(addrErr, "Failed to create RDMA address");
     }
+    this->activeConnectionAddress = rdmaAddress;
 
     auto connectionUserData = doca::Data(static_cast<void *>(nullptr));
     err = engine->ConnectToAddress(rdmaAddress, connectionUserData);
