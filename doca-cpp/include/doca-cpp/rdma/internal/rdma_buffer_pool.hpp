@@ -48,6 +48,12 @@ public:
     /// @brief Returns remote DOCA buffer object for given index
     doca::BufferPtr GetRemoteDocaBuffer(uint32_t index) const;
 
+    /// @brief Returns raw local buffer address for given index
+    void * GetLocalBufferAddress(uint32_t index) const;
+
+    /// @brief Returns raw remote buffer address for given index
+    void * GetRemoteBufferAddress(uint32_t index) const;
+
     /// [Descriptor Exchange]
 
     /// @brief Exports local memory descriptor for remote peer
@@ -143,6 +149,8 @@ private:
     doca::RemoteMemoryMapPtr remoteMemoryMap = nullptr;
     /// @brief Remote buffer inventory
     doca::BufferInventoryPtr remoteInventory = nullptr;
+    /// @brief Remote memory base address (from peer's exported descriptor)
+    void * remoteBaseAddress = nullptr;
     /// @brief Resource scope for lifecycle management
     doca::internal::ResourceScopePtr resourceScope = nullptr;
 

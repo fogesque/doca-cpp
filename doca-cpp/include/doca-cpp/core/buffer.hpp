@@ -56,6 +56,13 @@ public:
     /// @warning Since method gives vector pointing to memory use with caution
     std::tuple<std::vector<std::byte>, error> GetBytes();
 
+    /// [Buffer Reuse]
+
+    /// @brief Reuses buffer by resetting its data pointer (for local/source buffers)
+    error ReuseByData(void * data, size_t length);
+    /// @brief Reuses buffer by resetting its address pointer (for remote/destination buffers)
+    error ReuseByAddr(void * address, size_t length);
+
     /// [Property Setters]
 
     /// @brief Sets memory region which buffer will point to

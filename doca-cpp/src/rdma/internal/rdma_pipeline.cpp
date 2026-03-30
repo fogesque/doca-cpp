@@ -1,4 +1,5 @@
-#include <doca-cpp/rdma/internal/rdma_pipeline.hpp>
+#include "doca-cpp/rdma/internal/rdma_pipeline.hpp"
+
 #include <format>
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
@@ -262,6 +263,18 @@ void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskU
 
     // Resubmit task for continuous streaming
     if (pipeline->running.load(std::memory_order_relaxed)) {
+        const auto bufferSize = pipeline->localPool->BufferSize();
+
+        // Reuse local (source) buffer by data
+        auto localBuffer = pipeline->localPool->GetDocaBuffer(index);
+        auto localAddr = pipeline->localPool->GetLocalBufferAddress(index);
+        std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
+
+        // Reuse remote (destination) buffer by address
+        auto remoteBuffer = pipeline->localPool->GetRemoteDocaBuffer(index);
+        auto remoteAddr = pipeline->localPool->GetRemoteBufferAddress(index);
+        std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+
         auto err = context->writeTask->Submit();
         if (err) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to resubmit write task for buffer {}", index));
@@ -293,6 +306,18 @@ void RdmaPipeline::onReadCompleted(doca_rdma_task_read * task, doca_data taskUse
 
     // Resubmit task
     if (pipeline->running.load(std::memory_order_relaxed)) {
+        const auto bufferSize = pipeline->localPool->BufferSize();
+
+        // Reuse remote (source) buffer by address
+        auto remoteBuffer = pipeline->localPool->GetRemoteDocaBuffer(index);
+        auto remoteAddr = pipeline->localPool->GetRemoteBufferAddress(index);
+        std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+
+        // Reuse local (destination) buffer by data
+        auto localBuffer = pipeline->localPool->GetDocaBuffer(index);
+        auto localAddr = pipeline->localPool->GetLocalBufferAddress(index);
+        std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
+
         auto err = context->readTask->Submit();
         if (err) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to resubmit read task for buffer {}", index));

@@ -76,6 +76,30 @@ std::tuple<std::vector<std::byte>, error> Buffer::GetBytes()
     return { std::vector<std::byte>(dataPtr, dataPtr + dataLen), nullptr };
 }
 
+error Buffer::ReuseByData(void * data, size_t length)
+{
+    if (this->buffer == nullptr) {
+        return errors::New("Buffer is not initialized");
+    }
+    auto err = FromDocaError(doca_buf_inventory_buf_reuse_by_data(this->buffer, data, length));
+    if (err) {
+        return errors::Wrap(err, "Failed to reuse buffer by data");
+    }
+    return nullptr;
+}
+
+error Buffer::ReuseByAddr(void * address, size_t length)
+{
+    if (this->buffer == nullptr) {
+        return errors::New("Buffer is not initialized");
+    }
+    auto err = FromDocaError(doca_buf_inventory_buf_reuse_by_addr(this->buffer, address, length));
+    if (err) {
+        return errors::Wrap(err, "Failed to reuse buffer by address");
+    }
+    return nullptr;
+}
+
 error Buffer::SetData(void * data, size_t dataLen)
 {
     if (this->buffer == nullptr) {

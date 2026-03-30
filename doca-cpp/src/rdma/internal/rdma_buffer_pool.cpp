@@ -1,4 +1,4 @@
-#include <doca-cpp/rdma/internal/rdma_buffer_pool.hpp>
+#include "doca-cpp/rdma/internal/rdma_buffer_pool.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -6,7 +6,8 @@
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 #include <doca-cpp/logging/logging.hpp>
-namespace {
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -134,8 +135,7 @@ error RdmaBufferPool::initialize()
     }
 
     DOCA_CPP_LOG_INFO(std::format("Buffer pool created: {} buffers x {} bytes = {} bytes total",
-                                  this->streamConfig.numBuffers, this->streamConfig.bufferSize,
-                                  this->totalMemorySize));
+                                  this->streamConfig.numBuffers, this->streamConfig.bufferSize, this->totalMemorySize));
 
     return nullptr;
 }
@@ -154,6 +154,16 @@ doca::BufferPtr RdmaBufferPool::GetDocaBuffer(uint32_t index) const
 doca::BufferPtr RdmaBufferPool::GetRemoteDocaBuffer(uint32_t index) const
 {
     return this->remoteBuffers[index];
+}
+
+void * RdmaBufferPool::GetLocalBufferAddress(uint32_t index) const
+{
+    return static_cast<uint8_t *>(this->memoryRange->data()) + index * this->streamConfig.bufferSize;
+}
+
+void * RdmaBufferPool::GetRemoteBufferAddress(uint32_t index) const
+{
+    return static_cast<uint8_t *>(this->remoteBaseAddress) + index * this->streamConfig.bufferSize;
 }
 
 std::tuple<std::vector<uint8_t>, error> RdmaBufferPool::ExportDescriptor() const
@@ -193,13 +203,15 @@ error RdmaBufferPool::ImportRemoteDescriptor(const std::vector<uint8_t> & descri
 
     this->remoteInventory = inventory;
 
+    this->remoteBaseAddress = remoteRange.data();
+
     // Pre-allocate remote DOCA buffer objects
     this->remoteBuffers.resize(numBuffers);
     for (uint32_t i = 0; i < this->streamConfig.numBuffers; ++i) {
         auto * remoteAddress = remoteRange.data() + i * this->streamConfig.bufferSize;
 
         auto [buffer, bufErr] = this->remoteInventory->RetrieveBufferByAddress(this->remoteMemoryMap, remoteAddress,
-                                                                                this->streamConfig.bufferSize);
+                                                                               this->streamConfig.bufferSize);
         if (bufErr) {
             return errors::Wrap(bufErr, "Failed to allocate remote DOCA buffer");
         }
