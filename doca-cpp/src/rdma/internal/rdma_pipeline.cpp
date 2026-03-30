@@ -96,11 +96,15 @@ RdmaPipeline::~RdmaPipeline()
 
 error RdmaPipeline::SetupCallbacks()
 {
-    const auto numBuffers = this->localPool->NumBuffers();
+    // Client: data write tasks (one per buffer) + control signal tasks (one per group)
+    // Server: only control signal tasks (one per group), no data writes
+    uint32_t numTasks = NumBufferGroups;
+    if (this->role == PipelineRole::client) {
+        numTasks += this->localPool->NumBuffers();
+    }
 
-    // Both server and client use write tasks for data and control signaling
     auto err = this->engine->SetWriteTaskCompletionCallbacks(RdmaPipeline::onWriteCompleted,
-                                                             RdmaPipeline::onWriteError, numBuffers);
+                                                             RdmaPipeline::onWriteError, numTasks);
     if (err) {
         return errors::Wrap(err, "Failed to set write task callbacks");
     }
