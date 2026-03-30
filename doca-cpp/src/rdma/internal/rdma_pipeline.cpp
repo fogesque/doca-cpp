@@ -380,14 +380,16 @@ void RdmaPipeline::clientLoop()
             const auto bufIndex = groupStart + i;
             auto & ctx = this->dataTaskContexts[bufIndex];
 
-            // Reuse buffers
-            auto localBuffer = this->localPool->GetDocaBuffer(bufIndex);
-            auto localAddr = this->localPool->GetLocalBufferAddress(bufIndex);
-            std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
+            // Reuse buffers (skip on first round — buffers are fresh from allocation)
+            if (group->roundIndex > 0) {
+                auto localBuffer = this->localPool->GetDocaBuffer(bufIndex);
+                auto localAddr = this->localPool->GetLocalBufferAddress(bufIndex);
+                std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
 
-            auto remoteBuffer = this->localPool->GetRemoteDocaBuffer(bufIndex);
-            auto remoteAddr = this->localPool->GetRemoteBufferAddress(bufIndex);
-            std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+                auto remoteBuffer = this->localPool->GetRemoteDocaBuffer(bufIndex);
+                auto remoteAddr = this->localPool->GetRemoteBufferAddress(bufIndex);
+                std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+            }
 
             auto err = ctx.writeTask->Submit();
             if (err) {
