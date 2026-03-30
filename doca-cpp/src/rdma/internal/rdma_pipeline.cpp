@@ -281,7 +281,7 @@ void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskU
             DOCA_CPP_LOG_ERROR(std::format("Failed to reuse remote buffer with index {}", index));
         }
 
-        auto err = context->writeTask->Submit();
+        err = context->writeTask->Submit();
         if (err) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to resubmit write task for buffer {}", index));
         }
@@ -330,7 +330,7 @@ void RdmaPipeline::onReadCompleted(doca_rdma_task_read * task, doca_data taskUse
             DOCA_CPP_LOG_ERROR(std::format("Failed to reuse local buffer with index {}", index));
         }
 
-        auto err = context->readTask->Submit();
+        err = context->readTask->Submit();
         if (err) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to resubmit read task for buffer {}", index));
         }
