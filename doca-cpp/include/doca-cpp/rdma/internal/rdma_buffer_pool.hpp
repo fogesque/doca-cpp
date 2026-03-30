@@ -12,6 +12,7 @@
 #include "doca-cpp/core/mmap.hpp"
 #include "doca-cpp/core/resource_scope.hpp"
 #include "doca-cpp/rdma/rdma_buffer_view.hpp"
+#include "doca-cpp/rdma/rdma_pipeline_control.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
 
 namespace doca::rdma
@@ -54,13 +55,30 @@ public:
     /// @brief Returns raw remote buffer address for given index
     void * GetRemoteBufferAddress(uint32_t index) const;
 
+    /// [Pipeline Control]
+
+    /// @brief Returns pointer to local PipelineControl struct
+    PipelineControl * GetPipelineControl() const;
+
+    /// @brief Returns local control DOCA buffer (for RDMA write source)
+    doca::BufferPtr GetLocalControlBuffer(uint32_t groupIndex) const;
+
+    /// @brief Returns remote control DOCA buffer (for RDMA write destination)
+    doca::BufferPtr GetRemoteControlBuffer(uint32_t groupIndex) const;
+
     /// [Descriptor Exchange]
 
-    /// @brief Exports local memory descriptor for remote peer
+    /// @brief Exports local data memory descriptor for remote peer
     std::tuple<std::vector<uint8_t>, error> ExportDescriptor() const;
 
-    /// @brief Imports remote memory descriptor and creates remote buffer objects
+    /// @brief Exports local control memory descriptor for remote peer
+    std::tuple<std::vector<uint8_t>, error> ExportControlDescriptor() const;
+
+    /// @brief Imports remote data memory descriptor and creates remote buffer objects
     error ImportRemoteDescriptor(const std::vector<uint8_t> & descriptor);
+
+    /// @brief Imports remote control memory descriptor and creates remote control buffer objects
+    error ImportRemoteControlDescriptor(const std::vector<uint8_t> & descriptor);
 
     /// [Group Management]
 
@@ -160,6 +178,25 @@ private:
     std::vector<doca::BufferPtr> localBuffers;
     /// @brief Pre-allocated remote DOCA buffer objects
     std::vector<doca::BufferPtr> remoteBuffers;
+
+    /// [Control Region]
+
+    /// @brief Control memory range (PipelineControl struct)
+    doca::MemoryRangePtr controlMemoryRange = nullptr;
+    /// @brief Control memory map registered with device
+    doca::MemoryMapPtr controlMemoryMap = nullptr;
+    /// @brief Control buffer inventory
+    doca::BufferInventoryPtr controlInventory = nullptr;
+    /// @brief Per-group local control DOCA buffers (for RDMA write source)
+    std::vector<doca::BufferPtr> localControlBuffers;
+    /// @brief Remote control memory map from peer
+    doca::RemoteMemoryMapPtr remoteControlMemoryMap = nullptr;
+    /// @brief Remote control buffer inventory
+    doca::BufferInventoryPtr remoteControlInventory = nullptr;
+    /// @brief Per-group remote control DOCA buffers (for RDMA write destination)
+    std::vector<doca::BufferPtr> remoteControlBuffers;
+    /// @brief Remote control base address
+    void * remoteControlBaseAddress = nullptr;
 };
 
 }  // namespace doca::rdma

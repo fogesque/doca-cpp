@@ -103,19 +103,31 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
 
     this->bufferPool = pool;
 
-    // Receive server's memory descriptor
+    // Receive server's data memory descriptor
     auto [serverDescriptor, recvErr] = this->sessionManager->ReceiveDescriptor();
     if (recvErr) {
         return errors::Wrap(recvErr, "Failed to receive server memory descriptor");
     }
 
-    // Import server's memory into our RDMA space
+    // Import server's data memory into our RDMA space
     err = this->bufferPool->ImportRemoteDescriptor(serverDescriptor);
     if (err) {
         return errors::Wrap(err, "Failed to import remote descriptor");
     }
 
-    // Export our local memory descriptor and send to server
+    // Receive server's control memory descriptor
+    auto [serverControlDescriptor, recvControlErr] = this->sessionManager->ReceiveDescriptor();
+    if (recvControlErr) {
+        return errors::Wrap(recvControlErr, "Failed to receive server control memory descriptor");
+    }
+
+    // Import server's control memory into our RDMA space
+    err = this->bufferPool->ImportRemoteControlDescriptor(serverControlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to import remote control descriptor");
+    }
+
+    // Export our local data memory descriptor and send to server
     auto [localDescriptor, descErr] = this->bufferPool->ExportDescriptor();
     if (descErr) {
         return errors::Wrap(descErr, "Failed to export memory descriptor");
@@ -124,6 +136,17 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
     err = this->sessionManager->SendDescriptor(localDescriptor);
     if (err) {
         return errors::Wrap(err, "Failed to send memory descriptor");
+    }
+
+    // Export our local control memory descriptor and send to server
+    auto [localControlDescriptor, localControlDescErr] = this->bufferPool->ExportControlDescriptor();
+    if (localControlDescErr) {
+        return errors::Wrap(localControlDescErr, "Failed to export control memory descriptor");
+    }
+
+    err = this->sessionManager->SendDescriptor(localControlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to send control memory descriptor");
     }
 
     // Create RDMA engine
@@ -207,7 +230,7 @@ error RdmaStreamClient::Connect(const std::string & serverAddress, uint16_t port
 
     // Create pipeline (without connection — will be set after RDMA handshake)
     auto [pipeline, pipelineErr] = RdmaPipeline::Create()
-                                       .SetDirection(this->config.streamConfig.direction)
+                                       .SetRole(PipelineRole::client)
                                        .SetLocalPool(this->bufferPool)
                                        .SetEngine(engine)
                                        .SetProgressEngine(progressEngine)

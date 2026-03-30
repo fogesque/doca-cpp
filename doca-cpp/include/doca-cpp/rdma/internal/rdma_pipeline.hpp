@@ -6,6 +6,7 @@
 #include <memory>
 #include <thread>
 #include <tuple>
+#include <vector>
 
 #include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
@@ -13,6 +14,7 @@
 #include "doca-cpp/rdma/internal/rdma_connection.hpp"
 #include "doca-cpp/rdma/internal/rdma_engine.hpp"
 #include "doca-cpp/rdma/internal/rdma_task.hpp"
+#include "doca-cpp/rdma/rdma_pipeline_control.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
 #include "doca-cpp/rdma/rdma_stream_service.hpp"
 
@@ -25,20 +27,13 @@ class RdmaPipeline;
 // Type aliases
 using RdmaPipelinePtr = std::shared_ptr<RdmaPipeline>;
 
-/// @brief Pipeline group state
-enum class RdmaGroupState : uint32_t {
-    idle = 0,
-    rdmaPerforming,
-    processing,
-    ready,
-};
-
 ///
 /// @brief
-/// CPU RDMA streaming pipeline. Pre-allocates all RDMA write tasks,
-/// runs callback-driven resubmission loop on dedicated polling thread,
-/// and invokes user service for each buffer in the processing group.
-/// Implements three-group buffer rotation for maximum overlap.
+/// CPU RDMA streaming pipeline with triple-buffer group rotation.
+/// Server and client roles follow the same state machine as the GPU variant
+/// (Idle → RdmaPosted → RdmaComplete → Processing → Released) to enable
+/// CPU↔GPU interop. Synchronization between peers is done via RDMA writes
+/// to each other's PipelineControl region.
 ///
 class RdmaPipeline
 {
@@ -58,13 +53,13 @@ public:
     /// @brief Sets the RDMA connection (must be called after connection is established)
     void SetConnection(RdmaConnectionPtr connection);
 
-    /// @brief Pre-allocates all RDMA tasks and pairs them with buffer slots (must be called after SetConnection)
+    /// @brief Pre-allocates all RDMA write tasks paired with buffer slots
     error Initialize();
 
-    /// @brief Starts the streaming pipeline (launches polling thread)
+    /// @brief Starts the pipeline (launches main loop and polling threads)
     error Start();
 
-    /// @brief Stops the streaming pipeline
+    /// @brief Stops the pipeline
     error Stop();
 
     /// [Statistics]
@@ -93,7 +88,7 @@ public:
 
     /// @brief Config struct for object construction
     struct Config {
-        RdmaStreamDirection direction = RdmaStreamDirection::write;
+        PipelineRole role = PipelineRole::server;
         RdmaBufferPoolPtr localPool = nullptr;
         RdmaEnginePtr engine = nullptr;
         doca::ProgressEnginePtr progressEngine = nullptr;
@@ -127,8 +122,8 @@ public:
 
         /// [Configuration]
 
-        /// @brief Sets streaming direction
-        Builder & SetDirection(RdmaStreamDirection direction);
+        /// @brief Sets pipeline role (server or client)
+        Builder & SetRole(PipelineRole role);
         /// @brief Sets local buffer pool
         Builder & SetLocalPool(RdmaBufferPoolPtr pool);
         /// @brief Sets RDMA engine
@@ -167,10 +162,21 @@ public:
 private:
 #pragma region RdmaPipeline::PrivateMethods
 
-    /// [Threading]
+    /// [Main Loops]
 
-    /// @brief Main polling loop for the pipeline (runs on dedicated thread)
-    void pollingLoop();
+    /// @brief Server main loop: signals readiness, waits for client writes, processes data
+    void serverLoop();
+
+    /// @brief Client main loop: waits for server readiness, writes data, signals completion
+    void clientLoop();
+
+    /// @brief Progress engine polling loop (runs on dedicated thread)
+    void progressLoop();
+
+    /// [RDMA Control Signal]
+
+    /// @brief RDMA writes local GroupControl to remote peer's PipelineControl for given group
+    error signalPeer(uint32_t groupIndex);
 
     /// [Callbacks]
 
@@ -179,12 +185,6 @@ private:
 
     /// @brief Called when an RDMA write task fails
     static void onWriteError(doca_rdma_task_write * task, doca_data taskUserData, doca_data contextUserData);
-
-    /// @brief Called when an RDMA read task completes successfully
-    static void onReadCompleted(doca_rdma_task_read * task, doca_data taskUserData, doca_data contextUserData);
-
-    /// @brief Called when an RDMA read task fails
-    static void onReadError(doca_rdma_task_read * task, doca_data taskUserData, doca_data contextUserData);
 
 #pragma endregion
 
@@ -198,16 +198,16 @@ private:
         RdmaPipeline * pipeline = nullptr;
         /// @brief Buffer index this task operates on
         uint32_t bufferIndex = 0;
-        /// @brief Pre-allocated write task (set if direction is write)
+        /// @brief Group index this buffer belongs to
+        uint32_t groupIndex = 0;
+        /// @brief Pre-allocated write task
         RdmaWriteTaskPtr writeTask = nullptr;
-        /// @brief Pre-allocated read task (set if direction is read)
-        RdmaReadTaskPtr readTask = nullptr;
     };
 
     /// [Configuration]
 
-    /// @brief Streaming direction
-    RdmaStreamDirection direction = RdmaStreamDirection::write;
+    /// @brief Pipeline role (server or client)
+    PipelineRole role = PipelineRole::server;
     /// @brief Local buffer pool
     RdmaBufferPoolPtr localPool = nullptr;
     /// @brief RDMA engine
@@ -224,10 +224,17 @@ private:
     /// @brief Pre-allocated task contexts (one per buffer)
     std::vector<TaskContext> taskContexts;
 
+    /// [Group Synchronization]
+
+    /// @brief Per-group atomic completion counter (incremented by write callbacks)
+    std::atomic<uint32_t> groupCompletedOps[MaxPipelineGroups] = {};
+
     /// [Threading]
 
-    /// @brief Polling thread
-    std::thread pollingThread;
+    /// @brief Main loop thread (server or client loop)
+    std::thread mainThread;
+    /// @brief Progress engine polling thread
+    std::thread progressThread;
     /// @brief Running flag
     std::atomic_bool running = false;
 

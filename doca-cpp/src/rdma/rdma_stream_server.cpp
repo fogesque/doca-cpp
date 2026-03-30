@@ -212,7 +212,7 @@ error RdmaStreamServer::handleClient(uint32_t connectionIndex)
 
     this->bufferPools[connectionIndex] = pool;
 
-    // Export local memory descriptor and send to client
+    // Export local data memory descriptor and send to client
     auto [descriptor, descErr] = pool->ExportDescriptor();
     if (descErr) {
         return errors::Wrap(descErr, "Failed to export memory descriptor");
@@ -223,16 +223,39 @@ error RdmaStreamServer::handleClient(uint32_t connectionIndex)
         return errors::Wrap(err, "Failed to send memory descriptor");
     }
 
-    // Receive client's memory descriptor
+    // Export local control memory descriptor and send to client
+    auto [controlDescriptor, controlDescErr] = pool->ExportControlDescriptor();
+    if (controlDescErr) {
+        return errors::Wrap(controlDescErr, "Failed to export control memory descriptor");
+    }
+
+    err = session->SendDescriptor(controlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to send control memory descriptor");
+    }
+
+    // Receive client's data memory descriptor
     auto [clientDescriptor, recvErr] = session->ReceiveDescriptor();
     if (recvErr) {
         return errors::Wrap(recvErr, "Failed to receive client memory descriptor");
     }
 
-    // Import client's memory into our RDMA space
+    // Import client's data memory into our RDMA space
     err = pool->ImportRemoteDescriptor(clientDescriptor);
     if (err) {
         return errors::Wrap(err, "Failed to import remote descriptor");
+    }
+
+    // Receive client's control memory descriptor
+    auto [clientControlDescriptor, recvControlErr] = session->ReceiveDescriptor();
+    if (recvControlErr) {
+        return errors::Wrap(recvControlErr, "Failed to receive client control memory descriptor");
+    }
+
+    // Import client's control memory into our RDMA space
+    err = pool->ImportRemoteControlDescriptor(clientControlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to import remote control descriptor");
     }
 
     // Create RDMA engine for this connection
@@ -338,7 +361,7 @@ error RdmaStreamServer::handleClient(uint32_t connectionIndex)
 
     // Create pipeline (without connection — will be set after RDMA handshake)
     auto [pipeline, pipelineErr] = RdmaPipeline::Create()
-                                       .SetDirection(this->config.streamConfig.direction)
+                                       .SetRole(PipelineRole::server)
                                        .SetLocalPool(pool)
                                        .SetEngine(engine)
                                        .SetProgressEngine(progressEngine)

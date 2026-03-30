@@ -65,6 +65,8 @@ RdmaBufferPool::~RdmaBufferPool()
         std::free(this->rawMemory);
         this->rawMemory = nullptr;
     }
+
+    // controlMemoryRange is a shared_ptr<vector> — freed automatically
 }
 
 error RdmaBufferPool::initialize()
@@ -132,6 +134,65 @@ error RdmaBufferPool::initialize()
         }
 
         this->localBuffers[i] = buffer;
+    }
+
+    // Allocate control region for PipelineControl
+    constexpr auto controlSize = sizeof(PipelineControl);
+    this->controlMemoryRange = std::make_shared<doca::MemoryRange>(controlSize);
+    std::memset(this->controlMemoryRange->data(), 0, controlSize);
+
+    // Initialize PipelineControl fields
+    auto * control = reinterpret_cast<PipelineControl *>(this->controlMemoryRange->data());
+    control->stopFlag = flags::Idle;
+    control->numGroups = NumBufferGroups;
+    control->buffersPerGroup = this->streamConfig.numBuffers / NumBufferGroups;
+    control->bufferSize = static_cast<uint32_t>(this->streamConfig.bufferSize);
+
+    for (uint32_t g = 0; g < NumBufferGroups; ++g) {
+        control->groups[g].state = flags::Idle;
+        control->groups[g].roundIndex = 0;
+        control->groups[g].completedOps = 0;
+        control->groups[g].errorFlag = 0;
+    }
+
+    // Create control memory map with RDMA write permissions
+    auto controlPermissions = doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaWrite;
+
+    auto [controlMmap, controlMmapErr] = doca::MemoryMap::Create()
+                                             .AddDevice(this->device)
+                                             .SetPermissions(controlPermissions)
+                                             .SetMemoryRange(this->controlMemoryRange)
+                                             .Start();
+    if (controlMmapErr) {
+        return errors::Wrap(controlMmapErr, "Failed to create control memory map");
+    }
+
+    this->controlMemoryMap = controlMmap;
+    this->resourceScope->AddStoppable(doca::internal::ResourceTier::memoryMap, this->controlMemoryMap);
+    this->resourceScope->AddDestroyable(doca::internal::ResourceTier::memoryMap, this->controlMemoryMap);
+
+    // Create control buffer inventory (one buffer per group for per-group RDMA writes)
+    auto [controlInv, controlInvErr] = doca::BufferInventory::Create(NumBufferGroups).Start();
+    if (controlInvErr) {
+        return errors::Wrap(controlInvErr, "Failed to create control buffer inventory");
+    }
+
+    this->controlInventory = controlInv;
+    this->resourceScope->AddStoppable(doca::internal::ResourceTier::bufferInventory, this->controlInventory);
+
+    // Pre-allocate per-group local control buffers pointing to each GroupControl
+    this->localControlBuffers.resize(NumBufferGroups);
+    for (uint32_t g = 0; g < NumBufferGroups; ++g) {
+        auto * groupAddr = this->controlMemoryRange->data() +
+                           offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
+
+        auto [buf, bufErr] =
+            this->controlInventory->RetrieveBufferByData(this->controlMemoryMap, groupAddr, sizeof(GroupControl));
+        if (bufErr) {
+            return errors::Wrap(bufErr, "Failed to allocate local control buffer");
+        }
+
+        this->localControlBuffers[g] = buf;
     }
 
     DOCA_CPP_LOG_INFO(std::format("Buffer pool created: {} buffers x {} bytes = {} bytes total",
@@ -221,6 +282,74 @@ error RdmaBufferPool::ImportRemoteDescriptor(const std::vector<uint8_t> & descri
 
     DOCA_CPP_LOG_INFO(std::format("Imported remote descriptor: {} buffers", numBuffers));
     return nullptr;
+}
+
+std::tuple<std::vector<uint8_t>, error> RdmaBufferPool::ExportControlDescriptor() const
+{
+    auto [descriptor, err] = this->controlMemoryMap->ExportRdma();
+    if (err) {
+        return { {}, errors::Wrap(err, "Failed to export control memory descriptor") };
+    }
+
+    return { descriptor, nullptr };
+}
+
+error RdmaBufferPool::ImportRemoteControlDescriptor(const std::vector<uint8_t> & descriptor)
+{
+    auto [remoteMmap, mmapErr] = doca::RemoteMemoryMap::CreateFromExport(descriptor, this->device);
+    if (mmapErr) {
+        return errors::Wrap(mmapErr, "Failed to import remote control memory descriptor");
+    }
+
+    this->remoteControlMemoryMap = remoteMmap;
+
+    auto [remoteRange, rangeErr] = this->remoteControlMemoryMap->GetRemoteMemoryRange();
+    if (rangeErr) {
+        return errors::Wrap(rangeErr, "Failed to get remote control memory range");
+    }
+
+    this->remoteControlBaseAddress = remoteRange.data();
+
+    // Create remote control buffer inventory
+    auto [inventory, inventoryErr] = doca::BufferInventory::Create(NumBufferGroups).Start();
+    if (inventoryErr) {
+        return errors::Wrap(inventoryErr, "Failed to create remote control buffer inventory");
+    }
+
+    this->remoteControlInventory = inventory;
+
+    // Pre-allocate per-group remote control buffers pointing to each remote GroupControl
+    this->remoteControlBuffers.resize(NumBufferGroups);
+    for (uint32_t g = 0; g < NumBufferGroups; ++g) {
+        auto * remoteGroupAddr = remoteRange.data() +
+                                 offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
+
+        auto [buf, bufErr] = this->remoteControlInventory->RetrieveBufferByAddress(
+            this->remoteControlMemoryMap, remoteGroupAddr, sizeof(GroupControl));
+        if (bufErr) {
+            return errors::Wrap(bufErr, "Failed to allocate remote control buffer");
+        }
+
+        this->remoteControlBuffers[g] = buf;
+    }
+
+    DOCA_CPP_LOG_INFO("Imported remote control descriptor");
+    return nullptr;
+}
+
+PipelineControl * RdmaBufferPool::GetPipelineControl() const
+{
+    return reinterpret_cast<PipelineControl *>(this->controlMemoryRange->data());
+}
+
+doca::BufferPtr RdmaBufferPool::GetLocalControlBuffer(uint32_t groupIndex) const
+{
+    return this->localControlBuffers[groupIndex];
+}
+
+doca::BufferPtr RdmaBufferPool::GetRemoteControlBuffer(uint32_t groupIndex) const
+{
+    return this->remoteControlBuffers[groupIndex];
 }
 
 uint32_t RdmaBufferPool::GetGroupStartIndex(uint32_t groupIndex) const
