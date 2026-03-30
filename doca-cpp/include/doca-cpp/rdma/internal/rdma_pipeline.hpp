@@ -192,8 +192,10 @@ private:
 
     /// [Nested Types]
 
-    /// @brief Context attached to each pre-allocated task
+    /// @brief Context attached to each pre-allocated data task
     struct TaskContext {
+        /// @brief Type tag for callback dispatch
+        bool isControl = false;
         /// @brief Back-pointer to owning pipeline
         RdmaPipeline * pipeline = nullptr;
         /// @brief Buffer index this task operates on
@@ -202,6 +204,20 @@ private:
         uint32_t groupIndex = 0;
         /// @brief Pre-allocated write task
         RdmaWriteTaskPtr writeTask = nullptr;
+    };
+
+    /// @brief Context attached to each pre-allocated control task
+    struct ControlTaskContext {
+        /// @brief Type tag for callback dispatch
+        bool isControl = true;
+        /// @brief Back-pointer to owning pipeline
+        RdmaPipeline * pipeline = nullptr;
+        /// @brief Group index this control task signals
+        uint32_t groupIndex = 0;
+        /// @brief Pre-allocated write task for control signaling
+        RdmaWriteTaskPtr writeTask = nullptr;
+        /// @brief Completion flag (set by callback, cleared before resubmit)
+        std::atomic_bool completed = true;
     };
 
     /// [Configuration]
@@ -221,8 +237,10 @@ private:
 
     /// [Task Management]
 
-    /// @brief Pre-allocated task contexts (one per buffer)
-    std::vector<TaskContext> taskContexts;
+    /// @brief Pre-allocated data task contexts (client only, one per buffer)
+    std::vector<TaskContext> dataTaskContexts;
+    /// @brief Pre-allocated control task contexts (one per group, both roles)
+    ControlTaskContext controlTaskContexts[MaxPipelineGroups];
 
     /// [Group Synchronization]
 

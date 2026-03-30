@@ -124,33 +124,56 @@ error RdmaPipeline::Initialize()
     }
 
     const auto numBuffers = this->localPool->NumBuffers();
-    this->taskContexts.resize(numBuffers);
 
-    // Pre-allocate RDMA write tasks paired with buffer slots
-    for (uint32_t i = 0; i < numBuffers; ++i) {
-        this->taskContexts[i].pipeline = this;
-        this->taskContexts[i].bufferIndex = i;
+    // Pre-allocate data write tasks (client only — server doesn't write data)
+    if (this->role == PipelineRole::client) {
+        this->dataTaskContexts.resize(numBuffers);
 
-        // Determine which group this buffer belongs to
-        for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-            const auto groupStart = GetGroupStartIndex(numBuffers, g);
-            const auto groupCount = GetGroupBufferCount(numBuffers, g);
-            if (i >= groupStart && i < groupStart + groupCount) {
-                this->taskContexts[i].groupIndex = g;
-                break;
+        for (uint32_t i = 0; i < numBuffers; ++i) {
+            this->dataTaskContexts[i].pipeline = this;
+            this->dataTaskContexts[i].bufferIndex = i;
+
+            // Determine which group this buffer belongs to
+            for (uint32_t g = 0; g < NumBufferGroups; ++g) {
+                const auto groupStart = GetGroupStartIndex(numBuffers, g);
+                const auto groupCount = GetGroupBufferCount(numBuffers, g);
+                if (i >= groupStart && i < groupStart + groupCount) {
+                    this->dataTaskContexts[i].groupIndex = g;
+                    break;
+                }
             }
+
+            auto taskUserData = doca::Data(static_cast<void *>(&this->dataTaskContexts[i]));
+            auto sourceBuffer = this->localPool->GetDocaBuffer(i);
+            auto destBuffer = this->localPool->GetRemoteDocaBuffer(i);
+
+            auto [task, err] =
+                this->engine->AllocateWriteTask(this->connection, sourceBuffer, destBuffer, taskUserData);
+            if (err) {
+                return errors::Wrap(err, "Failed to allocate data write task");
+            }
+
+            this->dataTaskContexts[i].writeTask = task;
         }
+    }
 
-        auto taskUserData = doca::Data(static_cast<void *>(&this->taskContexts[i]));
-        auto sourceBuffer = this->localPool->GetDocaBuffer(i);
-        auto destBuffer = this->localPool->GetRemoteDocaBuffer(i);
+    // Pre-allocate control signal tasks (one per group, both roles)
+    for (uint32_t g = 0; g < NumBufferGroups; ++g) {
+        this->controlTaskContexts[g].pipeline = this;
+        this->controlTaskContexts[g].groupIndex = g;
+        this->controlTaskContexts[g].completed.store(true, std::memory_order_relaxed);
 
-        auto [task, err] = this->engine->AllocateWriteTask(this->connection, sourceBuffer, destBuffer, taskUserData);
+        auto localControlBuf = this->localPool->GetLocalControlBuffer(g);
+        auto remoteControlBuf = this->localPool->GetRemoteControlBuffer(g);
+
+        auto taskUserData = doca::Data(static_cast<void *>(&this->controlTaskContexts[g]));
+        auto [task, err] =
+            this->engine->AllocateWriteTask(this->connection, localControlBuf, remoteControlBuf, taskUserData);
         if (err) {
-            return errors::Wrap(err, "Failed to allocate write task");
+            return errors::Wrap(err, "Failed to allocate control write task");
         }
 
-        this->taskContexts[i].writeTask = task;
+        this->controlTaskContexts[g].writeTask = task;
     }
 
     // Reset group completion counters
@@ -158,8 +181,9 @@ error RdmaPipeline::Initialize()
         this->groupCompletedOps[g].store(0, std::memory_order_relaxed);
     }
 
+    const auto totalTasks = (this->role == PipelineRole::client ? numBuffers : 0) + NumBufferGroups;
     DOCA_CPP_LOG_INFO(std::format("Pipeline initialized: {} tasks pre-allocated, role={}",
-                                  numBuffers, this->role == PipelineRole::server ? "server" : "client"));
+                                  totalTasks, this->role == PipelineRole::server ? "server" : "client"));
     return nullptr;
 }
 
@@ -211,11 +235,19 @@ error RdmaPipeline::Stop()
         this->progressThread.join();
     }
 
-    // Free all pre-allocated tasks
-    for (auto & context : this->taskContexts) {
+    // Free all pre-allocated data tasks
+    for (auto & context : this->dataTaskContexts) {
         if (context.writeTask) {
             context.writeTask->Free();
             context.writeTask = nullptr;
+        }
+    }
+
+    // Free all pre-allocated control tasks
+    for (uint32_t g = 0; g < NumBufferGroups; ++g) {
+        if (this->controlTaskContexts[g].writeTask) {
+            this->controlTaskContexts[g].writeTask->Free();
+            this->controlTaskContexts[g].writeTask = nullptr;
         }
     }
 
@@ -346,7 +378,7 @@ void RdmaPipeline::clientLoop()
 
         for (uint32_t i = 0; i < groupCount; ++i) {
             const auto bufIndex = groupStart + i;
-            auto & ctx = this->taskContexts[bufIndex];
+            auto & ctx = this->dataTaskContexts[bufIndex];
 
             // Reuse buffers
             auto localBuffer = this->localPool->GetDocaBuffer(bufIndex);
@@ -426,34 +458,35 @@ void RdmaPipeline::progressLoop()
 
 error RdmaPipeline::signalPeer(uint32_t groupIndex)
 {
-    auto localControlBuf = this->localPool->GetLocalControlBuffer(groupIndex);
-    auto remoteControlBuf = this->localPool->GetRemoteControlBuffer(groupIndex);
+    auto & controlCtx = this->controlTaskContexts[groupIndex];
+
+    // Wait for previous signal on this group to complete before reusing
+    while (!controlCtx.completed.load(std::memory_order_acquire)) {
+        this->progressEngine->Progress();
+    }
 
     // Reuse the local control buffer (source) to pick up latest GroupControl state
+    auto localControlBuf = this->localPool->GetLocalControlBuffer(groupIndex);
     auto * control = this->localPool->GetPipelineControl();
     auto * localGroupAddr = reinterpret_cast<uint8_t *>(&control->groups[groupIndex]);
     std::ignore = localControlBuf->ReuseByData(localGroupAddr, sizeof(GroupControl));
 
     // Reuse the remote control buffer (destination)
+    auto remoteControlBuf = this->localPool->GetRemoteControlBuffer(groupIndex);
     auto [remoteData, remoteDataErr] = remoteControlBuf->GetData();
     if (!remoteDataErr && remoteData) {
         std::ignore = remoteControlBuf->ReuseByAddr(remoteData, sizeof(GroupControl));
     }
 
-    // Allocate and submit a write task for the control signal
-    auto taskUserData = doca::Data(nullptr);
-    auto [task, err] = this->engine->AllocateWriteTask(this->connection, localControlBuf, remoteControlBuf, taskUserData);
-    if (err) {
-        return errors::Wrap(err, "Failed to allocate control signal write task");
-    }
+    // Mark as in-flight and resubmit the pre-allocated control task
+    controlCtx.completed.store(false, std::memory_order_release);
 
-    err = task->Submit();
+    auto err = controlCtx.writeTask->Submit();
     if (err) {
-        task->Free();
+        controlCtx.completed.store(true, std::memory_order_release);
         return errors::Wrap(err, "Failed to submit control signal write task");
     }
 
-    // Task freed in write callback (context is null for control writes)
     return nullptr;
 }
 
@@ -463,32 +496,31 @@ error RdmaPipeline::signalPeer(uint32_t groupIndex)
 
 void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskUserData, doca_data contextUserData)
 {
-    auto * context = static_cast<TaskContext *>(taskUserData.ptr);
+    // Both TaskContext and ControlTaskContext have isControl as first field
+    auto * isControl = static_cast<bool *>(taskUserData.ptr);
 
-    // If context is null, this is a control signal write — just free the task
-    if (!context) {
-        doca_task_free(doca_rdma_task_write_as_task(task));
-        return;
+    if (*isControl) {
+        auto * controlCtx = static_cast<ControlTaskContext *>(taskUserData.ptr);
+        controlCtx->completed.store(true, std::memory_order_release);
+    } else {
+        auto * dataCtx = static_cast<TaskContext *>(taskUserData.ptr);
+        auto * pipeline = dataCtx->pipeline;
+        pipeline->groupCompletedOps[dataCtx->groupIndex].fetch_add(1, std::memory_order_release);
     }
-
-    auto * pipeline = context->pipeline;
-    const auto groupIndex = context->groupIndex;
-
-    // Increment group completion counter
-    pipeline->groupCompletedOps[groupIndex].fetch_add(1, std::memory_order_release);
 }
 
 void RdmaPipeline::onWriteError(doca_rdma_task_write * task, doca_data taskUserData, doca_data contextUserData)
 {
-    auto * context = static_cast<TaskContext *>(taskUserData.ptr);
+    auto * isControl = static_cast<bool *>(taskUserData.ptr);
 
-    if (!context) {
-        DOCA_CPP_LOG_ERROR("Control signal write task error");
-        doca_task_free(doca_rdma_task_write_as_task(task));
-        return;
+    if (*isControl) {
+        auto * controlCtx = static_cast<ControlTaskContext *>(taskUserData.ptr);
+        controlCtx->completed.store(true, std::memory_order_release);
+        DOCA_CPP_LOG_ERROR(std::format("Control signal write task error for group {}", controlCtx->groupIndex));
+    } else {
+        auto * dataCtx = static_cast<TaskContext *>(taskUserData.ptr);
+        DOCA_CPP_LOG_ERROR(std::format("Write task error for buffer {}", dataCtx->bufferIndex));
     }
-
-    DOCA_CPP_LOG_ERROR(std::format("Write task error for buffer {}", context->bufferIndex));
 }
 
 }  // namespace doca::rdma
