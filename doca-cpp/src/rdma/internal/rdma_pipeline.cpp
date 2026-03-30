@@ -268,12 +268,18 @@ void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskU
         // Reuse local (source) buffer by data
         auto localBuffer = pipeline->localPool->GetDocaBuffer(index);
         auto localAddr = pipeline->localPool->GetLocalBufferAddress(index);
-        std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
+        auto err = localBuffer->ReuseByData(localAddr, bufferSize);
+        if (err) {
+            DOCA_CPP_LOG_ERROR(std::format("Failed to reuse local buffer with index {}", index));
+        }
 
         // Reuse remote (destination) buffer by address
         auto remoteBuffer = pipeline->localPool->GetRemoteDocaBuffer(index);
         auto remoteAddr = pipeline->localPool->GetRemoteBufferAddress(index);
-        std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+        err = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+        if (err) {
+            DOCA_CPP_LOG_ERROR(std::format("Failed to reuse remote buffer with index {}", index));
+        }
 
         auto err = context->writeTask->Submit();
         if (err) {
@@ -311,12 +317,18 @@ void RdmaPipeline::onReadCompleted(doca_rdma_task_read * task, doca_data taskUse
         // Reuse remote (source) buffer by address
         auto remoteBuffer = pipeline->localPool->GetRemoteDocaBuffer(index);
         auto remoteAddr = pipeline->localPool->GetRemoteBufferAddress(index);
-        std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+        auto err = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
+        if (err) {
+            DOCA_CPP_LOG_ERROR(std::format("Failed to reuse local buffer with index {}", index));
+        }
 
         // Reuse local (destination) buffer by data
         auto localBuffer = pipeline->localPool->GetDocaBuffer(index);
         auto localAddr = pipeline->localPool->GetLocalBufferAddress(index);
-        std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
+        err = localBuffer->ReuseByData(localAddr, bufferSize);
+        if (err) {
+            DOCA_CPP_LOG_ERROR(std::format("Failed to reuse local buffer with index {}", index));
+        }
 
         auto err = context->readTask->Submit();
         if (err) {
