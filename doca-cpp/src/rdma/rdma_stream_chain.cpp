@@ -1,10 +1,10 @@
 #include <doca-cpp/rdma/rdma_stream_chain.hpp>
-
 #include <format>
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 #include <doca-cpp/logging/logging.hpp>
-namespace {
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -44,7 +44,8 @@ RdmaStreamChain::Builder & RdmaStreamChain::Builder::SetAggregateService(RdmaAgg
     return *this;
 }
 
-RdmaStreamChain::Builder & RdmaStreamChain::Builder::SetAggregateService(doca::gpunetio::GpuRdmaAggregateStreamServicePtr service)
+RdmaStreamChain::Builder & RdmaStreamChain::Builder::SetAggregateService(
+    doca::gpunetio::GpuAggregateStreamServicePtr service)
 {
     this->config.gpuAggregateService = service;
     return *this;
@@ -94,8 +95,8 @@ error RdmaStreamChain::Serve()
 
     this->running.store(true);
 
-    DOCA_CPP_LOG_INFO(std::format("RdmaStreamChain starting with {} CPU servers and {} GPU servers", this->config.cpuServers.size(),
-                                  this->config.gpuServers.size()));
+    DOCA_CPP_LOG_INFO(std::format("RdmaStreamChain starting with {} CPU servers and {} GPU servers",
+                                  this->config.cpuServers.size(), this->config.gpuServers.size()));
 
     // Start all servers in separate threads
     this->startServers();

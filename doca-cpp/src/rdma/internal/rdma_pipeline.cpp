@@ -250,7 +250,7 @@ void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskU
 
     // Invoke user service if set
     if (pipeline->service) {
-        auto view = pipeline->localPool->GetBufferView(index);
+        auto view = pipeline->localPool->GetRdmaBufferView(index);
         pipeline->service->OnBuffer(view);
     }
 
@@ -281,7 +281,7 @@ void RdmaPipeline::onReadCompleted(doca_rdma_task_read * task, doca_data taskUse
 
     // Invoke user service if set
     if (pipeline->service) {
-        auto view = pipeline->localPool->GetBufferView(index);
+        auto view = pipeline->localPool->GetRdmaBufferView(index);
         pipeline->service->OnBuffer(view);
     }
 

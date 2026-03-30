@@ -69,7 +69,7 @@ public:
         /// @brief CPU aggregate service
         RdmaAggregateStreamServicePtr cpuAggregateService = nullptr;
         /// @brief GPU aggregate service
-        doca::gpunetio::GpuRdmaAggregateStreamServicePtr gpuAggregateService = nullptr;
+        doca::gpunetio::GpuAggregateStreamServicePtr gpuAggregateService = nullptr;
     };
 
     explicit RdmaStreamChain(const Config & config);
@@ -105,7 +105,7 @@ public:
         Builder & SetAggregateService(RdmaAggregateStreamServicePtr service);
 
         /// @brief Sets GPU aggregate service
-        Builder & SetAggregateService(doca::gpunetio::GpuRdmaAggregateStreamServicePtr service);
+        Builder & SetAggregateService(doca::gpunetio::GpuAggregateStreamServicePtr service);
 
         /// [Construction & Destruction]
 
