@@ -11,8 +11,10 @@
 #include <tuple>
 #include <vector>
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
 #include "doca-cpp/gpunetio/gpu_rdma_server.hpp"
 #include "doca-cpp/gpunetio/gpu_stream_service.hpp"
+#endif
 #include "doca-cpp/rdma/rdma_stream_server.hpp"
 #include "doca-cpp/rdma/rdma_stream_service.hpp"
 
@@ -64,12 +66,16 @@ public:
     struct Config {
         /// @brief CPU servers in the chain
         std::vector<RdmaStreamServerPtr> cpuServers;
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
         /// @brief GPU servers in the chain
         std::vector<doca::gpunetio::GpuRdmaServerPtr> gpuServers;
+#endif
         /// @brief CPU aggregate service
         RdmaAggregateStreamServicePtr cpuAggregateService = nullptr;
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
         /// @brief GPU aggregate service
         doca::gpunetio::GpuAggregateStreamServicePtr gpuAggregateService = nullptr;
+#endif
     };
 
     explicit RdmaStreamChain(const Config & config);
@@ -98,14 +104,18 @@ public:
         /// @brief Adds a CPU server to the chain
         Builder & AddServer(RdmaStreamServerPtr server);
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
         /// @brief Adds a GPU server to the chain
         Builder & AddServer(doca::gpunetio::GpuRdmaServerPtr server);
+#endif
 
         /// @brief Sets CPU aggregate service
         Builder & SetAggregateService(RdmaAggregateStreamServicePtr service);
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
         /// @brief Sets GPU aggregate service
         Builder & SetAggregateService(doca::gpunetio::GpuAggregateStreamServicePtr service);
+#endif
 
         /// [Construction & Destruction]
 

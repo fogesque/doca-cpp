@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+
 #include "doca-cpp/gpunetio/kernels/kernel_common.cuh"
 
 extern "C" {
@@ -19,3 +21,5 @@ void LaunchPersistentClientKernel(cudaStream_t stream, uint32_t connectionId, st
                                   uint32_t bufferSize);
 
 } /* extern C */
+
+#endif  // DOCA_CPP_ENABLE_GPUNETIO

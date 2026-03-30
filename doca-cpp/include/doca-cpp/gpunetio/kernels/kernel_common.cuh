@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <doca_buf_array.h>
@@ -19,3 +21,5 @@
 
 /// @brief Flag value indicating RDMA receive has been posted
 #define GPUNETIO_RECV_POSTED_FLAG 1
+
+#endif  // DOCA_CPP_ENABLE_GPUNETIO

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+
 #include <atomic>
 #include <cstdint>
 #include <errors/errors.hpp>
@@ -15,9 +17,9 @@
 #include "doca-cpp/gpunetio/gpu_device.hpp"
 #include "doca-cpp/gpunetio/gpu_manager.hpp"
 #include "doca-cpp/gpunetio/gpu_memory_region.hpp"
+#include "doca-cpp/gpunetio/gpu_pipeline_control.hpp"
 #include "doca-cpp/gpunetio/gpu_rdma_handler.hpp"
 #include "doca-cpp/gpunetio/gpu_stream_service.hpp"
-#include "doca-cpp/gpunetio/gpu_pipeline_control.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
 
 namespace doca::gpunetio
@@ -198,3 +200,5 @@ private:
 };
 
 }  // namespace doca::gpunetio
+
+#endif  // DOCA_CPP_ENABLE_GPUNETIO

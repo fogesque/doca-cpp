@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+
 #include <doca_gpunetio.h>
 
 #include <errors/errors.hpp>
@@ -69,3 +71,5 @@ private:
 };
 
 }  // namespace doca::gpunetio
+
+#endif  // DOCA_CPP_ENABLE_GPUNETIO

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+
 #include <cuda_runtime.h>
 
 #include <memory>
@@ -87,3 +89,5 @@ public:
 };
 
 }  // namespace doca::gpunetio
+
+#endif  // DOCA_CPP_ENABLE_GPUNETIO

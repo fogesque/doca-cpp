@@ -41,8 +41,6 @@ add_executable(${TARGET_NAME_SERVER}
 target_link_libraries(${TARGET_NAME_SERVER}
     PRIVATE
         doca-cpp
-        doca-cpp-gpunetio
-        CUDA::cudart
         CUDA::cufft
         errors::errors
         yaml-cpp::yaml-cpp

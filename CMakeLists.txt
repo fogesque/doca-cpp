@@ -99,8 +99,6 @@ if(BUILD_GPUNETIO)
             DOCA_CPP_ENABLE_GPUNETIO
     )
 
-    set(DOCA_CPP_GPUNETIO_TARGET doca-cpp-gpunetio)
-
     # CUDA configuration
     set(CUDA_ARCH_LIST 75 80 90)
 
@@ -114,7 +112,8 @@ if(BUILD_GPUNETIO)
 
     set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
 
-    set(DOCA_CPP_GPUNETIO_SOURCES
+    # Add GPU sources to the main doca-cpp target
+    target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_buffer_view.cpp
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_device.cpp
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_manager.cpp
@@ -128,19 +127,11 @@ if(BUILD_GPUNETIO)
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/kernels/client_kernel.cu
     )
 
-    add_library(${DOCA_CPP_GPUNETIO_TARGET}
-        ${DOCA_CPP_GPUNETIO_SOURCES}
-    )
-
-    add_library(${DOCA_CPP_GPUNETIO_TARGET}::${DOCA_CPP_GPUNETIO_TARGET} ALIAS ${DOCA_CPP_GPUNETIO_TARGET})
-
-    target_compile_features(${DOCA_CPP_GPUNETIO_TARGET} INTERFACE cxx_std_20)
-
-    target_compile_options(${DOCA_CPP_GPUNETIO_TARGET} PRIVATE
+    target_compile_options(${TARGET_NAME} PRIVATE
         $<$<COMPILE_LANGUAGE:C>:-Wno-missing-braces>
     )
 
-    set_target_properties(${DOCA_CPP_GPUNETIO_TARGET} PROPERTIES
+    set_target_properties(${TARGET_NAME} PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
         CUDA_STANDARD 20
@@ -149,49 +140,27 @@ if(BUILD_GPUNETIO)
     set_source_files_properties(
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/kernels/server_kernel.cu
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/kernels/client_kernel.cu
-        TARGET_DIRECTORY ${DOCA_CPP_GPUNETIO_TARGET}
+        TARGET_DIRECTORY ${TARGET_NAME}
         PROPERTIES LANGUAGE CUDA
     )
 
-
-    target_include_directories(${DOCA_CPP_GPUNETIO_TARGET}
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/doca-cpp/include>
-            $<INSTALL_INTERFACE:include>
+    target_link_libraries(${TARGET_NAME}
         PRIVATE
-            ${DOCA_INCLUDE_DIRS}
-    )
-
-    target_link_libraries(${DOCA_CPP_GPUNETIO_TARGET}
-        PUBLIC
-            ${TARGET_NAME}
-        PRIVATE
-            errors::errors
-            kvalog::kvalog
-            DOCA::common
-            DOCA::rdma
             DOCA::gpunetio
     )
 
-    target_link_libraries(${DOCA_CPP_GPUNETIO_TARGET}
+    target_link_libraries(${TARGET_NAME}
         PUBLIC
             -Wl,--whole-archive
             DOCA::gpunetio_device
             -Wl,--no-whole-archive
     )
 
-    target_link_libraries(${DOCA_CPP_GPUNETIO_TARGET}
+    target_link_libraries(${TARGET_NAME}
         PUBLIC
             CUDA::cudart
             CUDA::cuda_driver
     )
-
-    if(ENABLE_LOGGING)
-        target_compile_definitions(${DOCA_CPP_GPUNETIO_TARGET}
-            PUBLIC
-                DOCA_CPP_ENABLE_LOGGING
-        )
-    endif()
 endif()
 
 # Build samples and tests (optional, controlled by option)

@@ -32,11 +32,13 @@ RdmaStreamChain::Builder & RdmaStreamChain::Builder::AddServer(RdmaStreamServerP
     return *this;
 }
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
 RdmaStreamChain::Builder & RdmaStreamChain::Builder::AddServer(doca::gpunetio::GpuRdmaServerPtr server)
 {
     this->config.gpuServers.push_back(server);
     return *this;
 }
+#endif
 
 RdmaStreamChain::Builder & RdmaStreamChain::Builder::SetAggregateService(RdmaAggregateStreamServicePtr service)
 {
@@ -44,12 +46,14 @@ RdmaStreamChain::Builder & RdmaStreamChain::Builder::SetAggregateService(RdmaAgg
     return *this;
 }
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
 RdmaStreamChain::Builder & RdmaStreamChain::Builder::SetAggregateService(
     doca::gpunetio::GpuAggregateStreamServicePtr service)
 {
     this->config.gpuAggregateService = service;
     return *this;
 }
+#endif
 
 std::tuple<RdmaStreamChainPtr, error> RdmaStreamChain::Builder::Build()
 {
@@ -57,12 +61,19 @@ std::tuple<RdmaStreamChainPtr, error> RdmaStreamChain::Builder::Build()
         return { nullptr, this->buildErr };
     }
 
-    const auto totalServers = this->config.cpuServers.size() + this->config.gpuServers.size();
+    auto totalServers = this->config.cpuServers.size();
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+    totalServers += this->config.gpuServers.size();
+#endif
     if (totalServers == 0) {
         return { nullptr, errors::New("At least one server must be added to the chain") };
     }
 
-    if (!this->config.cpuAggregateService && !this->config.gpuAggregateService) {
+    if (!this->config.cpuAggregateService
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+        && !this->config.gpuAggregateService
+#endif
+    ) {
         return { nullptr, errors::New("Aggregate service must be set") };
     }
 
@@ -95,8 +106,12 @@ error RdmaStreamChain::Serve()
 
     this->running.store(true);
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
     DOCA_CPP_LOG_INFO(std::format("RdmaStreamChain starting with {} CPU servers and {} GPU servers",
                                   this->config.cpuServers.size(), this->config.gpuServers.size()));
+#else
+    DOCA_CPP_LOG_INFO(std::format("RdmaStreamChain starting with {} CPU servers", this->config.cpuServers.size()));
+#endif
 
     // Start all servers in separate threads
     this->startServers();
@@ -123,12 +138,14 @@ error RdmaStreamChain::Shutdown(const std::chrono::milliseconds & timeout)
         }
     }
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
     // Shutdown GPU servers
     for (auto & server : this->config.gpuServers) {
         if (server) {
             std::ignore = server->Shutdown(timeout);
         }
     }
+#endif
 
     return nullptr;
 }
@@ -145,6 +162,7 @@ void RdmaStreamChain::startServers()
         });
     }
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
     // Start GPU servers
     for (auto & server : this->config.gpuServers) {
         this->serverThreads.emplace_back([server]() {
@@ -154,6 +172,7 @@ void RdmaStreamChain::startServers()
             }
         });
     }
+#endif
 }
 
 }  // namespace doca::rdma

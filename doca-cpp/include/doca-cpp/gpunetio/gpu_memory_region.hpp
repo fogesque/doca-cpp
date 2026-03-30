@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <doca_gpunetio.h>
@@ -125,6 +127,8 @@ private:
 
 /// @brief Retrieves DMA buf file descriptor for GPU memory
 std::tuple<doca::DmaBufDescriptor, error> RetrieveDmaBufDescriptor(GpuDevicePtr gpuDevice,
-                                                                    doca::MemoryRangeHandle memoryHandle);
+                                                                   doca::MemoryRangeHandle memoryHandle);
 
 }  // namespace doca::gpunetio
+
+#endif  // DOCA_CPP_ENABLE_GPUNETIO
