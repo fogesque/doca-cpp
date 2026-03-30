@@ -95,16 +95,18 @@ RdmaPipeline::~RdmaPipeline()
 
 error RdmaPipeline::SetupCallbacks()
 {
+    const auto numBuffers = this->localPool->NumBuffers();
+
     // Set task completion callbacks on the engine (must be called before context start)
     if (this->direction == RdmaStreamDirection::write) {
-        auto err =
-            this->engine->SetWriteTaskCompletionCallbacks(RdmaPipeline::onWriteCompleted, RdmaPipeline::onWriteError);
+        auto err = this->engine->SetWriteTaskCompletionCallbacks(RdmaPipeline::onWriteCompleted,
+                                                                 RdmaPipeline::onWriteError, numBuffers);
         if (err) {
             return errors::Wrap(err, "Failed to set write task callbacks");
         }
     } else {
-        auto err =
-            this->engine->SetReadTaskCompletionCallbacks(RdmaPipeline::onReadCompleted, RdmaPipeline::onReadError);
+        auto err = this->engine->SetReadTaskCompletionCallbacks(RdmaPipeline::onReadCompleted,
+                                                                RdmaPipeline::onReadError, numBuffers);
         if (err) {
             return errors::Wrap(err, "Failed to set read task callbacks");
         }

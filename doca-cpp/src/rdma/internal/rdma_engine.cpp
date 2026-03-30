@@ -12,12 +12,6 @@ using doca::rdma::RdmaReceiveTaskPtr;
 using doca::rdma::RdmaSendTaskPtr;
 using doca::rdma::RdmaWriteTaskPtr;
 
-// TODO: check what num_tasks actually means in tasks set_conf() functions and make it configurable
-namespace constants
-{
-const size_t tasksNumber = 1;
-}  // namespace constants
-
 // ----------------------------------------------------------------------------
 // RdmaEngine::Builder
 // ----------------------------------------------------------------------------
@@ -223,14 +217,14 @@ error RdmaEngine::ListenToPort(uint16_t port)
 }
 
 error RdmaEngine::SetReceiveTaskCompletionCallbacks(ReceiveTaskCompletionCallback successCallback,
-                                                    ReceiveTaskCompletionCallback errorCallback)
+                                                    ReceiveTaskCompletionCallback errorCallback, uint32_t numTasks)
 {
     if (this->rdmaInstance == nullptr) {
         return errors::New("RDMA instance is not initialized");
     }
 
     auto err = FromDocaError(
-        doca_rdma_task_receive_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
+        doca_rdma_task_receive_set_conf(this->rdmaInstance, successCallback, errorCallback, numTasks));
     if (err) {
         return errors::Wrap(err, "Failed to set RDMA receive task callbacks");
     }
@@ -238,14 +232,14 @@ error RdmaEngine::SetReceiveTaskCompletionCallbacks(ReceiveTaskCompletionCallbac
 }
 
 error RdmaEngine::SetSendTaskCompletionCallbacks(SendTaskCompletionCallback successCallback,
-                                                 SendTaskCompletionCallback errorCallback)
+                                                 SendTaskCompletionCallback errorCallback, uint32_t numTasks)
 {
     if (this->rdmaInstance == nullptr) {
         return errors::New("RDMA instance is not initialized");
     }
 
     auto err = FromDocaError(
-        doca_rdma_task_send_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
+        doca_rdma_task_send_set_conf(this->rdmaInstance, successCallback, errorCallback, numTasks));
     if (err) {
         return errors::Wrap(err, "Failed to set RDMA send task callbacks");
     }
@@ -253,14 +247,14 @@ error RdmaEngine::SetSendTaskCompletionCallbacks(SendTaskCompletionCallback succ
 }
 
 error RdmaEngine::SetReadTaskCompletionCallbacks(ReadTaskCompletionCallback successCallback,
-                                                 ReadTaskCompletionCallback errorCallback)
+                                                 ReadTaskCompletionCallback errorCallback, uint32_t numTasks)
 {
     if (this->rdmaInstance == nullptr) {
         return errors::New("RDMA instance is not initialized");
     }
 
     auto err = FromDocaError(
-        doca_rdma_task_read_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
+        doca_rdma_task_read_set_conf(this->rdmaInstance, successCallback, errorCallback, numTasks));
     if (err) {
         return errors::Wrap(err, "Failed to set RDMA read task callbacks");
     }
@@ -268,14 +262,14 @@ error RdmaEngine::SetReadTaskCompletionCallbacks(ReadTaskCompletionCallback succ
 }
 
 error RdmaEngine::SetWriteTaskCompletionCallbacks(WriteTaskCompletionCallback successCallback,
-                                                  WriteTaskCompletionCallback errorCallback)
+                                                  WriteTaskCompletionCallback errorCallback, uint32_t numTasks)
 {
     if (this->rdmaInstance == nullptr) {
         return errors::New("RDMA instance is not initialized");
     }
 
     auto err = FromDocaError(
-        doca_rdma_task_write_set_conf(this->rdmaInstance, successCallback, errorCallback, constants::tasksNumber));
+        doca_rdma_task_write_set_conf(this->rdmaInstance, successCallback, errorCallback, numTasks));
     if (err) {
         return errors::Wrap(err, "Failed to set RDMA write task callbacks");
     }

@@ -93,19 +93,19 @@ public:
 
     /// @brief Sets Receive task completion callbacks
     error SetReceiveTaskCompletionCallbacks(ReceiveTaskCompletionCallback successCallback,
-                                            ReceiveTaskCompletionCallback errorCallback);
+                                            ReceiveTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets Send task completion callbacks
     error SetSendTaskCompletionCallbacks(SendTaskCompletionCallback successCallback,
-                                         SendTaskCompletionCallback errorCallback);
+                                         SendTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets Read task completion callbacks
     error SetReadTaskCompletionCallbacks(ReadTaskCompletionCallback successCallback,
-                                         ReadTaskCompletionCallback errorCallback);
+                                         ReadTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets Write task completion callbacks
     error SetWriteTaskCompletionCallbacks(WriteTaskCompletionCallback successCallback,
-                                          WriteTaskCompletionCallback errorCallback);
+                                          WriteTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets connection state changed callbacks
     error SetConnectionStateChangedCallbacks(const ConnectionCallbacks & callbacks);
