@@ -46,6 +46,33 @@
                 "BUILD_SAMPLES": "ON",
                 "VCPKG_MANIFEST_FEATURES": "testing;samples"
             }
+        },
+        {
+            "name": "amd64-cuda-linux-release",
+            "displayName": "AMD64 Linux Release with CUDA",
+            "inherits": [
+                "linux-base"
+            ],
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_GPUNETIO": "ON"
+            }
+        },
+        {
+            "name": "amd64-cuda-linux-debug",
+            "displayName": "AMD64 Linux Debug with CUDA",
+            "inherits": [
+                "linux-base"
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_GPUNETIO": "ON",
+                "BUILD_TESTS": "OFF",
+                "BUILD_SAMPLES": "ON",
+                "VCPKG_MANIFEST_FEATURES": "testing;samples"
+            }
         }
     ]
 }
