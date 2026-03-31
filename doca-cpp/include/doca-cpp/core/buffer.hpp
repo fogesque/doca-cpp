@@ -116,6 +116,9 @@ public:
 private:
     /// @brief Native DOCA structure
     doca_buf * buffer = nullptr;
+    // TODO: For debug purpose. Try to find better way to separate first Buffer usage from reuse
+    /// @brief Reuse option flag
+    bool reuseAllowed = false;
 };
 
 #pragma endregion

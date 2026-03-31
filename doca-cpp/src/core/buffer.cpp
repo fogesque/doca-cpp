@@ -80,6 +80,13 @@ error Buffer::ReuseByData(void * data, size_t length)
     if (this->buffer == nullptr) {
         return errors::New("Buffer is not initialized");
     }
+    // FIXME: Debug purpose. Bad code, see reuseAllowed in header file
+    // FIXME: This code makes first reuse call skip real reusing to allow us call Reuse even when using buffer first
+    // time
+    if (!this->reuseAllowed) {
+        this->reuseAllowed = true;
+        return nullptr;
+    }
     auto err = FromDocaError(doca_buf_inventory_buf_reuse_by_data(this->buffer, data, length));
     if (err) {
         return errors::Wrap(err, "Failed to reuse buffer by data");
@@ -91,6 +98,13 @@ error Buffer::ReuseByAddr(void * address, size_t length)
 {
     if (this->buffer == nullptr) {
         return errors::New("Buffer is not initialized");
+    }
+    // FIXME: Debug purpose. Bad code, see reuseAllowed in header file
+    // FIXME: This code makes first reuse call skip real reusing to allow us call Reuse even when using buffer first
+    // time
+    if (!this->reuseAllowed) {
+        this->reuseAllowed = true;
+        return nullptr;
     }
     auto err = FromDocaError(doca_buf_inventory_buf_reuse_by_addr(this->buffer, address, length));
     if (err) {
