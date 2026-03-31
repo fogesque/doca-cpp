@@ -32,9 +32,9 @@ public:
     {
         this->receivedBuffers.fetch_add(1, std::memory_order_relaxed);
         this->receivedBytes.fetch_add(buffer.Size(), std::memory_order_relaxed);
-        const auto size = buffer.Count<uint8_t>();
-        const auto * data = buffer.DataAs<uint8_t>();
-        auto toInt = [](const uint8_t element) { return static_cast<int>(element); };
+        const auto size = buffer.Count<uint32_t>();
+        const auto * data = buffer.DataAs<uint32_t>();
+        auto toInt = [](const uint32_t element) { return static_cast<int>(element); };
         std::println("Service: buffer data = {} {} {} ... {} {} {}", toInt(data[0]), toInt(data[1]), toInt(data[2]),
                      toInt(data[size - 3]), toInt(data[size - 2]), toInt(data[size - 1]));
     }

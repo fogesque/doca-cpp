@@ -554,10 +554,12 @@ void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskU
     if (*isControl) {
         auto * controlCtx = static_cast<ControlTaskContext *>(taskUserData.ptr);
         controlCtx->completed.store(true, std::memory_order_release);
+        DOCA_CPP_LOG_DEBUG(std::format("Control signal write task completion for group {}", controlCtx->groupIndex));
     } else {
         auto * dataCtx = static_cast<TaskContext *>(taskUserData.ptr);
         auto * pipeline = dataCtx->pipeline;
         pipeline->groupCompletedOps[dataCtx->groupIndex].fetch_add(1, std::memory_order_release);
+        DOCA_CPP_LOG_DEBUG(std::format("Write task completion for buffer {}", dataCtx->bufferIndex));
     }
 }
 
