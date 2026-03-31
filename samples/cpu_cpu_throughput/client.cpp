@@ -16,11 +16,12 @@ class TestDataProducer : public doca::rdma::IRdmaStreamService
 public:
     void OnBuffer(doca::rdma::RdmaBufferView buffer) override
     {
-        auto * data = buffer.DataAs<uint32_t>();
-        const auto count = buffer.Count<uint32_t>();
-        for (std::size_t i = 0; i < count; ++i) {
-            data[i] = static_cast<uint32_t>(i);
-        }
+        // NOTE: This buffer processing simulation significantly reduces throughput
+        // auto * data = buffer.DataAs<uint32_t>();
+        // const auto count = buffer.Count<uint32_t>();
+        // for (std::size_t i = 0; i < count; ++i) {
+        //     data[i] = static_cast<uint32_t>(i);
+        // }
 
         this->sentBuffers.fetch_add(1, std::memory_order_relaxed);
         this->sentBytes.fetch_add(buffer.Size(), std::memory_order_relaxed);
