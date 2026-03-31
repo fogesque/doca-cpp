@@ -14,10 +14,13 @@
 #include <array>
 #include <concepts>
 #include <cstdint>
+#include <cstdlib>
 #include <errors/errors.hpp>
 #include <memory>
+#include <new>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "doca-cpp/core/interfaces.hpp"
 
@@ -183,5 +186,54 @@ constexpr size_t supportedDeviceSize = 2;
  */
 template <typename T>
 concept BufferData = std::is_trivial_v<T> || std::is_same_v<T, std::byte>;
+
+namespace allocator
+{
+
+/// @brief Allocator that uses posix_memalign to allocate aligned memory
+/// @tparam T - Memory element type
+/// @tparam Alignment - alignment size in bytes
+template <typename T, std::size_t Alignment>
+struct AlignedAllocator {
+    using value_type = T;
+
+    AlignedAllocator() noexcept = default;
+    template <typename U>
+    AlignedAllocator(const AlignedAllocator<U, Alignment> &) noexcept
+    {
+    }
+
+    T * allocate(std::size_t n)
+    {
+        if (n == 0) {
+            return nullptr;
+        }
+        void * ptr = nullptr;
+        // Allocate aligned memory
+        if (posix_memalign(&ptr, Alignment, n * sizeof(T)) != 0) {
+            throw std::bad_alloc();
+        }
+        return reinterpret_cast<T *>(ptr);
+    }
+
+    void deallocate(T * p, std::size_t)
+    {
+        std::free(p);
+    }
+};
+
+// Проверка равенства аллокаторов
+template <typename T, typename U, std::size_t Align>
+bool operator==(const AlignedAllocator<T, Align> &, const AlignedAllocator<U, Align> &)
+{
+    return true;
+}
+
+template <typename T, typename U, std::size_t Align>
+bool operator!=(const AlignedAllocator<T, Align> &, const AlignedAllocator<U, Align> &)
+{
+    return false;
+}
+}  // namespace allocator
 
 }  // namespace doca

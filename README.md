@@ -1,226 +1,315 @@
 # doca-cpp
 
-C++ Adapter for NVIDIA DOCA Framework
+C++ High-Performance RDMA Streaming Framework built on NVIDIA DOCA SDK
 
 > **Note:** The library may be renamed in the future to a more generic name that does not reference DOCA directly.
 
 > **Note:** This repository is for experimenting, testing and demonstration purposes only. Yet it is not intended for production use.
 
-## Library Overview
+## Overview
 
-NVIDIA DOCA is a framework for network and data processing offloading. It consists of multiple libraries exposing C APIs. This repository provides C++ OOP wrappers around selected DOCA libraries so their functionality can be used easily from modern C++.
+doca-cpp is a C++23 framework that provides high-performance RDMA streaming for both CPU and GPU memory. The library wraps NVIDIA DOCA C APIs into modern C++ with RAII, Builder pattern, and zero-copy data transfer.
 
-Currently implemented:
-- **DOCA Common** — device management, memory mapping, task execution model
-- **DOCA RDMA** — RDMA operations (Write and Read) with a client-server architecture
+The framework was designed from scratch as a **streaming architecture** targeting line-rate throughput (37 Gbps on ConnectX-6 40G NIC). It eliminates the bottlenecks of traditional request-based RDMA approaches through pre-allocated tasks, callback-driven resubmission, and persistent GPU kernels.
 
-Planned:
-- **DOCA GPUNetIO** — GPU-accelerated networking where packets are delivered directly to GPU memory
+### Key Features
+
+- **Library-owned memory** — user specifies buffer count and size, library handles allocation, pinning, registration, and triple-buffering
+- **Split CPU/GPU type system** — `RdmaBufferView` (CPU, safe to dereference) vs `GpuBufferView` (GPU device pointer for CUDA APIs)
+- **Split service interfaces** — `IRdmaStreamService::OnBuffer(RdmaBufferView)` vs `IGpuRdmaStreamService::OnBuffer(GpuBufferView, cudaStream_t)`
+- **Pre-allocated pipeline** — all RDMA tasks allocated once, callback-driven resubmission in tight `pe_progress()` loop
+- **Persistent GPU kernels** — launched once, never relaunched, 0.1-1 us gap between rounds (vs 13-55 us with kernel relaunch)
+- **Cross-server aggregation** — `RdmaStreamChain` synchronizes N servers via `std::barrier` for per-buffer aggregate processing
+- **Zero-copy hot path** — NIC reads from pinned CPU memory via DMA, writes to GPU memory via PCIe/RDMA. No copies in the data path.
+
+## Architecture
+
+The library consists of two modules:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  doca-cpp (CPU)                                             │
+│                                                             │
+│  RdmaStreamServer / RdmaStreamClient                        │
+│  RdmaPipeline (callback-driven task resubmission)           │
+│  RdmaBufferPool (pinned CPU memory, DOCA mmap)              │
+│  RdmaSessionManager (TCP OOB descriptor exchange)           │
+│  RdmaStreamChain (cross-server aggregate)                   │
+│                                                             │
+│  Core DOCA wrappers: Device, MemoryMap, Buffer,             │
+│  BufferInventory, Context, ProgressEngine, RdmaEngine       │
+├─────────────────────────────────────────────────────────────┤
+│  doca-cpp-gpunetio (GPU, optional)                          │
+│                                                             │
+│  GpuRdmaServer / GpuRdmaClient                              │
+│  GpuRdmaPipeline (persistent kernel + PipelineControl)      │
+│  GpuMemoryRegion (GPU memory, DMA buf mapping)              │
+│  BufferArray / GpuBufferArray (device-side buffer handles)  │
+│  Persistent CUDA kernels (server + client)                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Streaming Model
+
+Every server and client operates on a `RdmaStreamConfig`:
+
+```cpp
+doca::rdma::RdmaStreamConfig config{
+    .numBuffers = 64,                                    // 3-128 buffers
+    .bufferSize = 32 * 1024 * 1024,                      // 32 MB per buffer
+    .direction  = doca::rdma::RdmaStreamDirection::write, // or ::read
+};
+```
+
+The library allocates one contiguous memory region, registers it with the DOCA device, and divides it into 3 groups for triple-buffering rotation:
+
+```
+Group 0: ██ RDMA ██│░░ Processing ░░│·· Ready ··│██ RDMA ██│░░ ...
+Group 1: ·· Ready ··│██ RDMA ██│░░ Processing ░░│·· Ready ··│██ ...
+Group 2: ░░ Processing ░░│·· Ready ··│██ RDMA ██│░░ Processing ░░│...
+```
+
+### Execution Flow
+
+```
+┌────────────────────┐                         ┌────────────────────┐
+│   CPU Client       │                         │   Server (CPU/GPU) │
+│                    │                         │                    │
+│ 1. Build client    │                         │ 1. Build server    │
+│ 2. Connect()       │── TCP connect ─────────►│ 2. Serve()         │
+│                    │                         │    AcceptOne()     │
+│                    │◄─ descriptor exchange ─►│                    │
+│                    │── RDMA CM connect ─────►│                    │
+│ 3. Start()         │                         │                    │
+│    submit tasks    │                         │    pipeline starts │
+│                    │                         │                    │
+│ ┌────────────────┐ │    RDMA write/read      │ ┌────────────────┐ │
+│ │ pe_progress()  │ │════════════════════════►│ │ pe_progress()  │ │
+│ │ tight loop     │ │    zero-copy DMA        │ │ or persistent  │ │
+│ │ callback       │ │                         │ │ GPU kernel     │ │
+│ │ resubmission   │ │                         │ │                │ │
+│ └────────────────┘ │                         │ │ OnBuffer()     │ │
+│                    │                         │ │ user service   │ │
+│ 4. Stop()          │                         │ └────────────────┘ │
+│ 5. Disconnect()    │                         │ Shutdown()         │
+└────────────────────┘                         └────────────────────┘
+```
+
+## Code Examples
+
+### CPU Write Stream: Client Sends Data to Server
+
+**Client — fills buffers with sensor data:**
+
+```cpp
+class SensorProducer : public doca::rdma::IRdmaStreamService {
+    void OnBuffer(doca::rdma::RdmaBufferView buffer) override {
+        auto * data = buffer.DataAs<float>();
+        sensor.ReadSamples(data, buffer.Count<float>());
+    }
+};
+
+auto [client, err] = doca::rdma::RdmaStreamClient::Create()
+    .SetDevice(device)
+    .SetRdmaStreamConfig({.numBuffers = 64, .bufferSize = 32_MB, .direction = write})
+    .SetService(std::make_shared<SensorProducer>(sensor))
+    .Build();
+
+client->Connect("192.168.1.100", 54321);
+client->Start();
+```
+
+**Server — processes received data:**
+
+```cpp
+class Processor : public doca::rdma::IRdmaStreamService {
+    void OnBuffer(doca::rdma::RdmaBufferView buffer) override {
+        auto samples = buffer.AsSpan<float>();
+        // Process received data...
+    }
+};
+
+auto [server, err] = doca::rdma::RdmaStreamServer::Create()
+    .SetDevice(device)
+    .SetListenPort(54321)
+    .SetRdmaStreamConfig({.numBuffers = 64, .bufferSize = 32_MB, .direction = write})
+    .SetService(std::make_shared<Processor>())
+    .Build();
+
+server->Serve();  // blocks, accepts clients
+```
+
+### GPU Server: CPU Client Writes, GPU Server Processes with cuFFT
+
+```cpp
+class GpuFftProcessor : public doca::gpunetio::IGpuRdmaStreamService {
+    cufftHandle plan;
+public:
+    void OnBuffer(doca::gpunetio::GpuBufferView buffer, cudaStream_t stream) override {
+        // buffer.Data() is GPU pointer — data arrived via RDMA Write
+        cufftSetStream(plan, stream);
+        cufftExecC2C(plan, buffer.DataAs<cufftComplex>(),
+                     buffer.DataAs<cufftComplex>(), CUFFT_FORWARD);
+        // Do NOT synchronize — library handles it
+    }
+};
+
+auto [server, err] = doca::gpunetio::GpuRdmaServer::Create()
+    .SetDevice(device)
+    .SetGpuDevice(gpuDevice)
+    .SetGpuPcieBdfAddress("41:00.0")
+    .SetListenPort(54321)
+    .SetStreamConfig({.numBuffers = 64, .bufferSize = 32_MB, .direction = write})
+    .SetService(std::make_shared<GpuFftProcessor>())
+    .Build();
+
+server->Serve();
+```
+
+The CPU client code is identical to the previous example — it doesn't know the server uses GPU memory.
+
+### Multi-Server StreamChain with Cross-Channel Aggregate
+
+4 GPU servers on different NICs, 4 CPU clients streaming sensor data. Per-channel cuFFT + cross-channel FBLMS aggregate:
+
+```cpp
+// Per-channel service: FFT on each buffer
+class ChannelFft : public doca::gpunetio::IGpuRdmaStreamService {
+    void OnBuffer(doca::gpunetio::GpuBufferView buffer, cudaStream_t stream) override {
+        cufftSetStream(plan, stream);
+        cufftExecC2C(plan, buffer.DataAs<cufftComplex>(),
+                     buffer.DataAs<cufftComplex>(), CUFFT_FORWARD);
+    }
+};
+
+// Aggregate service: FBLMS weight update across all channels
+class FblmsAggregate : public doca::gpunetio::IGpuAggregateStreamService {
+    void OnAggregate(std::span<doca::gpunetio::GpuBufferView> channels,
+                     cudaStream_t stream) override {
+        // channels.size() == 4 (one per server)
+        // Weighted sum, error computation, weight update via Thrust
+    }
+};
+
+// Create 4 GPU servers
+auto [server0, _] = doca::gpunetio::GpuRdmaServer::Create()
+    .SetDevice(dev0).SetGpuDevice(gpu).SetListenPort(54321)
+    .SetStreamConfig(config).SetService(fft).SetAggregateService(fblms).Build();
+// ... server1, server2, server3
+
+// Chain with aggregate
+auto [chain, err] = doca::rdma::RdmaStreamChain::Create()
+    .AddServer(server0).AddServer(server1)
+    .AddServer(server2).AddServer(server3)
+    .SetAggregateService(fblmsService)
+    .Build();
+
+chain->Serve();
+// Per buffer: 4x ChannelFft::OnBuffer (parallel) -> FblmsAggregate::OnAggregate
+```
+
+## Configuration
+
+All samples are configured via YAML files placed next to the executable:
+
+```yaml
+# cpu_cpu_throughput_configs.yaml
+sample:
+  log-level: 3           # Off:0 Trace:1 Debug:2 Info:3 Warning:4 Error:5 Critical:6
+  doca-log-level: 0
+  measurement-duration: 10
+
+stream:
+  num-buffers: 64
+  buffer-size: 33554432   # 32 MB
+
+server:
+  device: "mlx5_0"
+  port: 54321
+
+client:
+  device: "mlx5_1"
+  server-ipv4: "192.168.88.20"
+  server-port: 54321
+```
 
 ## Prerequisites
 
 A DOCA-compatible Linux operating system and kernel are required. Refer to [NVIDIA DOCA Documentation](https://docs.nvidia.com/doca/sdk/doca-framework/index.html) for supported OS and kernel versions.
 
-To build the library and samples, make sure you have:
+To build the library and samples:
 
 * CMake (3.20+), Ninja, vcpkg
-* GCC-14+
-* DOCA libraries:
-  - DOCA Common
-  - DOCA RDMA
+* GCC-14+ with C++23 support
+* DOCA libraries: DOCA Common, DOCA RDMA
+* *Optional for GPU module:* CUDA Toolkit 13.0+, DOCA GPUNetIO
 
 DOCA libraries can be installed via the `doca-networking` installation profile. Refer to [NVIDIA DOCA Documentation](https://docs.nvidia.com/doca/sdk/doca-framework/index.html) for details.
 
-The library has been tested on `amd64` with Ubuntu 24.04 and Linux Kernel 6.8.0-31, using two ConnectX-6 DX SmartNIC devices. DOCA versions 3.0.0 through 3.2.0 were used.
+The library has been tested on `amd64` with Ubuntu 24.04 and Linux Kernel 6.8.0-31, using ConnectX-6 DX SmartNIC devices and NVIDIA RTX 5000 Ada GPU devices.
 
 ## Build
 
 ### Install Overlay Ports
 
-The library depends on custom C++ packages distributed via a vcpkg overlay. To make vcpkg install them automatically during CMake configuration:
+The library depends on custom C++ packages distributed via a vcpkg overlay:
 
 ```bash
 cd <your_directory>
 git clone https://github.com/fogesque/vcpkg-ports.git
-export VCPKG_OVERLAY_PORTS="<your_directory>/vcpkg-ports"  # Or add to ~/.profile or ~/.bashrc
+export VCPKG_OVERLAY_PORTS="<your_directory>/vcpkg-ports"
 ```
 
-### Build the Library
+### Build the Library (CPU only)
 
 ```bash
 cmake -S . -B build --preset amd64-linux-debug
 cmake --build build --target doca-cpp
 ```
 
-### Build Samples
-
-Samples require additional dependencies (e.g., `yaml-cpp`). Enable or disable it by editing CMakePresets.json.
+### Build with GPU Module
 
 ```bash
-cmake -S . -B build --preset amd64-linux-debug
-cmake --build build --target <sample_name>
+cmake -S . -B build --preset amd64-linux-debug -DBUILD_GPUNETIO=ON
+cmake --build build --target doca-cpp-gpunetio
+```
+
+### Build Samples
+
+```bash
+cmake -S . -B build --preset amd64-linux-debug -DBUILD_SAMPLES=ON -DBUILD_GPUNETIO=ON
+cmake --build build
 ```
 
 Available samples:
-- `rdma_client_server` — RDMA client and server communicating via Write/Read operations
-- `device_discovery` — enumerates available DOCA devices and their properties
 
-## Library Development Notes
+| Sample | Description | Requires GPU |
+|--------|-------------|:---:|
+| `cpu_cpu_throughput` | CPU client + CPU server throughput benchmark | No |
+| `cpu_gpu_throughput` | CPU client + GPU server throughput benchmark | Yes |
+| `fblms_streaming` | 4-channel FBLMS with StreamChain (cuFFT + Thrust) | Yes |
+| `device_discovery` | Enumerates available DOCA devices | No |
 
-### DOCA Background
+## DOCA Background
 
 DOCA Common provides foundational abstractions: `Device` (network device), `MemoryMap` (grants device access to memory), `Buffer` / `BufferInventory` (memory region management), `ProgressEngine` (polls asynchronous task completions), and `Context` (connects tasks to the execution environment).
 
-DOCA RDMA builds on top of these, providing RDMA operations and connection management via RDMA CM (Connection Manager). The library focuses on **Write** and **Read** operations, which allow one-sided data transfer without requiring a matching task on the remote peer. The Requester must obtain a memory descriptor from the Responder before issuing a Write or Read.
+DOCA RDMA builds on top of these, providing RDMA operations and connection management via RDMA CM (Connection Manager). The library uses **Write** and **Read** operations for one-sided data transfer without requiring a matching task on the remote peer.
 
 | Task  | Data Direction                      |
 |:------|:------------------------------------|
-| Write | Write Requester → Write Responder   |
-| Read  | Read Responder → Read Requester     |
+| Write | Write Requester -> Write Responder  |
+| Read  | Read Responder -> Read Requester    |
 
-> **Note:** RDMA Send/Receive operations and multiple simultaneous connections have been deprecated in the current version. The library now exclusively uses Write and Read for data transfer.
+DOCA GPUNetIO extends this with GPU-direct RDMA, where the NIC reads/writes directly to GPU device memory via PCIe DMA, enabling zero-copy GPU processing of RDMA data.
 
-## Architecture Overview
-
-The library is organized into three layers:
-
-1. **High-Level API** — user-facing classes for building RDMA applications
-2. **Internal Logic** — execution engine, session management, communication protocol
-3. **DOCA C Wrappers** — thin RAII wrappers around DOCA C structures
-
-### High-Level API
-
-The public API consists of four main components:
-
-**`RdmaServer`** listens for client connections and processes RDMA requests according to registered endpoints. Created via a builder:
-
-```cpp
-auto [server, err] = doca::rdma::RdmaServer::Create()
-    .SetDevice(device)
-    .SetListenPort(12345)
-    .Build();
-```
-
-**`RdmaClient`** connects to a server and requests RDMA operations on specific endpoints:
-
-```cpp
-auto [client, err] = doca::rdma::RdmaClient::Create(device);
-client->Connect(serverAddress, serverPort);
-client->RequestEndpointProcessing(endpointId);
-```
-
-**`RdmaEndpoint`** represents a named RDMA operation with an associated memory buffer. Each endpoint has a path (a URI-like identifier such as `/rdma/ep0`) and a type (`write` or `read`). Two endpoints may share the same path but differ in type, meaning the same buffer can be used for both writing and reading. Created via a builder:
-
-```cpp
-auto [ep, err] = doca::rdma::RdmaEndpoint::Create()
-    .SetDevice(device)
-    .SetPath("/rdma/ep0")
-    .SetType(doca::rdma::RdmaEndpointType::write)
-    .SetBuffer(buffer)
-    .Build();
-```
-
-**`IRdmaService`** is an abstract interface that users implement to process endpoint buffers. Services are registered on endpoints and called by the library at the appropriate point during request processing:
-
-```cpp
-class IRdmaService
-{
-public:
-    virtual error Handle(RdmaBufferPtr buffer) = 0;
-};
-```
-
-For Write endpoints, the service handler is called on the server side **after** the client writes data. For Read endpoints, the handler is called on the server side **before** the client reads data, allowing the server to populate the buffer.
-
-### Endpoint Specification
-
-Endpoints are defined in code (auto-generation from a YAML specification is planned). A sample configuration:
-
-```yaml
-endpoints:
-  - path: /rdma/ep0
-    type: write
-    buffer:
-      size: 4194304  # 4 MB
-
-  - path: /rdma/ep0
-    type: read
-    buffer:
-      size: 4194304  # 4 MB
-```
-
-### Sample Configuration
-
-Both the server and client are configured via a YAML file:
-
-```yaml
-sample:
-  log-level: 3  # Off:0 Trace:1 Debug:2 Info:3 Warning:4 Error:5 Critical:6
-
-server:
-  device: "mlx5_0"
-  ipv4: "192.168.88.20"
-  port: 12345
-
-client:
-  device: "mlx5_0"
-```
-
-### Execution Model
-
-The library uses a hybrid communication model:
-
-- **Control channel (TCP)** — an out-of-band TCP connection (via Asio) on port 41007 carries protocol messages: requests, responses (including memory descriptors), and acknowledgements.
-- **Data channel (RDMA)** — actual data transfer happens over RDMA using RoCEv2 via the RDMA Connection Manager.
-
-When a client requests an endpoint operation, the following protocol is executed:
-
-**Write request flow:**
+## Zero-Copy Data Path
 
 ```
-      server              client
-        |                   |
-        |  <-- TCP request (write) --
-        |                   |
-        | -- TCP response (descriptor) -->
-        |                   |
-        |  <-- RDMA write --
-        |                   |
-   user handler             |
-  processes data            |
-        |                   |
-        |  <-- TCP acknowledge --
-        |                   |
+Sensor HW -> CPU buffer (pinned) -> NIC DMA read -> RDMA write -> GPU buffer -> cuFFT -> Aggregate
+                                      ^                              ^
+                                      |                              |
+                               no CPU copy                    no GPU copy
+                               NIC reads directly             service operates on
+                               from pinned memory             RDMA destination memory
 ```
-
-**Read request flow:**
-
-```
-      server              client
-        |                   |
-        |  <-- TCP request (read) --
-        |                   |
-   user handler             |
-  populates data            |
-        |                   |
-        | -- TCP response (descriptor) -->
-        |                   |
-        | -- RDMA read -->  |
-        |                   |
-        |  <-- TCP acknowledge --
-        |                   |
-```
-
-The `RdmaExecutor` is an internal component that manages the DOCA RDMA engine, progress engine, and a worker thread. It receives operation requests via a queue, allocates RDMA tasks, and polls for their completion. The `RdmaSession` classes (server and client variants) handle the TCP protocol using Asio coroutines.
-
-### DOCA C Wrappers
-
-The wrapper layer provides RAII classes that mirror DOCA C API modules. Each wrapper manages resource lifetime through smart pointers with custom deleters, covering `Device`, `MemoryMap`, `Buffer`, `BufferInventory`, `Context`, and `ProgressEngine`.
-
-## Future Plans
-
-1. Experiment with buffer sizes and run performance benchmarks
-2. Support point-to-point connections over RoCEv1 with out-of-band connection descriptor exchange
-3. Exchange descriptors at connection establishment rather than per request
-4. Auto-generate client and server code from a YAML specification
-5. Develop **DOCA GPUNetIO** wrappers for GPU-direct packet processing

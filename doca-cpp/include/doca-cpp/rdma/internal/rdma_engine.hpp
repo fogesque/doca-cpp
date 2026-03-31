@@ -2,6 +2,10 @@
 
 #include <doca_rdma.h>
 
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+#include "doca-cpp/gpunetio/gpu_device.hpp"
+#endif
+
 #include <chrono>
 #include <functional>
 #include <limits>
@@ -89,19 +93,19 @@ public:
 
     /// @brief Sets Receive task completion callbacks
     error SetReceiveTaskCompletionCallbacks(ReceiveTaskCompletionCallback successCallback,
-                                            ReceiveTaskCompletionCallback errorCallback);
+                                            ReceiveTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets Send task completion callbacks
     error SetSendTaskCompletionCallbacks(SendTaskCompletionCallback successCallback,
-                                         SendTaskCompletionCallback errorCallback);
+                                         SendTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets Read task completion callbacks
     error SetReadTaskCompletionCallbacks(ReadTaskCompletionCallback successCallback,
-                                         ReadTaskCompletionCallback errorCallback);
+                                         ReadTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets Write task completion callbacks
     error SetWriteTaskCompletionCallbacks(WriteTaskCompletionCallback successCallback,
-                                          WriteTaskCompletionCallback errorCallback);
+                                          WriteTaskCompletionCallback errorCallback, uint32_t numTasks);
 
     /// @brief Sets connection state changed callbacks
     error SetConnectionStateChangedCallbacks(const ConnectionCallbacks & callbacks);
@@ -185,6 +189,16 @@ public:
         Builder & SetGidIndex(uint32_t gidIndex);
         /// @brief Sets RDMA transport type
         Builder & SetTransportType(TransportType type);
+        /// @brief Sets send queue size (determines max in-flight write/send tasks)
+        Builder & SetSendQueueSize(uint32_t sendQueueSize);
+        /// @brief Sets receive queue size (determines max in-flight receive tasks)
+        Builder & SetReceiveQueueSize(uint32_t receiveQueueSize);
+#ifdef DOCA_CPP_ENABLE_GPUNETIO
+        /// @brief Enables GPU data path for this RDMA context (required for GPU RDMA)
+        Builder & SetDataPathOnGpu(doca::gpunetio::GpuDevicePtr gpuDevice);
+#endif
+        /// @brief Enables or disables Global Routing Header
+        Builder & SetGrhEnabled(bool grhEnabled);
 
         /// [Construction & Destruction]
 

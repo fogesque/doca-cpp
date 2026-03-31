@@ -31,14 +31,11 @@ using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
 /// Buffer wrappers DOCA buffer structure that points to user's allocated memory region.
 /// Buffer objects are needed to submit DOCA tasks to hardware.
 ///
-class Buffer
+class Buffer : public IDestroyable
 {
 public:
     /// [Fabric Methods]
 
-    /// @brief Creates buffer reference which means destructor won't destroy native buffer
-    /// @warning Since method gives native pointer to DOCA structure use with caution
-    static BufferPtr CreateRef(doca_buf * nativeBuffer);
     /// @brief Creates buffer instance
     /// @warning Since method gives native pointer to DOCA structure use with caution
     static BufferPtr Create(doca_buf * nativeBuffer);
@@ -55,6 +52,13 @@ public:
     /// @brief Gets memory region which buffer points to as std::vector
     /// @warning Since method gives vector pointing to memory use with caution
     std::tuple<std::vector<std::byte>, error> GetBytes();
+
+    /// [Buffer Reuse]
+
+    /// @brief Reuses buffer by resetting its data pointer (for local/source buffers)
+    error ReuseByData(void * data, size_t length);
+    /// @brief Reuses buffer by resetting its address pointer (for remote/destination buffers)
+    error ReuseByAddr(void * address, size_t length);
 
     /// [Property Setters]
 
@@ -76,6 +80,9 @@ public:
     std::tuple<uint16_t, error> DecRefcount();
     /// @brief Gets reference count for buffer
     std::tuple<uint16_t, error> GetRefcount() const;
+
+    /// @brief Destroys buffer decrementing its reference count
+    error Destroy() override final;
 
     /// [Unsafe]
 
@@ -102,13 +109,16 @@ public:
     /// @warning Avoid using this constructor since class has static fabric methods
     explicit Buffer(doca_buf * nativeBuffer);
     /// @brief Destructor
-    ~Buffer() = default;
+    ~Buffer();
 
 #pragma endregion
 
 private:
     /// @brief Native DOCA structure
     doca_buf * buffer = nullptr;
+    // TODO: For debug purpose. Try to find better way to separate first Buffer usage from reuse
+    /// @brief Reuse option flag
+    bool reuseAllowed = false;
 };
 
 #pragma endregion
