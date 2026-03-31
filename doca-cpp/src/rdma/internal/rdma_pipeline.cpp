@@ -371,11 +371,11 @@ void RdmaPipeline::clientLoop()
         DOCA_CPP_LOG_DEBUG("Waiting for server doorbell...");
 
         // 1. Wait for server doorbell (RdmaPosted written by server into our control)
+        // Note: only progressLoop thread calls Progress() — this thread just polls flags
         while (this->running.load(std::memory_order_relaxed)) {
             if (group->state == flags::RdmaPosted) {
                 break;
             }
-            this->progressEngine->Progress();
             std::this_thread::yield();
         }
 
@@ -431,11 +431,12 @@ void RdmaPipeline::clientLoop()
         DOCA_CPP_LOG_DEBUG("Waiting for all writes complete...");
 
         // 4. Wait for all writes in this group to complete (callbacks increment counter)
+        // Note: only progressLoop thread calls Progress() — this thread just polls counter
         while (this->running.load(std::memory_order_relaxed)) {
-            this->progressEngine->Progress();
             if (this->groupCompletedOps[nextGroup].load(std::memory_order_acquire) >= groupCount) {
                 break;
             }
+            std::this_thread::yield();
         }
 
         if (!this->running.load(std::memory_order_relaxed)) {
@@ -463,11 +464,11 @@ void RdmaPipeline::clientLoop()
         DOCA_CPP_LOG_DEBUG("Waiting for server to release group...");
 
         // 6. Wait for server to release (server sets Released after processing)
+        // Note: only progressLoop thread calls Progress() — this thread just polls flags
         while (this->running.load(std::memory_order_relaxed)) {
             if (group->state == flags::Released) {
                 break;
             }
-            this->progressEngine->Progress();
             std::this_thread::yield();
         }
 
@@ -507,7 +508,7 @@ error RdmaPipeline::signalPeer(uint32_t groupIndex)
 
     // Wait for previous signal on this group to complete before reusing
     while (!controlCtx.completed.load(std::memory_order_acquire)) {
-        this->progressEngine->Progress();
+        std::this_thread::yield();
     }
 
     // Reuse the local control buffer (source) to pick up latest GroupControl state
