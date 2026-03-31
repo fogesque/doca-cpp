@@ -19,10 +19,11 @@ using ResourceScopePtr = std::shared_ptr<ResourceScope>;
 /// @brief Resource tiers define the teardown order. Lower tier = stopped/destroyed first
 enum class ResourceTier : uint8_t {
     rdmaContext = 0,
-    bufferInventory = 1,
-    memoryMap = 2,
-    rdmaEngine = 3,
-    progressEngine = 4,
+    buffer = 1,
+    bufferInventory = 2,
+    memoryMap = 3,
+    rdmaEngine = 4,
+    progressEngine = 5,
 };
 
 ///

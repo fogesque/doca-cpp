@@ -26,6 +26,8 @@ const std::string ResourceTierName(ResourceTier tier)
             return "rdmaContext";
         case ResourceTier::bufferInventory:
             return "bufferInventory";
+        case ResourceTier::buffer:
+            return "buffer";
         case ResourceTier::memoryMap:
             return "memoryMap";
         case ResourceTier::rdmaEngine:
