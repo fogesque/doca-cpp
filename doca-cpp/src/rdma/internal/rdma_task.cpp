@@ -57,7 +57,7 @@ std::tuple<doca::BufferPtr, error> RdmaSendTask::GetBuffer(RdmaTaskBufferType ty
 
     auto nativeBuffer = doca_rdma_task_send_get_src_buf(this->task);
 
-    auto buffer = doca::Buffer::CreateRef(const_cast<doca_buf *>(nativeBuffer));
+    auto buffer = doca::Buffer::Create(const_cast<doca_buf *>(nativeBuffer));
     return { buffer, nullptr };
 }
 
@@ -128,7 +128,7 @@ std::tuple<doca::BufferPtr, error> RdmaReceiveTask::GetBuffer(RdmaTaskBufferType
 
     auto nativeBuffer = doca_rdma_task_receive_get_dst_buf(this->task);
 
-    auto buffer = doca::Buffer::CreateRef(nativeBuffer);
+    auto buffer = doca::Buffer::Create(nativeBuffer);
 
     return { buffer, nullptr };
 }
@@ -213,7 +213,7 @@ std::tuple<doca::BufferPtr, error> RdmaWriteTask::GetBuffer(RdmaTaskBufferType t
     }
     nativeBuffer = doca_rdma_task_write_get_dst_buf(this->task);
 
-    auto buffer = doca::Buffer::CreateRef(const_cast<doca_buf *>(nativeBuffer));
+    auto buffer = doca::Buffer::Create(const_cast<doca_buf *>(nativeBuffer));
     return { buffer, nullptr };
 }
 
@@ -286,7 +286,7 @@ std::tuple<doca::BufferPtr, error> RdmaReadTask::GetBuffer(RdmaTaskBufferType ty
     }
     nativeBuffer = doca_rdma_task_read_get_dst_buf(this->task);
 
-    auto buffer = doca::Buffer::CreateRef(const_cast<doca_buf *>(nativeBuffer));
+    auto buffer = doca::Buffer::Create(const_cast<doca_buf *>(nativeBuffer));
     return { buffer, nullptr };
 }
 

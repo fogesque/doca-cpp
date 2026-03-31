@@ -276,7 +276,8 @@ error RdmaStreamServer::handleClient(uint32_t connectionIndex)
                                    .SetPermissions(permissions)
                                    .SetMaxNumConnections(1)
                                    .SetTransportType(TransportType::rc)
-                                   .SetSendQueueSize(sendQueueSize)
+                                   //    .SetSendQueueSize(sendQueueSize)
+                                   .SetSendQueueSize(128)
                                    .Build();
     if (engineErr) {
         return errors::Wrap(engineErr, "Failed to create RDMA engine");

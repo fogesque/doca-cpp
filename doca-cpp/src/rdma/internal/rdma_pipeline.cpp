@@ -84,8 +84,8 @@ std::tuple<RdmaPipelinePtr, error> RdmaPipeline::Builder::Build()
 // ─────────────────────────────────────────────────────────
 
 RdmaPipeline::RdmaPipeline(const Config & config)
-    : role(config.role), localPool(config.localPool), engine(config.engine),
-      progressEngine(config.progressEngine), connection(config.connection), service(config.service)
+    : role(config.role), localPool(config.localPool), engine(config.engine), progressEngine(config.progressEngine),
+      connection(config.connection), service(config.service)
 {
 }
 
@@ -103,8 +103,8 @@ error RdmaPipeline::SetupCallbacks()
         numTasks += this->localPool->NumBuffers();
     }
 
-    auto err = this->engine->SetWriteTaskCompletionCallbacks(RdmaPipeline::onWriteCompleted,
-                                                             RdmaPipeline::onWriteError, numTasks);
+    auto err = this->engine->SetWriteTaskCompletionCallbacks(RdmaPipeline::onWriteCompleted, RdmaPipeline::onWriteError,
+                                                             numTasks);
     if (err) {
         return errors::Wrap(err, "Failed to set write task callbacks");
     }
@@ -182,8 +182,8 @@ error RdmaPipeline::Initialize()
     }
 
     const auto totalTasks = (this->role == PipelineRole::client ? numBuffers : 0) + NumBufferGroups;
-    DOCA_CPP_LOG_INFO(std::format("Pipeline initialized: {} tasks pre-allocated, role={}",
-                                  totalTasks, this->role == PipelineRole::server ? "server" : "client"));
+    DOCA_CPP_LOG_INFO(std::format("Pipeline initialized: {} tasks pre-allocated, role={}", totalTasks,
+                                  this->role == PipelineRole::server ? "server" : "client"));
     return nullptr;
 }
 
@@ -277,6 +277,10 @@ void RdmaPipeline::serverLoop()
     while (this->running.load(std::memory_order_relaxed)) {
         auto * group = &control->groups[nextGroup];
 
+        DOCA_CPP_LOG_DEBUG(std::format("----- PROCESSING GROUP {} -----", nextGroup));
+
+        DOCA_CPP_LOG_DEBUG("Signal doorbell...");
+
         // 1. Signal client that this group is ready for RDMA writes
         group->state = flags::RdmaPosted;
         auto err = this->signalPeer(nextGroup);
@@ -284,6 +288,10 @@ void RdmaPipeline::serverLoop()
             DOCA_CPP_LOG_ERROR(std::format("Failed to signal peer for group {}", nextGroup));
             break;
         }
+
+        DOCA_CPP_LOG_DEBUG("Sent doorbell");
+
+        DOCA_CPP_LOG_DEBUG("Waiting for all RDMA writes complete...");
 
         // 2. Wait for client to signal RdmaComplete (client RDMA-writes to our control)
         while (this->running.load(std::memory_order_relaxed)) {
@@ -296,6 +304,10 @@ void RdmaPipeline::serverLoop()
         if (!this->running.load(std::memory_order_relaxed)) {
             break;
         }
+
+        DOCA_CPP_LOG_DEBUG("All RDMA writes completed");
+
+        DOCA_CPP_LOG_DEBUG("Calling all services...");
 
         // 3. Process buffers in this group
         group->state = flags::Processing;
@@ -311,10 +323,14 @@ void RdmaPipeline::serverLoop()
             }
         }
 
+        DOCA_CPP_LOG_DEBUG("Services completed");
+
         // Update statistics
         const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
         this->stats.completedOps.fetch_add(groupCount, std::memory_order_relaxed);
         this->stats.totalBytes.fetch_add(groupCount * this->localPool->BufferSize(), std::memory_order_relaxed);
+
+        DOCA_CPP_LOG_DEBUG("Releasing group with signal...");
 
         // 4. Release group and signal client
         group->state = flags::Released;
@@ -324,6 +340,8 @@ void RdmaPipeline::serverLoop()
         if (err) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to signal Released for group {}", nextGroup));
         }
+
+        DOCA_CPP_LOG_DEBUG("Server released group");
 
         // Advance to next group
         nextGroup = (nextGroup + 1) % NumBufferGroups;
@@ -348,6 +366,10 @@ void RdmaPipeline::clientLoop()
     while (this->running.load(std::memory_order_relaxed)) {
         auto * group = &control->groups[nextGroup];
 
+        DOCA_CPP_LOG_DEBUG(std::format("----- PROCESSING GROUP {} -----", nextGroup));
+
+        DOCA_CPP_LOG_DEBUG("Waiting for server doorbell...");
+
         // 1. Wait for server doorbell (RdmaPosted written by server into our control)
         while (this->running.load(std::memory_order_relaxed)) {
             if (group->state == flags::RdmaPosted) {
@@ -361,9 +383,13 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
+        DOCA_CPP_LOG_DEBUG("Got server doorbell");
+
         // 2. Invoke user service to fill buffers before sending
         const auto groupStart = GetGroupStartIndex(numBuffers, nextGroup);
         const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
+
+        DOCA_CPP_LOG_DEBUG("Calling all services...");
 
         if (this->service) {
             for (uint32_t i = 0; i < groupCount; ++i) {
@@ -373,29 +399,36 @@ void RdmaPipeline::clientLoop()
             }
         }
 
+        DOCA_CPP_LOG_DEBUG("Services completed");
+
         // 3. Reset completion counter and submit RDMA writes for all buffers in group
         this->groupCompletedOps[nextGroup].store(0, std::memory_order_release);
+
+        DOCA_CPP_LOG_DEBUG("Submitting writes...");
 
         for (uint32_t i = 0; i < groupCount; ++i) {
             const auto bufIndex = groupStart + i;
             auto & ctx = this->dataTaskContexts[bufIndex];
 
             // Reuse buffers (skip on first round — buffers are fresh from allocation)
-            if (group->roundIndex > 0) {
-                auto localBuffer = this->localPool->GetDocaBuffer(bufIndex);
-                auto localAddr = this->localPool->GetLocalBufferAddress(bufIndex);
-                std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
 
-                auto remoteBuffer = this->localPool->GetRemoteDocaBuffer(bufIndex);
-                auto remoteAddr = this->localPool->GetRemoteBufferAddress(bufIndex);
-                std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
-            }
+            auto localBuffer = this->localPool->GetDocaBuffer(bufIndex);
+            auto localAddr = this->localPool->GetLocalBufferAddress(bufIndex);
+            std::ignore = localBuffer->ReuseByData(localAddr, bufferSize);
+
+            auto remoteBuffer = this->localPool->GetRemoteDocaBuffer(bufIndex);
+            auto remoteAddr = this->localPool->GetRemoteBufferAddress(bufIndex);
+            std::ignore = remoteBuffer->ReuseByAddr(remoteAddr, bufferSize);
 
             auto err = ctx.writeTask->Submit();
             if (err) {
                 DOCA_CPP_LOG_ERROR(std::format("Failed to submit write task for buffer {}", bufIndex));
             }
         }
+
+        DOCA_CPP_LOG_DEBUG("All writes submitted");
+
+        DOCA_CPP_LOG_DEBUG("Waiting for all writes complete...");
 
         // 4. Wait for all writes in this group to complete (callbacks increment counter)
         while (this->running.load(std::memory_order_relaxed)) {
@@ -409,6 +442,10 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
+        DOCA_CPP_LOG_DEBUG("All writes completed");
+
+        DOCA_CPP_LOG_DEBUG("Signal peer that RDMA completed...");
+
         // 5. Signal server that writes are complete
         group->state = flags::RdmaComplete;
         auto err = this->signalPeer(nextGroup);
@@ -417,9 +454,13 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
+        DOCA_CPP_LOG_DEBUG("Signal peer completed");
+
         // Update statistics
         this->stats.completedOps.fetch_add(groupCount, std::memory_order_relaxed);
         this->stats.totalBytes.fetch_add(groupCount * bufferSize, std::memory_order_relaxed);
+
+        DOCA_CPP_LOG_DEBUG("Waiting for server to release group...");
 
         // 6. Wait for server to release (server sets Released after processing)
         while (this->running.load(std::memory_order_relaxed)) {
@@ -429,6 +470,8 @@ void RdmaPipeline::clientLoop()
             this->progressEngine->Progress();
             std::this_thread::yield();
         }
+
+        DOCA_CPP_LOG_DEBUG("Server released group");
 
         group->roundIndex++;
 
@@ -471,19 +514,26 @@ error RdmaPipeline::signalPeer(uint32_t groupIndex)
     auto localControlBuf = this->localPool->GetLocalControlBuffer(groupIndex);
     auto * control = this->localPool->GetPipelineControl();
     auto * localGroupAddr = reinterpret_cast<uint8_t *>(&control->groups[groupIndex]);
-    std::ignore = localControlBuf->ReuseByData(localGroupAddr, sizeof(GroupControl));
+    auto err = localControlBuf->ReuseByData(localGroupAddr, sizeof(GroupControl));
+    if (err) {
+        return errors::Wrapf(err, "Failed to reuse local control buffer for group {}", groupIndex);
+    }
 
     // Reuse the remote control buffer (destination)
     auto remoteControlBuf = this->localPool->GetRemoteControlBuffer(groupIndex);
-    auto [remoteData, remoteDataErr] = remoteControlBuf->GetData();
-    if (!remoteDataErr && remoteData) {
-        std::ignore = remoteControlBuf->ReuseByAddr(remoteData, sizeof(GroupControl));
+    auto [remoteData, remErr] = remoteControlBuf->GetData();
+    if (remErr || remoteData == nullptr) {
+        return errors::Wrapf(remErr, "Failed to get data of remote control buffer for group {}", groupIndex);
+    }
+    err = remoteControlBuf->ReuseByAddr(remoteData, sizeof(GroupControl));
+    if (err) {
+        return errors::Wrapf(err, "Failed to reuse remote control buffer for group {}", groupIndex);
     }
 
     // Mark as in-flight and resubmit the pre-allocated control task
     controlCtx.completed.store(false, std::memory_order_release);
 
-    auto err = controlCtx.writeTask->Submit();
+    err = controlCtx.writeTask->Submit();
     if (err) {
         controlCtx.completed.store(true, std::memory_order_release);
         return errors::Wrap(err, "Failed to submit control signal write task");

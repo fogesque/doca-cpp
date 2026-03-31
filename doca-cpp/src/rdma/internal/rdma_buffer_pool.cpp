@@ -73,21 +73,22 @@ error RdmaBufferPool::initialize()
 {
     this->totalMemorySize = static_cast<std::size_t>(this->streamConfig.numBuffers) * this->streamConfig.bufferSize;
 
+    // FIXME: Aligned memory conversion to vector
     // Allocate aligned pinned CPU memory
-    auto alignResult = posix_memalign(&this->rawMemory, CpuMemoryAlignment, this->totalMemorySize);
-    if (alignResult != 0 || !this->rawMemory) {
-        return errors::Errorf("Failed to allocate {} bytes of aligned memory", this->totalMemorySize);
-    }
+    // auto alignResult = posix_memalign(&this->rawMemory, CpuMemoryAlignment, this->totalMemorySize);
+    // if (alignResult != 0 || !this->rawMemory) {
+    //     return errors::Errorf("Failed to allocate {} bytes of aligned memory", this->totalMemorySize);
+    // }
 
-    // Zero-initialize
-    std::memset(this->rawMemory, 0, this->totalMemorySize);
+    // // Zero-initialize
+    // std::memset(this->rawMemory, 0, this->totalMemorySize);
 
     // Create resource scope
     this->resourceScope = doca::internal::ResourceScope::Create();
 
     // Create memory range wrapper (vector pointing to our raw memory)
-    this->memoryRange = std::make_shared<doca::MemoryRange>(this->totalMemorySize);
-    std::memcpy(this->memoryRange->data(), this->rawMemory, this->totalMemorySize);
+    this->memoryRange = std::make_shared<doca::MemoryRange>(this->totalMemorySize, 0);
+    // std::memcpy(this->memoryRange->data(), this->rawMemory, this->totalMemorySize);
 
     // Determine access flags based on direction
     auto permissions = doca::AccessFlags::localReadWrite;
@@ -134,6 +135,7 @@ error RdmaBufferPool::initialize()
         }
 
         this->localBuffers[i] = buffer;
+        this->resourceScope->AddDestroyable(internal::ResourceTier::buffer, buffer);
     }
 
     // Allocate control region for PipelineControl
@@ -183,8 +185,8 @@ error RdmaBufferPool::initialize()
     // Pre-allocate per-group local control buffers pointing to each GroupControl
     this->localControlBuffers.resize(NumBufferGroups);
     for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-        auto * groupAddr = this->controlMemoryRange->data() +
-                           offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
+        auto * groupAddr =
+            this->controlMemoryRange->data() + offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
 
         auto [buf, bufErr] =
             this->controlInventory->RetrieveBufferByData(this->controlMemoryMap, groupAddr, sizeof(GroupControl));
@@ -193,6 +195,7 @@ error RdmaBufferPool::initialize()
         }
 
         this->localControlBuffers[g] = buf;
+        this->resourceScope->AddDestroyable(internal::ResourceTier::buffer, buf);
     }
 
     DOCA_CPP_LOG_INFO(std::format("Buffer pool created: {} buffers x {} bytes = {} bytes total",
@@ -278,6 +281,7 @@ error RdmaBufferPool::ImportRemoteDescriptor(const std::vector<uint8_t> & descri
         }
 
         this->remoteBuffers[i] = buffer;
+        this->resourceScope->AddDestroyable(internal::ResourceTier::buffer, buffer);
     }
 
     DOCA_CPP_LOG_INFO(std::format("Imported remote descriptor: {} buffers", numBuffers));
@@ -321,8 +325,7 @@ error RdmaBufferPool::ImportRemoteControlDescriptor(const std::vector<uint8_t> &
     // Pre-allocate per-group remote control buffers pointing to each remote GroupControl
     this->remoteControlBuffers.resize(NumBufferGroups);
     for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-        auto * remoteGroupAddr = remoteRange.data() +
-                                 offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
+        auto * remoteGroupAddr = remoteRange.data() + offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
 
         auto [buf, bufErr] = this->remoteControlInventory->RetrieveBufferByAddress(
             this->remoteControlMemoryMap, remoteGroupAddr, sizeof(GroupControl));
