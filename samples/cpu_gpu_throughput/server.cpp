@@ -121,28 +121,41 @@ int main()
 
     // Start throughput measurement in background
     auto measureThread = std::thread([&counter, &cfg]() {
-        // Wait for connections to establish
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        // Wait until RDMA is actually flowing (service receives first buffer)
+        std::println("[Server] Waiting for RDMA data to arrive...");
+        while (counter->GetReceivedBuffers() == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
-        const auto startTime = std::chrono::steady_clock::now();
+        // Warm-up: let the pipeline reach steady state
+        std::println("[Server] RDMA active, warming up for 2 seconds...");
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        // Snapshot stats and start measurement
         const auto startBytes = counter->GetReceivedBytes();
+        const auto startOps = counter->GetReceivedBuffers();
+        const auto startTime = std::chrono::steady_clock::now();
 
+        std::println("[Server] Measuring throughput for {} seconds...", cfg->measurementDuration);
         std::this_thread::sleep_for(std::chrono::seconds(cfg->measurementDuration));
 
-        const auto endTime = std::chrono::steady_clock::now();
+        // Snapshot end stats
         const auto endBytes = counter->GetReceivedBytes();
+        const auto endOps = counter->GetReceivedBuffers();
+        const auto endTime = std::chrono::steady_clock::now();
 
         const auto durationSeconds =
             std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() / 1000.0;
         const auto deltaBytes = endBytes - startBytes;
+        const auto deltaOps = endOps - startOps;
         const auto throughputGbps = (deltaBytes * 8.0) / (durationSeconds * 1e9);
 
         std::println();
         std::println("========= Throughput Results =========");
-        std::println("  Throughput:      {:.2f} Gbits/s", throughputGbps);
-        std::println("  Total bytes:     {}", deltaBytes);
-        std::println("  Duration:        {:.2f} s", durationSeconds);
-        std::println("  Buffers received: {}", counter->GetReceivedBuffers());
+        std::println("  Throughput:       {:.2f} Gbits/s", throughputGbps);
+        std::println("  Measured bytes:   {}", deltaBytes);
+        std::println("  Measured buffers: {}", deltaOps);
+        std::println("  Duration:         {:.2f} s", durationSeconds);
         std::println("======================================");
         std::println();
     });

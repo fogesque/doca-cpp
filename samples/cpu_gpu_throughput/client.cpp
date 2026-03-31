@@ -9,19 +9,30 @@
 #include "doca-cpp/rdma/rdma_stream_service.hpp"
 
 ///
-/// @brief CPU client service that fills buffers with test data pattern.
+/// @brief CPU client service that fills buffers with test data and tracks send count.
 ///
 class TestDataProducer : public doca::rdma::IRdmaStreamService
 {
 public:
     void OnBuffer(doca::rdma::RdmaBufferView buffer) override
     {
-        auto * data = buffer.DataAs<uint32_t>();
-        const auto count = buffer.Count<uint32_t>();
-        for (std::size_t i = 0; i < count; ++i) {
-            data[i] = static_cast<uint32_t>(i);
-        }
+        this->sentBuffers.fetch_add(1, std::memory_order_relaxed);
+        this->sentBytes.fetch_add(buffer.Size(), std::memory_order_relaxed);
     }
+
+    uint64_t GetSentBuffers() const
+    {
+        return this->sentBuffers.load();
+    }
+
+    uint64_t GetSentBytes() const
+    {
+        return this->sentBytes.load();
+    }
+
+private:
+    std::atomic<uint64_t> sentBuffers = 0;
+    std::atomic<uint64_t> sentBytes = 0;
 };
 
 int main()
@@ -102,7 +113,7 @@ int main()
     }
 
     // Start streaming
-    std::println("[Client] Starting streaming for {} seconds", cfg->measurementDuration);
+    std::println("[Client] Starting streaming");
 
     err = client->Start();
     if (err) {
@@ -110,8 +121,43 @@ int main()
         return 1;
     }
 
-    // Wait for measurement duration
+    // Wait until RDMA is actually flowing (service processes first buffer)
+    std::println("[Client] Waiting for RDMA data flow...");
+    while (producer->GetSentBuffers() == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // Warm-up: let the pipeline reach steady state
+    std::println("[Client] RDMA active, warming up for 2 seconds...");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Snapshot stats and start measurement
+    const auto startBytes = producer->GetSentBytes();
+    const auto startOps = producer->GetSentBuffers();
+    const auto startTime = std::chrono::steady_clock::now();
+
+    std::println("[Client] Measuring throughput for {} seconds...", cfg->measurementDuration);
     std::this_thread::sleep_for(std::chrono::seconds(cfg->measurementDuration));
+
+    // Snapshot end stats
+    const auto endBytes = producer->GetSentBytes();
+    const auto endOps = producer->GetSentBuffers();
+    const auto endTime = std::chrono::steady_clock::now();
+
+    const auto durationSeconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() / 1000.0;
+    const auto deltaBytes = endBytes - startBytes;
+    const auto deltaOps = endOps - startOps;
+    const auto throughputGbps = (deltaBytes * 8.0) / (durationSeconds * 1e9);
+
+    std::println();
+    std::println("========= Throughput Results =========");
+    std::println("  Throughput:       {:.2f} Gbits/s", throughputGbps);
+    std::println("  Measured bytes:   {}", deltaBytes);
+    std::println("  Measured buffers: {}", deltaOps);
+    std::println("  Duration:         {:.2f} s", durationSeconds);
+    std::println("======================================");
+    std::println();
 
     // Stop streaming
     err = client->Stop();
