@@ -277,10 +277,6 @@ void RdmaPipeline::serverLoop()
     while (this->running.load(std::memory_order_relaxed)) {
         auto * group = &control->groups[nextGroup];
 
-        DOCA_CPP_LOG_DEBUG(std::format("----- PROCESSING GROUP {} -----", nextGroup));
-
-        DOCA_CPP_LOG_DEBUG("Signal doorbell...");
-
         // 1. Signal client that this group is ready for RDMA writes
         group->state = flags::RdmaPosted;
         auto err = this->signalPeer(nextGroup);
@@ -288,10 +284,6 @@ void RdmaPipeline::serverLoop()
             DOCA_CPP_LOG_ERROR(std::format("Failed to signal peer for group {}", nextGroup));
             break;
         }
-
-        DOCA_CPP_LOG_DEBUG("Sent doorbell");
-
-        DOCA_CPP_LOG_DEBUG("Waiting for all RDMA writes complete...");
 
         // 2. Wait for client to signal RdmaComplete (client RDMA-writes to our control)
         while (this->running.load(std::memory_order_relaxed)) {
@@ -304,10 +296,6 @@ void RdmaPipeline::serverLoop()
         if (!this->running.load(std::memory_order_relaxed)) {
             break;
         }
-
-        DOCA_CPP_LOG_DEBUG("All RDMA writes completed");
-
-        DOCA_CPP_LOG_DEBUG("Calling all services...");
 
         // 3. Process buffers in this group
         group->state = flags::Processing;
@@ -323,14 +311,10 @@ void RdmaPipeline::serverLoop()
             }
         }
 
-        DOCA_CPP_LOG_DEBUG("Services completed");
-
         // Update statistics
         const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
         this->stats.completedOps.fetch_add(groupCount, std::memory_order_relaxed);
         this->stats.totalBytes.fetch_add(groupCount * this->localPool->BufferSize(), std::memory_order_relaxed);
-
-        DOCA_CPP_LOG_DEBUG("Releasing group with signal...");
 
         // 4. Release group and signal client
         group->state = flags::Released;
@@ -339,9 +323,8 @@ void RdmaPipeline::serverLoop()
         err = this->signalPeer(nextGroup);
         if (err) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to signal Released for group {}", nextGroup));
+            break;
         }
-
-        DOCA_CPP_LOG_DEBUG("Server released group");
 
         // Advance to next group
         nextGroup = (nextGroup + 1) % NumBufferGroups;
@@ -366,10 +349,6 @@ void RdmaPipeline::clientLoop()
     while (this->running.load(std::memory_order_relaxed)) {
         auto * group = &control->groups[nextGroup];
 
-        DOCA_CPP_LOG_DEBUG(std::format("----- PROCESSING GROUP {} -----", nextGroup));
-
-        DOCA_CPP_LOG_DEBUG("Waiting for server doorbell...");
-
         // 1. Wait for server doorbell (RdmaPosted written by server into our control)
         // Note: only progressLoop thread calls Progress() — this thread just polls flags
         while (this->running.load(std::memory_order_relaxed)) {
@@ -383,13 +362,9 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
-        DOCA_CPP_LOG_DEBUG("Got server doorbell");
-
         // 2. Invoke user service to fill buffers before sending
         const auto groupStart = GetGroupStartIndex(numBuffers, nextGroup);
         const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
-
-        DOCA_CPP_LOG_DEBUG("Calling all services...");
 
         if (this->service) {
             for (uint32_t i = 0; i < groupCount; ++i) {
@@ -399,12 +374,8 @@ void RdmaPipeline::clientLoop()
             }
         }
 
-        DOCA_CPP_LOG_DEBUG("Services completed");
-
         // 3. Reset completion counter and submit RDMA writes for all buffers in group
         this->groupCompletedOps[nextGroup].store(0, std::memory_order_release);
-
-        DOCA_CPP_LOG_DEBUG("Submitting writes...");
 
         for (uint32_t i = 0; i < groupCount; ++i) {
             const auto bufIndex = groupStart + i;
@@ -426,10 +397,6 @@ void RdmaPipeline::clientLoop()
             }
         }
 
-        DOCA_CPP_LOG_DEBUG("All writes submitted");
-
-        DOCA_CPP_LOG_DEBUG("Waiting for all writes complete...");
-
         // 4. Wait for all writes in this group to complete (callbacks increment counter)
         // Note: only progressLoop thread calls Progress() — this thread just polls counter
         while (this->running.load(std::memory_order_relaxed)) {
@@ -443,10 +410,6 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
-        DOCA_CPP_LOG_DEBUG("All writes completed");
-
-        DOCA_CPP_LOG_DEBUG("Signal peer that RDMA completed...");
-
         // 5. Signal server that writes are complete
         group->state = flags::RdmaComplete;
         auto err = this->signalPeer(nextGroup);
@@ -455,13 +418,9 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
-        DOCA_CPP_LOG_DEBUG("Signal peer completed");
-
         // Update statistics
         this->stats.completedOps.fetch_add(groupCount, std::memory_order_relaxed);
         this->stats.totalBytes.fetch_add(groupCount * bufferSize, std::memory_order_relaxed);
-
-        DOCA_CPP_LOG_DEBUG("Waiting for server to release group...");
 
         // 6. Wait for server to release (server sets Released after processing)
         // Note: only progressLoop thread calls Progress() — this thread just polls flags
@@ -471,8 +430,6 @@ void RdmaPipeline::clientLoop()
             }
             std::this_thread::yield();
         }
-
-        DOCA_CPP_LOG_DEBUG("Server released group");
 
         group->roundIndex++;
 
@@ -555,12 +512,10 @@ void RdmaPipeline::onWriteCompleted(doca_rdma_task_write * task, doca_data taskU
     if (*isControl) {
         auto * controlCtx = static_cast<ControlTaskContext *>(taskUserData.ptr);
         controlCtx->completed.store(true, std::memory_order_release);
-        DOCA_CPP_LOG_DEBUG(std::format("Control signal write task completion for group {}", controlCtx->groupIndex));
     } else {
         auto * dataCtx = static_cast<TaskContext *>(taskUserData.ptr);
         auto * pipeline = dataCtx->pipeline;
         pipeline->groupCompletedOps[dataCtx->groupIndex].fetch_add(1, std::memory_order_release);
-        DOCA_CPP_LOG_DEBUG(std::format("Write task completion for buffer {}", dataCtx->bufferIndex));
     }
 }
 
