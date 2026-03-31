@@ -11,10 +11,9 @@ namespace doca
 
 Buffer::Buffer(doca_buf * nativeBuffer) : buffer(nativeBuffer) {}
 
-BufferPtr Buffer::CreateRef(doca_buf * nativeBuffer)
+Buffer::~Buffer()
 {
-    auto buffer = std::make_shared<Buffer>(nativeBuffer);
-    return buffer;
+    std::ignore = this->Destroy();
 }
 
 BufferPtr Buffer::Create(doca_buf * nativeBuffer)
@@ -168,6 +167,19 @@ std::tuple<uint16_t, error> Buffer::GetRefcount() const
     return { refcount, nullptr };
 }
 
+error Buffer::Destroy()
+{
+    if (this->buffer) {
+        uint16_t refcount = 0;
+        auto err = FromDocaError(doca_buf_dec_refcount(this->buffer, &refcount));
+        if (err) {
+            return errors::Wrap(err, "Failed to decrement buffer refcount");
+        }
+        this->buffer = nullptr;
+    }
+    return nullptr;
+}
+
 doca_buf * Buffer::GetNative()
 {
     return this->buffer;
@@ -248,7 +260,7 @@ std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByAddress(MemoryMapP
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to allocate buffer by address from inventory") };
     }
-    auto managedBuffer = Buffer::CreateRef(buf);
+    auto managedBuffer = Buffer::Create(buf);
     return { managedBuffer, nullptr };
 }
 
@@ -263,7 +275,7 @@ std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByData(MemoryMapPtr 
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to allocate buffer by data from inventory") };
     }
-    auto managedBuffer = Buffer::CreateRef(buf);
+    auto managedBuffer = Buffer::Create(buf);
     return { managedBuffer, nullptr };
 }
 
@@ -279,7 +291,7 @@ std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByAddress(RemoteMemo
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to allocate buffer by address from inventory") };
     }
-    auto managedBuffer = Buffer::CreateRef(buf);
+    auto managedBuffer = Buffer::Create(buf);
     return { managedBuffer, nullptr };
 }
 
@@ -294,7 +306,7 @@ std::tuple<BufferPtr, error> BufferInventory::RetrieveBufferByData(RemoteMemoryM
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to allocate buffer by data from inventory") };
     }
-    auto managedBuffer = Buffer::CreateRef(buf);
+    auto managedBuffer = Buffer::Create(buf);
     return { managedBuffer, nullptr };
 }
 

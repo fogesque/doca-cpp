@@ -31,14 +31,11 @@ using BufferInventoryPtr = std::shared_ptr<BufferInventory>;
 /// Buffer wrappers DOCA buffer structure that points to user's allocated memory region.
 /// Buffer objects are needed to submit DOCA tasks to hardware.
 ///
-class Buffer
+class Buffer : public IDestroyable
 {
 public:
     /// [Fabric Methods]
 
-    /// @brief Creates buffer reference which means destructor won't destroy native buffer
-    /// @warning Since method gives native pointer to DOCA structure use with caution
-    static BufferPtr CreateRef(doca_buf * nativeBuffer);
     /// @brief Creates buffer instance
     /// @warning Since method gives native pointer to DOCA structure use with caution
     static BufferPtr Create(doca_buf * nativeBuffer);
@@ -84,6 +81,9 @@ public:
     /// @brief Gets reference count for buffer
     std::tuple<uint16_t, error> GetRefcount() const;
 
+    /// @brief Destroys buffer decrementing its reference count
+    error Destroy() override final;
+
     /// [Unsafe]
 
     /// @brief Gets native pointer to DOCA structure
@@ -109,7 +109,7 @@ public:
     /// @warning Avoid using this constructor since class has static fabric methods
     explicit Buffer(doca_buf * nativeBuffer);
     /// @brief Destructor
-    ~Buffer() = default;
+    ~Buffer();
 
 #pragma endregion
 
