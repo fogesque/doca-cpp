@@ -42,7 +42,6 @@ error doca::Context::Stop()
     if (err) {
         return errors::Wrap(err, "Failed to stop context");
     }
-    this->ctx = nullptr;
     return nullptr;
 }
 

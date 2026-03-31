@@ -111,7 +111,7 @@ int main()
     // Start throughput measurement in background
     auto measureThread = std::thread([&counter, &cfg]() {
         // Wait for connections to establish
-        std::this_thread::sleep_for(std::chrono::seconds(7));
+        std::this_thread::sleep_for(std::chrono::seconds(3));
 
         const auto startTime = std::chrono::steady_clock::now();
         const auto startBytes = counter->GetReceivedBytes();

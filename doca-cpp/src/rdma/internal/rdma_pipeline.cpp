@@ -231,9 +231,9 @@ error RdmaPipeline::Stop()
         this->mainThread.join();
     }
 
-    if (this->progressThread.joinable()) {
-        this->progressThread.join();
-    }
+    // TODO: This does not work. We need to find way how to shutdown all pending tasks
+    auto [rdmaContext, _] = this->engine->AsContext();
+    std::ignore = rdmaContext->FlushTasks();
 
     // Free all pre-allocated data tasks
     for (auto & context : this->dataTaskContexts) {
@@ -249,6 +249,10 @@ error RdmaPipeline::Stop()
             this->controlTaskContexts[g].writeTask->Free();
             this->controlTaskContexts[g].writeTask = nullptr;
         }
+    }
+
+    if (this->progressThread.joinable()) {
+        this->progressThread.join();
     }
 
     DOCA_CPP_LOG_INFO(std::format("Pipeline stopped. Completed ops: {}, total bytes: {}",
