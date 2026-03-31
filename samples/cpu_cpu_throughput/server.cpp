@@ -32,6 +32,11 @@ public:
     {
         this->receivedBuffers.fetch_add(1, std::memory_order_relaxed);
         this->receivedBytes.fetch_add(buffer.Size(), std::memory_order_relaxed);
+        const auto size = buffer.Count<uint8_t>();
+        const auto * data = buffer.DataAs<uint8_t>();
+        auto toInt = [](const uint8_t element) { return static_cast<int>(element); };
+        std::println("Service: buffer data = {} {} {} ... {} {} {}", toInt(data[0]), toInt(data[1]), toInt(data[2]),
+                     toInt(data[size - 3]), toInt(data[size - 2]), toInt(data[size - 1]));
     }
 
     uint64_t GetReceivedBuffers() const
@@ -53,7 +58,8 @@ int main()
 {
     std::println("==========================================");
     std::println("   CPU-CPU Throughput Benchmark: Server");
-    std::println("==========================================\n");
+    std::println("==========================================");
+    std::println();
 
     std::println("[Server] Parsing configs from {}", configs::configsFilename);
 
@@ -110,7 +116,7 @@ int main()
     // Start throughput measurement in background
     auto measureThread = std::thread([&counter, &cfg]() {
         // Wait for connections to establish
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(7));
 
         const auto startTime = std::chrono::steady_clock::now();
         const auto startBytes = counter->GetReceivedBytes();
