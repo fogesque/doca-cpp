@@ -131,12 +131,8 @@ error GpuRdmaServer::Serve()
 
     this->serving.store(true);
 
-    // Initialize CUDA runtime
+    // Create GPU manager for CUDA stream management
     this->gpuManager = GpuManager::Create();
-    auto err = this->gpuManager->InitializeCudaRuntime(this->config.gpuPcieBdfAddress);
-    if (err) {
-        return errors::Wrap(err, "Failed to initialize CUDA runtime");
-    }
 
     // Pre-allocate pipeline vector
     this->pipelines.resize(this->config.maxConnections);

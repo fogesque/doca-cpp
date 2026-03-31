@@ -8,30 +8,6 @@ GpuManagerPtr GpuManager::Create()
     return std::make_shared<GpuManager>();
 }
 
-error GpuManager::InitializeCudaRuntime(const std::string & gpuPcieBdfAddress)
-{
-    // Trigger CUDA runtime initialization
-    auto cudaErr = cudaFree(0);
-    if (cudaErr != cudaSuccess) {
-        return errors::New("Failed to trigger CUDA runtime initialization");
-    }
-
-    // Find CUDA device by PCIe BDF address
-    int cudaDeviceId = 0;
-    cudaErr = cudaDeviceGetByPCIBusId(&cudaDeviceId, gpuPcieBdfAddress.c_str());
-    if (cudaErr != cudaSuccess) {
-        return errors::Errorf("Invalid GPU PCIe bus address: {}", gpuPcieBdfAddress);
-    }
-
-    // Set active CUDA device
-    cudaErr = cudaSetDevice(cudaDeviceId);
-    if (cudaErr != cudaSuccess) {
-        return errors::New("Failed to set GPU device for CUDA executions");
-    }
-
-    return nullptr;
-}
-
 error GpuManager::CreateCudaStream()
 {
     if (this->cudaStream != nullptr) {

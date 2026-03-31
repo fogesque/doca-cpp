@@ -79,12 +79,8 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
         return errors::New("Client is already connected");
     }
 
-    // Initialize CUDA runtime
+    // Create GPU manager for CUDA stream management
     this->gpuManager = GpuManager::Create();
-    auto err = this->gpuManager->InitializeCudaRuntime(this->config.gpuPcieBdfAddress);
-    if (err) {
-        return errors::Wrap(err, "Failed to initialize CUDA runtime");
-    }
 
     // Create progress engine
     auto [progressEngine, peErr] = doca::ProgressEngine::Create();

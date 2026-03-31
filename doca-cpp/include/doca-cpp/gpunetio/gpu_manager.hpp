@@ -7,7 +7,6 @@
 
 #include <errors/errors.hpp>
 #include <memory>
-#include <string>
 #include <tuple>
 
 namespace doca::gpunetio
@@ -21,7 +20,7 @@ using GpuManagerPtr = std::shared_ptr<GpuManager>;
 
 ///
 /// @brief
-/// Manages CUDA runtime initialization and CUDA stream lifecycle.
+/// Manages CUDA stream lifecycle.
 /// Provides stream creation, synchronization, and destruction.
 ///
 class GpuManager
@@ -31,11 +30,6 @@ public:
 
     /// @brief Creates GpuManager instance
     static GpuManagerPtr Create();
-
-    /// [CUDA Runtime]
-
-    /// @brief Initializes CUDA runtime for GPU with given PCIe BDF address
-    error InitializeCudaRuntime(const std::string & gpuPcieBdfAddress);
 
     /// [Stream Management]
 
