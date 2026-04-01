@@ -21,9 +21,11 @@ enum class ResourceTier : uint8_t {
     rdmaContext = 0,
     buffer = 1,
     bufferInventory = 2,
-    memoryMap = 3,
-    rdmaEngine = 4,
-    progressEngine = 5,
+    bufferArray = 3,
+    memoryMap = 4,
+    rdmaEngine = 5,
+    progressEngine = 6,
+    gpuMemory = 7,
 };
 
 ///
