@@ -16,7 +16,7 @@ extern "C" {
 /// @param numBuffers Total number of buffers
 void LaunchPersistentServerKernel(cudaStream_t stream, uint32_t connectionId, struct doca_gpu_dev_rdma * rdmaGpu,
                                   struct doca_gpu_buf_arr * localBufArr, struct doca_gpu_buf_arr * remoteBufArr,
-                                  doca::gpunetio::GpuPipelineControl * control, uint32_t numBuffers);
+                                  doca::rdma::PipelineControl * control, uint32_t numBuffers);
 
 } /* extern C */
 

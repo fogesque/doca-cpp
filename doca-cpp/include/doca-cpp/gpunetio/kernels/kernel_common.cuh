@@ -14,7 +14,7 @@
 #include <doca_gpunetio_dev_buf.cuh>
 #include <doca_gpunetio_dev_rdma.cuh>
 
-#include "doca-cpp/gpunetio/gpu_pipeline_control.hpp"
+#include "doca-cpp/rdma/rdma_pipeline_control.hpp"
 
 /// @brief Maximum number of buffers per connection
 #define GPUNETIO_MAX_BUFFERS 4096

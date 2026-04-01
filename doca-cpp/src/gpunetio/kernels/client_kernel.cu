@@ -5,9 +5,9 @@ using namespace doca::gpunetio;
 /// @brief Persistent client kernel: infinite loop cycling through buffer groups
 /// Waits for data ready, performs RDMA writes to server, sets complete flag, waits for released
 __global__ void persistent_client_kernel(uint32_t connectionId, struct doca_gpu_dev_rdma * rdmaGpu,
-                                         struct doca_gpu_buf_arr * localBufArr,
-                                         struct doca_gpu_buf_arr * remoteBufArr, GpuPipelineControl * control,
-                                         uint32_t numBuffers, uint32_t bufferSize)
+                                         struct doca_gpu_buf_arr * localBufArr, struct doca_gpu_buf_arr * remoteBufArr,
+                                         doca::rdma::PipelineControl * control, uint32_t numBuffers,
+                                         uint32_t bufferSize)
 {
     doca_error_t result;
     struct doca_gpu_buf * localBuf;
@@ -16,21 +16,20 @@ __global__ void persistent_client_kernel(uint32_t connectionId, struct doca_gpu_
     uint32_t currentGroup = 0;
 
     // Persistent loop: cycle through groups until stop
-    while (control->stopFlag != flags::StopRequest) {
+    while (control->stopFlag != doca::rdma::flags::StopRequest) {
         auto * group = &control->groups[currentGroup];
         const auto groupStart = currentGroup * control->buffersPerGroup;
-        const auto groupCount = (currentGroup == control->numGroups - 1)
-                                    ? (numBuffers - groupStart)
-                                    : control->buffersPerGroup;
+        const auto groupCount =
+            (currentGroup == control->numGroups - 1) ? (numBuffers - groupStart) : control->buffersPerGroup;
 
         // Wait for group to be Released or Idle (data filled, ready to send)
-        while (group->state != flags::Released && group->state != flags::Idle) {
-            if (control->stopFlag == flags::StopRequest) {
+        while (group->state != doca::rdma::flags::Released && group->state != doca::rdma::flags::Idle) {
+            if (control->stopFlag == doca::rdma::flags::StopRequest) {
                 return;
             }
         }
 
-        group->state = flags::RdmaPosted;
+        group->state = doca::rdma::flags::RdmaPosted;
 
         if (threadIdx.x == 0) {
             // Write all buffers in group to server
@@ -66,7 +65,7 @@ __global__ void persistent_client_kernel(uint32_t connectionId, struct doca_gpu_
             __threadfence_system();
             group->completedOps = completedOps;
             group->roundIndex++;
-            group->state = flags::RdmaComplete;
+            group->state = doca::rdma::flags::RdmaComplete;
         }
 
         __syncthreads();
@@ -80,7 +79,7 @@ extern "C" {
 
 void LaunchPersistentClientKernel(cudaStream_t stream, uint32_t connectionId, struct doca_gpu_dev_rdma * rdmaGpu,
                                   struct doca_gpu_buf_arr * localBufArr, struct doca_gpu_buf_arr * remoteBufArr,
-                                  GpuPipelineControl * control, uint32_t numBuffers, uint32_t bufferSize)
+                                  doca::rdma::PipelineControl * control, uint32_t numBuffers, uint32_t bufferSize)
 {
     const auto grids = 1;
     const auto blocks = 1;
