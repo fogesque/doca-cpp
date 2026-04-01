@@ -8,17 +8,27 @@
 #include <condition_variable>
 #include <cstdint>
 #include <errors/errors.hpp>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <tuple>
 #include <vector>
 
+#include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/core/progress_engine.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
+#include "doca-cpp/gpunetio/gpu_buffer_array.hpp"
+#include "doca-cpp/gpunetio/gpu_buffer_pool.hpp"
 #include "doca-cpp/gpunetio/gpu_device.hpp"
 #include "doca-cpp/gpunetio/gpu_manager.hpp"
+#include "doca-cpp/gpunetio/gpu_rdma_handler.hpp"
 #include "doca-cpp/gpunetio/gpu_rdma_pipeline.hpp"
 #include "doca-cpp/gpunetio/gpu_stream_service.hpp"
+#include "doca-cpp/rdma/internal/rdma_connection.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_session_manager.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
 
 namespace doca::gpunetio
@@ -71,7 +81,6 @@ public:
         uint16_t listenPort = 0;
         doca::rdma::RdmaStreamConfig streamConfig;
         GpuRdmaStreamServicePtr service = nullptr;
-        GpuAggregateStreamServicePtr aggregateService = nullptr;
         uint16_t maxConnections = 4;
     };
 
@@ -91,11 +100,9 @@ public:
 
         Builder & SetDevice(doca::DevicePtr device);
         Builder & SetGpuDevice(GpuDevicePtr device);
-        Builder & SetGpuPcieBdfAddress(const std::string & address);
         Builder & SetListenPort(uint16_t port);
         Builder & SetStreamConfig(const doca::rdma::RdmaStreamConfig & config);
         Builder & SetService(GpuRdmaStreamServicePtr service);
-        Builder & SetAggregateService(GpuAggregateStreamServicePtr service);
         Builder & SetMaxConnections(uint16_t maxConnections);
 
         Builder() = default;
@@ -118,30 +125,41 @@ private:
     /// @brief Handles a single client connection
     error handleClient(uint32_t connectionIndex);
 
-    /// @brief Aggregate processing loop (runs on dedicated thread)
-    void aggregateLoop();
-
 #pragma endregion
 
     /// [Properties]
 
+    /// [Configuration]
+
     /// @brief Server configuration
     Config config;
+
     /// @brief GPU manager for CUDA operations
     GpuManagerPtr gpuManager = nullptr;
+
+    /// [Per-Connection Resources]
+
+    /// @brief Per-connection buffer pools
+    std::vector<GpuBufferPoolPtr> gpuBufferPools;
     /// @brief Per-connection pipelines
     std::vector<GpuRdmaPipelinePtr> pipelines;
+    /// @brief Per-connection session managers
+    std::vector<rdma::RdmaSessionManagerPtr> sessionManagers;
     /// @brief Worker threads for connections
     std::vector<std::thread> workerThreads;
-    /// @brief Aggregate thread
-    std::thread aggregateThread;
-    /// @brief Barrier for cross-connection synchronization
-    std::shared_ptr<std::barrier<>> roundBarrier = nullptr;
-    /// @brief Serving flag
+
+    /// [Serving Control]
+
+    /// @brief Flag to continue serving
     std::atomic_bool serving = false;
-    /// @brief Shutdown synchronization
+    /// @brief Mutex for shutdown coordination
     std::mutex shutdownMutex;
+    /// @brief Condition variable for shutdown timeout
     std::condition_variable shutdownCondVar;
+    /// @brief Force shutdown flag
+    std::atomic_bool shutdownForced = false;
+    /// @brief Number of active connections
+    std::atomic<uint32_t> activeConnections = 0;
 };
 
 }  // namespace doca::gpunetio

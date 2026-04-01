@@ -1,17 +1,16 @@
-#include <doca-cpp/gpunetio/gpu_rdma_client.hpp>
-
-#include <format>
-
 #include <doca-cpp/core/context.hpp>
 #include <doca-cpp/core/progress_engine.hpp>
+#include <doca-cpp/gpunetio/gpu_rdma_client.hpp>
 #include <doca-cpp/gpunetio/gpu_rdma_handler.hpp>
 #include <doca-cpp/rdma/internal/rdma_connection.hpp>
 #include <doca-cpp/rdma/internal/rdma_engine.hpp>
 #include <doca-cpp/rdma/internal/rdma_session_manager.hpp>
+#include <format>
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 #include <doca-cpp/logging/logging.hpp>
-namespace {
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -33,11 +32,31 @@ GpuRdmaClient::Builder GpuRdmaClient::Create()
     return Builder();
 }
 
-GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetDevice(doca::DevicePtr device) { this->config.device = device; return *this; }
-GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetGpuDevice(GpuDevicePtr device) { this->config.gpuDevice = device; return *this; }
-GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetGpuPcieBdfAddress(const std::string & address) { this->config.gpuPcieBdfAddress = address; return *this; }
-GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetStreamConfig(const doca::rdma::RdmaStreamConfig & config) { this->config.streamConfig = config; return *this; }
-GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetService(GpuRdmaStreamServicePtr service) { this->config.service = service; return *this; }
+GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetDevice(doca::DevicePtr device)
+{
+    this->config.device = device;
+    return *this;
+}
+GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetGpuDevice(GpuDevicePtr device)
+{
+    this->config.gpuDevice = device;
+    return *this;
+}
+GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetGpuPcieBdfAddress(const std::string & address)
+{
+    this->config.gpuPcieBdfAddress = address;
+    return *this;
+}
+GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetStreamConfig(const doca::rdma::RdmaStreamConfig & config)
+{
+    this->config.streamConfig = config;
+    return *this;
+}
+GpuRdmaClient::Builder & GpuRdmaClient::Builder::SetService(GpuRdmaStreamServicePtr service)
+{
+    this->config.service = service;
+    return *this;
+}
 
 std::tuple<GpuRdmaClientPtr, error> GpuRdmaClient::Builder::Build()
 {
@@ -109,7 +128,7 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
         return errors::Wrap(ctxErr, "Failed to get RDMA context");
     }
 
-    err = progressEngine->ConnectContext(context);
+    auto err = progressEngine->ConnectContext(context);
     if (err) {
         return errors::Wrap(err, "Failed to connect context to progress engine");
     }
@@ -162,8 +181,8 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
     }
 
     // Connect to server RDMA address via CM
-    auto [rdmaAddress, addrErr] = doca::rdma::RdmaAddress::Create(doca::rdma::RdmaAddress::Type::ipv4,
-                                                                    serverAddress, port);
+    auto [rdmaAddress, addrErr] =
+        doca::rdma::RdmaAddress::Create(doca::rdma::RdmaAddress::Type::ipv4, serverAddress, port);
     if (addrErr) {
         return errors::Wrap(addrErr, "Failed to create RDMA address");
     }

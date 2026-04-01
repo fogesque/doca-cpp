@@ -1,16 +1,7 @@
-#include <doca-cpp/core/context.hpp>
-#include <doca-cpp/core/progress_engine.hpp>
-#include <doca-cpp/gpunetio/gpu_buffer_array.hpp>
-#include <doca-cpp/gpunetio/gpu_memory_region.hpp>
-#include <doca-cpp/gpunetio/gpu_rdma_handler.hpp>
-#include <doca-cpp/gpunetio/gpu_rdma_server.hpp>
-#include <doca-cpp/rdma/internal/rdma_connection.hpp>
-#include <doca-cpp/rdma/internal/rdma_engine.hpp>
-#include <doca-cpp/rdma/internal/rdma_session_manager.hpp>
-#include <format>
+#include "doca-cpp/gpunetio/gpu_rdma_server.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
-#include <doca-cpp/logging/logging.hpp>
+#include "doca-cpp/logging/logging.hpp"
 namespace
 {
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
@@ -44,11 +35,6 @@ GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetGpuDevice(GpuDevicePtr devic
     this->config.gpuDevice = device;
     return *this;
 }
-GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetGpuPcieBdfAddress(const std::string & address)
-{
-    this->config.gpuPcieBdfAddress = address;
-    return *this;
-}
 GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetListenPort(uint16_t port)
 {
     this->config.listenPort = port;
@@ -62,11 +48,6 @@ GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetStreamConfig(const doca::rdm
 GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetService(GpuRdmaStreamServicePtr service)
 {
     this->config.service = service;
-    return *this;
-}
-GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetAggregateService(GpuAggregateStreamServicePtr service)
-{
-    this->config.aggregateService = service;
     return *this;
 }
 GpuRdmaServer::Builder & GpuRdmaServer::Builder::SetMaxConnections(uint16_t maxConnections)
@@ -117,10 +98,6 @@ GpuRdmaServer::~GpuRdmaServer()
             thread.join();
         }
     }
-
-    if (this->aggregateThread.joinable()) {
-        this->aggregateThread.join();
-    }
 }
 
 error GpuRdmaServer::Serve()
@@ -134,42 +111,45 @@ error GpuRdmaServer::Serve()
     // Create GPU manager for CUDA stream management
     this->gpuManager = GpuManager::Create();
 
-    // Pre-allocate pipeline vector
+    // Pre-allocate per-connection resource vectors
+    this->gpuBufferPools.resize(this->config.maxConnections);
     this->pipelines.resize(this->config.maxConnections);
+    this->sessionManagers.resize(this->config.maxConnections);
 
-    // Create aggregate barrier if aggregate service is set
-    if (this->config.aggregateService) {
-        this->roundBarrier = std::make_shared<std::barrier<>>(this->config.maxConnections);
+    // Create main session manager for accepting TCP connections
+    using rdma::RdmaSessionManager;
+    auto mainSession = RdmaSessionManager::Create();
 
-        // Start aggregate thread
-        this->aggregateThread = std::thread(&GpuRdmaServer::aggregateLoop, this);
-    }
-
-    // Create session manager and start listening
-    auto sessionManager = doca::rdma::RdmaSessionManager::Create();
-    err = sessionManager->Listen(this->config.listenPort);
+    // Start TCP listener
+    auto err = mainSession->Listen(this->config.listenPort);
     if (err) {
         return errors::Wrap(err, "Failed to start TCP listener");
     }
 
-    DOCA_CPP_LOG_INFO(std::format("GPU server listening on port {}", this->config.listenPort));
+    DOCA_CPP_LOG_INFO(std::format("Server listening on port {}, accepting up to {} connections",
+                                  this->config.listenPort, this->config.maxConnections));
 
     // Accept clients sequentially on the same port, spawn worker per connection
-    for (uint16_t i = 0; i < this->config.maxConnections && this->serving.load(); ++i) {
-        auto [clientSession, acceptErr] = sessionManager->AcceptOne();
+    for (uint32_t i = 0; i < this->config.maxConnections && this->serving.load(); ++i) {
+        // Accept next client — returns new RdmaSessionManager with its own socket
+        auto [clientSession, acceptErr] = mainSession->AcceptOne();
         if (acceptErr) {
             DOCA_CPP_LOG_ERROR(std::format("Failed to accept connection {}: {}", i, acceptErr->What()));
             continue;
         }
 
+        this->sessionManagers[i] = clientSession;
+
+        // Spawn worker thread for this connection
         this->workerThreads.emplace_back([this, i]() {
             auto workerErr = this->handleClient(i);
             if (workerErr) {
-                DOCA_CPP_LOG_ERROR(std::format("GPU worker {} error: {}", i, workerErr->What()));
+                DOCA_CPP_LOG_ERROR(std::format("Worker {} error: {}", i, workerErr->What()));
             }
         });
 
-        DOCA_CPP_LOG_INFO(std::format("Accepted GPU connection {}", i));
+        this->activeConnections.fetch_add(1);
+        DOCA_CPP_LOG_INFO(std::format("Accepted connection {}", i));
     }
 
     // Wait for shutdown
@@ -184,7 +164,7 @@ error GpuRdmaServer::Serve()
         }
     }
 
-    DOCA_CPP_LOG_INFO("GPU server stopped");
+    DOCA_CPP_LOG_INFO("Server stopped");
     return nullptr;
 }
 
@@ -204,6 +184,8 @@ error GpuRdmaServer::Shutdown(const std::chrono::milliseconds & timeout)
 
 error GpuRdmaServer::handleClient(uint32_t connectionIndex)
 {
+    auto & session = this->sessionManagers[connectionIndex];
+
     // Create progress engine for this connection
     auto [progressEngine, peErr] = doca::ProgressEngine::Create();
     if (peErr) {
@@ -298,6 +280,65 @@ error GpuRdmaServer::handleClient(uint32_t connectionIndex)
         return errors::Wrap(err, "Failed to start RDMA context");
     }
 
+    auto [pool, poolErr] =
+        GpuBufferPool::Create(this->config.device, this->config.gpuDevice, this->config.streamConfig);
+    if (poolErr) {
+        return errors::Wrap(poolErr, "Failed to create buffer pool");
+    }
+
+    this->gpuBufferPools[connectionIndex] = pool;
+
+    // Export local data memory descriptor and send to client
+    auto [descriptor, descErr] = pool->ExportDescriptor();
+    if (descErr) {
+        return errors::Wrap(descErr, "Failed to export memory descriptor");
+    }
+
+    auto err = session->SendDescriptor(descriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to send memory descriptor");
+    }
+
+    // Export local control memory descriptor and send to client
+    auto [controlDescriptor, controlDescErr] = pool->ExportControlDescriptor();
+    if (controlDescErr) {
+        return errors::Wrap(controlDescErr, "Failed to export control memory descriptor");
+    }
+
+    err = session->SendDescriptor(controlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to send control memory descriptor");
+    }
+
+    // Receive client's data memory descriptor
+    auto [clientDescriptor, recvErr] = session->ReceiveDescriptor();
+    if (recvErr) {
+        return errors::Wrap(recvErr, "Failed to receive client memory descriptor");
+    }
+
+    // Import client's data memory into our RDMA space
+    err = pool->ImportRemoteDescriptor(clientDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to import remote descriptor");
+    }
+
+    // Receive client's control memory descriptor
+    auto [clientControlDescriptor, recvControlErr] = session->ReceiveDescriptor();
+    if (recvControlErr) {
+        return errors::Wrap(recvControlErr, "Failed to receive client control memory descriptor");
+    }
+
+    // Import client's control memory into our RDMA space
+    err = pool->ImportRemoteControlDescriptor(clientControlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to import remote control descriptor");
+    }
+
+    auto resourceScope = pool->GetResourceScope();
+    resourceScope->AddDestroyable(doca::internal::ResourceTier::progressEngine, progressEngine);
+    resourceScope->AddDestroyable(doca::internal::ResourceTier::rdmaEngine, engine);
+    resourceScope->AddStoppable(doca::internal::ResourceTier::rdmaContext, context);
+
     // Listen for RDMA connections via CM
     err = engine->ListenToPort(this->config.listenPort);
     if (err) {
@@ -323,6 +364,12 @@ error GpuRdmaServer::handleClient(uint32_t connectionIndex)
         return errors::Wrap(handlerErr, "Failed to get GPU RDMA handler");
     }
 
+    // Get RDMA connection ID
+    auto [rdmaConnectionId, connErr] = connectionState->activeConnection->GetId();
+    if (connErr) {
+        return errors::Wrap(connErr, "Failed to get RDMA connection ID");
+    }
+
     // Create GPU pipeline for this connection
     auto [pipeline, pipelineErr] = GpuRdmaPipeline::Create()
                                        .SetDocaDevice(this->config.device)
@@ -331,7 +378,7 @@ error GpuRdmaServer::handleClient(uint32_t connectionIndex)
                                        .SetGpuRdmaHandler(gpuRdmaHandler)
                                        .SetProgressEngine(progressEngine)
                                        .SetStreamConfig(this->config.streamConfig)
-                                       .SetConnectionId(connectionIndex)
+                                       .SetConnectionId(rdmaConnectionId)
                                        .SetService(this->config.service)
                                        .Build();
     if (pipelineErr) {
@@ -367,56 +414,6 @@ error GpuRdmaServer::handleClient(uint32_t connectionIndex)
     }
 
     return nullptr;
-}
-
-void GpuRdmaServer::aggregateLoop()
-{
-    DOCA_CPP_LOG_DEBUG("Aggregate loop started");
-
-    cudaStream_t aggregateStream = nullptr;
-    cudaStreamCreateWithFlags(&aggregateStream, cudaStreamNonBlocking);
-
-    while (this->serving.load()) {
-        // Wait for all connections to complete their round
-        this->roundBarrier->arrive_and_wait();
-
-        if (!this->serving.load()) {
-            break;
-        }
-
-        // Collect buffer views from all pipelines
-        auto bufferViews = std::vector<GpuBufferView>(this->config.maxConnections);
-        for (uint16_t i = 0; i < this->config.maxConnections; ++i) {
-            if (this->pipelines[i]) {
-                bufferViews[i] = this->pipelines[i]->GetBufferView(0);
-            }
-        }
-
-        // Invoke aggregate service
-        if (this->config.aggregateService) {
-            auto viewsSpan = std::span<GpuBufferView>(bufferViews);
-            this->config.aggregateService->OnAggregate(viewsSpan, aggregateStream);
-            cudaStreamSynchronize(aggregateStream);
-        }
-
-        // Release all groups
-        for (auto & pipeline : this->pipelines) {
-            if (pipeline) {
-                auto * control = pipeline->GetCpuControl();
-                for (uint32_t g = 0; g < doca::rdma::NumBufferGroups; ++g) {
-                    if (control->groups[g].state == flags::Processing) {
-                        control->groups[g].state = flags::Released;
-                    }
-                }
-            }
-        }
-    }
-
-    if (aggregateStream) {
-        cudaStreamDestroy(aggregateStream);
-    }
-
-    DOCA_CPP_LOG_DEBUG("Aggregate loop ended");
 }
 
 }  // namespace doca::gpunetio

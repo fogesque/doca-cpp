@@ -104,7 +104,6 @@ int main()
     auto [server, serverErr] = doca::gpunetio::GpuRdmaServer::Create()
                                    .SetDevice(device)
                                    .SetGpuDevice(gpuDevice)
-                                   .SetGpuPcieBdfAddress(cfg->serverCfg.gpuPcieBdfAddress)
                                    .SetListenPort(cfg->serverCfg.port)
                                    .SetStreamConfig({
                                        .numBuffers = cfg->streamCfg.numBuffers,
