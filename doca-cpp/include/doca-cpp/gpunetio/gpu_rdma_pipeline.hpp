@@ -12,12 +12,12 @@
 #include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
 #include "doca-cpp/core/progress_engine.hpp"
+#include "doca-cpp/core/resource_scope.hpp"
 #include "doca-cpp/gpunetio/gpu_buffer_array.hpp"
+#include "doca-cpp/gpunetio/gpu_buffer_pool.hpp"
 #include "doca-cpp/gpunetio/gpu_buffer_view.hpp"
 #include "doca-cpp/gpunetio/gpu_device.hpp"
 #include "doca-cpp/gpunetio/gpu_manager.hpp"
-#include "doca-cpp/gpunetio/gpu_memory_region.hpp"
-#include "doca-cpp/gpunetio/gpu_pipeline_control.hpp"
 #include "doca-cpp/gpunetio/gpu_rdma_handler.hpp"
 #include "doca-cpp/gpunetio/gpu_stream_service.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
@@ -62,7 +62,7 @@ public:
     /// [Accessors]
 
     /// @brief Returns CPU-accessible GpuPipelineControl pointer
-    GpuPipelineControl * GetCpuControl() const;
+    rdma::PipelineControl * GetCpuControl() const;
 
     /// @brief Returns GpuBufferView for buffer at given index
     GpuBufferView GetBufferView(uint32_t index) const;
@@ -78,10 +78,12 @@ public:
 
     /// @brief Config struct for object construction
     struct Config {
+        rdma::PipelineRole role = rdma::PipelineRole::server;
         doca::DevicePtr docaDevice = nullptr;
         GpuDevicePtr gpuDevice = nullptr;
         GpuManagerPtr gpuManager = nullptr;
         GpuRdmaHandlerPtr gpuRdmaHandler = nullptr;
+        GpuBufferPoolPtr gpuBufferPool = nullptr;
         doca::ProgressEnginePtr progressEngine = nullptr;
         doca::rdma::RdmaStreamConfig streamConfig;
         uint32_t connectionId = 0;
@@ -114,6 +116,8 @@ public:
 
         /// [Configuration]
 
+        /// @brief Sets pipeline role
+        Builder & SetRole(rdma::PipelineRole role);
         /// @brief Sets DOCA device
         Builder & SetDocaDevice(doca::DevicePtr device);
         /// @brief Sets GPU device
@@ -122,6 +126,8 @@ public:
         Builder & SetGpuManager(GpuManagerPtr manager);
         /// @brief Sets GPU RDMA handler
         Builder & SetGpuRdmaHandler(GpuRdmaHandlerPtr handler);
+        /// @brief Sets GPU buffer pool
+        Builder & SetGpuBufferPool(GpuBufferPoolPtr gpuBufferPool);
         /// @brief Sets progress engine
         Builder & SetProgressEngine(doca::ProgressEnginePtr engine);
         /// @brief Sets stream configuration
@@ -169,18 +175,8 @@ private:
 
     /// [GPU Memory]
 
-    /// @brief GPU memory region for RDMA data buffers
-    GpuMemoryRegionPtr localMemory = nullptr;
-    /// @brief GPU+CPU shared memory for GpuPipelineControl
-    GpuMemoryRegionPtr controlMemory = nullptr;
-    /// @brief Local host-side buffer array (owns lifetime)
-    BufferArrayPtr localHostBufferArray = nullptr;
-    /// @brief Remote host-side buffer array (owns lifetime)
-    BufferArrayPtr remoteHostBufferArray = nullptr;
-    /// @brief Local GPU buffer array (retrieved from host buffer array)
-    GpuBufferArrayPtr localBufArray = nullptr;
-    /// @brief Remote GPU buffer array (retrieved from host buffer array)
-    GpuBufferArrayPtr remoteBufArray = nullptr;
+    /// @brief GPU buffer pool
+    GpuBufferPoolPtr gpuBufferPool = nullptr;
 
     /// [CUDA Streams]
 

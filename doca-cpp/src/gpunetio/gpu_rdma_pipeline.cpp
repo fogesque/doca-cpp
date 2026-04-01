@@ -1,13 +1,12 @@
 #include <doca-cpp/gpunetio/gpu_rdma_pipeline.hpp>
-
-#include <format>
-
 #include <doca-cpp/gpunetio/kernels/client_kernel.cuh>
 #include <doca-cpp/gpunetio/kernels/server_kernel.cuh>
+#include <format>
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 #include <doca-cpp/logging/logging.hpp>
-namespace {
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -27,6 +26,12 @@ namespace doca::gpunetio
 GpuRdmaPipeline::Builder GpuRdmaPipeline::Create()
 {
     return Builder();
+}
+
+GpuRdmaPipeline::Builder & GpuRdmaPipeline::Builder::SetRole(rdma::PipelineRole role)
+{
+    this->config.role = role;
+    return *this;
 }
 
 GpuRdmaPipeline::Builder & GpuRdmaPipeline::Builder::SetDocaDevice(doca::DevicePtr device)
@@ -50,6 +55,12 @@ GpuRdmaPipeline::Builder & GpuRdmaPipeline::Builder::SetGpuManager(GpuManagerPtr
 GpuRdmaPipeline::Builder & GpuRdmaPipeline::Builder::SetGpuRdmaHandler(GpuRdmaHandlerPtr handler)
 {
     this->config.gpuRdmaHandler = handler;
+    return *this;
+}
+
+GpuRdmaPipeline::Builder & GpuRdmaPipeline::Builder::SetGpuBufferPool(GpuBufferPoolPtr gpuBufferPool)
+{
+    this->config.gpuBufferPool = gpuBufferPool;
     return *this;
 }
 
@@ -95,6 +106,10 @@ std::tuple<GpuRdmaPipelinePtr, error> GpuRdmaPipeline::Builder::Build()
         return { nullptr, errors::New("GPU manager is not set") };
     }
 
+    if (!this->config.gpuBufferPool) {
+        return { nullptr, errors::New("GPU buffer pool is not set") };
+    }
+
     auto pipeline = std::make_shared<GpuRdmaPipeline>(this->config);
     return { pipeline, nullptr };
 }
@@ -112,82 +127,6 @@ GpuRdmaPipeline::~GpuRdmaPipeline()
 
 error GpuRdmaPipeline::Initialize()
 {
-    const auto numBuffers = this->config.streamConfig.numBuffers;
-    const auto bufferSize = this->config.streamConfig.bufferSize;
-    const auto totalSize = static_cast<std::size_t>(numBuffers) * bufferSize;
-
-    // Allocate local GPU memory for RDMA data buffers
-    auto [localMem, localErr] = GpuMemoryRegion::Create(this->config.gpuDevice, {
-        .memoryRegionSize = totalSize,
-        .memoryAlignment = doca::rdma::GpuMemoryAlignment,
-        .memoryType = GpuMemoryRegionType::gpuMemoryWithoutCpuAccess,
-        .accessFlags = doca::AccessFlags::localReadWrite | doca::AccessFlags::rdmaWrite,
-    });
-    if (localErr) {
-        return errors::Wrap(localErr, "Failed to allocate GPU memory for data buffers");
-    }
-
-    this->localMemory = localMem;
-
-    // Map GPU memory to DOCA device
-    auto err = this->localMemory->MapMemory(this->config.docaDevice);
-    if (err) {
-        return errors::Wrap(err, "Failed to map GPU memory to DOCA device");
-    }
-
-    // Allocate GpuPipelineControl in GPU+CPU shared memory
-    constexpr auto controlAlignment = 4096;
-
-    auto [controlMem, controlErr] = GpuMemoryRegion::Create(this->config.gpuDevice, {
-        .memoryRegionSize = sizeof(GpuPipelineControl),
-        .memoryAlignment = controlAlignment,
-        .memoryType = GpuMemoryRegionType::gpuMemoryWithCpuAccess,
-        .accessFlags = doca::AccessFlags::localReadWrite,
-    });
-    if (controlErr) {
-        return errors::Wrap(controlErr, "Failed to allocate GpuPipelineControl memory");
-    }
-
-    this->controlMemory = controlMem;
-
-    // Initialize GpuPipelineControl from CPU side
-    auto * control = static_cast<GpuPipelineControl *>(this->controlMemory->CpuPointer());
-    control->stopFlag = flags::Idle;
-    control->numGroups = doca::rdma::NumBufferGroups;
-    control->buffersPerGroup = numBuffers / doca::rdma::NumBufferGroups;
-    control->bufferSize = static_cast<uint32_t>(bufferSize);
-
-    for (uint32_t g = 0; g < doca::rdma::NumBufferGroups; ++g) {
-        control->groups[g].state = flags::Idle;
-        control->groups[g].roundIndex = 0;
-        control->groups[g].completedOps = 0;
-        control->groups[g].errorFlag = 0;
-    }
-
-    // Create local buffer array via BufferArray builder (mandoline pattern)
-    auto [localMemoryMap, localMmapErr] = this->localMemory->GetMemoryMap();
-    if (localMmapErr) {
-        return errors::Wrap(localMmapErr, "Failed to get memory map from local GPU memory");
-    }
-
-    auto [localHostBufArray, localBufArrErr] = BufferArray::Create(numBuffers)
-                                                   .SetMemory(localMemoryMap, bufferSize)
-                                                   .SetGpuDevice(this->config.gpuDevice)
-                                                   .Start();
-    if (localBufArrErr) {
-        return errors::Wrap(localBufArrErr, "Failed to create local buffer array");
-    }
-
-    this->localHostBufferArray = localHostBufArray;
-
-    // Retrieve GPU handle from host buffer array
-    auto [localGpuBuf, localGpuErr] = this->localHostBufferArray->RetrieveGpuBufferArray();
-    if (localGpuErr) {
-        return errors::Wrap(localGpuErr, "Failed to retrieve local GPU buffer array");
-    }
-
-    this->localBufArray = localGpuBuf;
-
     // Create CUDA streams
     this->rdmaStream = nullptr;
     auto cudaErr = cudaStreamCreateWithFlags(&this->rdmaStream, cudaStreamNonBlocking);
@@ -201,7 +140,7 @@ error GpuRdmaPipeline::Initialize()
         return errors::New("Failed to create processing CUDA stream");
     }
 
-    DOCA_CPP_LOG_INFO(std::format("GPU pipeline initialized: {} buffers x {} bytes", numBuffers, bufferSize));
+    DOCA_CPP_LOG_INFO("GPU pipeline initialized");
     return nullptr;
 }
 
@@ -213,13 +152,16 @@ error GpuRdmaPipeline::Start()
 
     this->running.store(true);
 
-    auto * control = static_cast<GpuPipelineControl *>(this->controlMemory->GpuPointer());
+    auto * control = static_cast<rdma::PipelineControl *>(this->gpuBufferPool->GetPipelineControlGpuPointer());
+
+    auto localArray = this->gpuBufferPool->GetLocalGpuArray();
+    auto remoteArray = this->gpuBufferPool->GetRemoteGpuArray();
 
     // Launch persistent server kernel on rdmaStream
-    if (this->config.gpuRdmaHandler && this->localBufArray && this->remoteBufArray) {
+    if (this->config.gpuRdmaHandler && localArray && remoteArray) {
         LaunchPersistentServerKernel(this->rdmaStream, this->config.connectionId,
-                                     this->config.gpuRdmaHandler->GetNative(), this->localBufArray->GetNative(),
-                                     this->remoteBufArray->GetNative(), control, this->config.streamConfig.numBuffers);
+                                     this->config.gpuRdmaHandler->GetNative(), localArray->GetNative(),
+                                     remoteArray->GetNative(), control, this->config.streamConfig.numBuffers);
     }
 
     // Start CPU progress thread
@@ -241,12 +183,12 @@ error GpuRdmaPipeline::Stop()
     this->running.store(false);
 
     // Signal kernel to stop
-    auto * cpuControl = static_cast<GpuPipelineControl *>(this->controlMemory->CpuPointer());
-    cpuControl->stopFlag = flags::StopRequest;
+    auto * cpuControl = this->gpuBufferPool->GetPipelineControlCpuPointer();
+    cpuControl->stopFlag = rdma::flags::StopRequest;
 
     // Release any group the kernel might be waiting on
     for (uint32_t g = 0; g < doca::rdma::NumBufferGroups; ++g) {
-        cpuControl->groups[g].state = flags::Released;
+        cpuControl->groups[g].state = rdma::flags::Released;
     }
 
     // Wait for kernel to finish
@@ -278,35 +220,28 @@ error GpuRdmaPipeline::Stop()
     return nullptr;
 }
 
-GpuPipelineControl * GpuRdmaPipeline::GetCpuControl() const
+rdma::PipelineControl * GpuRdmaPipeline::GetCpuControl() const
 {
-    return static_cast<GpuPipelineControl *>(this->controlMemory->CpuPointer());
-}
-
-GpuBufferView GpuRdmaPipeline::GetBufferView(uint32_t index) const
-{
-    auto * gpuPtr = static_cast<uint8_t *>(this->localMemory->GpuPointer()) +
-                    index * this->config.streamConfig.bufferSize;
-    return GpuBufferView::Create(gpuPtr, this->config.streamConfig.bufferSize, index);
+    return this->gpuBufferPool->GetPipelineControlCpuPointer();
 }
 
 void GpuRdmaPipeline::processingLoop()
 {
     DOCA_CPP_LOG_DEBUG("GPU pipeline processing loop started");
 
-    auto * control = static_cast<GpuPipelineControl *>(this->controlMemory->CpuPointer());
+    auto * control = this->gpuBufferPool->GetPipelineControlCpuPointer();
     uint32_t nextGroup = 0;
 
     while (this->running.load(std::memory_order_relaxed)) {
         auto * group = &control->groups[nextGroup];
 
         // Poll for RdmaComplete
-        if (group->state != flags::RdmaComplete) {
+        if (group->state != rdma::flags::RdmaComplete) {
             std::this_thread::yield();
             continue;
         }
 
-        group->state = flags::Processing;
+        group->state = rdma::flags::Processing;
 
         // Invoke per-buffer service on processing stream
         if (this->config.service) {
@@ -324,7 +259,7 @@ void GpuRdmaPipeline::processingLoop()
         }
 
         // Mark group as Released (kernel will pick it up)
-        group->state = flags::Released;
+        group->state = rdma::flags::Released;
 
         // Advance to next group
         nextGroup = (nextGroup + 1) % doca::rdma::NumBufferGroups;

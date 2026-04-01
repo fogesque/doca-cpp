@@ -26,6 +26,8 @@ const std::string ResourceTierName(ResourceTier tier)
             return "rdmaContext";
         case ResourceTier::bufferInventory:
             return "bufferInventory";
+        case ResourceTier::bufferArray:
+            return "bufferArray";
         case ResourceTier::buffer:
             return "buffer";
         case ResourceTier::memoryMap:
@@ -34,6 +36,8 @@ const std::string ResourceTierName(ResourceTier tier)
             return "rdmaEngine";
         case ResourceTier::progressEngine:
             return "progressEngine";
+        case ResourceTier::gpuMemory:
+            return "gpuMemory";
         default:
             return "unknown";
     }
