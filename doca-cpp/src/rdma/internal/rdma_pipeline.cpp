@@ -223,7 +223,7 @@ error RdmaPipeline::Stop()
 
     // Release all groups to unblock any polling
     for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-        control->groups[g].state = flags::Released;
+        control->groups[g].state.flag = flags::Released;
     }
 
     // Join threads
@@ -276,22 +276,34 @@ void RdmaPipeline::serverLoop()
 
     auto * control = this->localPool->GetPipelineControl();
     const auto numBuffers = this->localPool->NumBuffers();
-    uint32_t nextGroup = 0;
+    uint32_t currGroup = 0;
 
     while (this->running.load(std::memory_order_relaxed)) {
-        auto * group = &control->groups[nextGroup];
+        auto * group = &control->groups[currGroup];
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG(std::format("PROCESSING GROUP {}", currGroup));
+        // }
 
         // 1. Signal client that this group is ready for RDMA writes
-        group->state = flags::RdmaPosted;
-        auto err = this->signalPeer(nextGroup);
+        group->state.flag = flags::RdmaPosted;
+        auto err = this->signalPeer(currGroup);
         if (err) {
-            DOCA_CPP_LOG_ERROR(std::format("Failed to signal peer for group {}", nextGroup));
+            DOCA_CPP_LOG_ERROR(std::format("Failed to signal peer for group {}", currGroup));
             break;
         }
 
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("----> Signaled RdmaPosted");
+        // }
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("Waiting for RdmaComplete");
+        // }
+
         // 2. Wait for client to signal RdmaComplete (client RDMA-writes to our control)
         while (this->running.load(std::memory_order_relaxed)) {
-            if (group->state == flags::RdmaComplete) {
+            if (group->state.flag == flags::RdmaComplete) {
                 break;
             }
             std::this_thread::yield();
@@ -301,12 +313,18 @@ void RdmaPipeline::serverLoop()
             break;
         }
 
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("<---- Got RdmaComplete");
+
+        DOCA_CPP_LOG_DEBUG("Processing");
+        // }
+
         // 3. Process buffers in this group
-        group->state = flags::Processing;
+        group->state.flag = flags::Processing;
 
         if (this->service) {
-            const auto groupStart = GetGroupStartIndex(numBuffers, nextGroup);
-            const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
+            const auto groupStart = GetGroupStartIndex(numBuffers, currGroup);
+            const auto groupCount = GetGroupBufferCount(numBuffers, currGroup);
 
             for (uint32_t i = 0; i < groupCount; ++i) {
                 const auto bufIndex = groupStart + i;
@@ -316,22 +334,20 @@ void RdmaPipeline::serverLoop()
         }
 
         // Update statistics
-        const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
+        const auto groupCount = GetGroupBufferCount(numBuffers, currGroup);
         this->stats.completedOps.fetch_add(groupCount, std::memory_order_relaxed);
         this->stats.totalBytes.fetch_add(groupCount * this->localPool->BufferSize(), std::memory_order_relaxed);
 
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("Released");
+        // }
+
         // 4. Release group and signal client
-        group->state = flags::Released;
+        group->state.flag = flags::Released;
         group->roundIndex++;
 
-        err = this->signalPeer(nextGroup);
-        if (err) {
-            DOCA_CPP_LOG_ERROR(std::format("Failed to signal Released for group {}", nextGroup));
-            break;
-        }
-
         // Advance to next group
-        nextGroup = (nextGroup + 1) % NumBufferGroups;
+        currGroup = (currGroup + 1) % NumBufferGroups;
     }
 
     DOCA_CPP_LOG_DEBUG("Server pipeline loop ended");
@@ -348,15 +364,21 @@ void RdmaPipeline::clientLoop()
     auto * control = this->localPool->GetPipelineControl();
     const auto numBuffers = this->localPool->NumBuffers();
     const auto bufferSize = this->localPool->BufferSize();
-    uint32_t nextGroup = 0;
+    uint32_t currGroup = 0;
 
     while (this->running.load(std::memory_order_relaxed)) {
-        auto * group = &control->groups[nextGroup];
+        auto * group = &control->groups[currGroup];
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG(std::format("PROCESSING GROUP {}", currGroup));
+
+        DOCA_CPP_LOG_DEBUG("Waiting for RdmaPosted");
+        // }
 
         // 1. Wait for server doorbell (RdmaPosted written by server into our control)
         // Note: only progressLoop thread calls Progress() — this thread just polls flags
         while (this->running.load(std::memory_order_relaxed)) {
-            if (group->state == flags::RdmaPosted) {
+            if (group->state.flag == flags::RdmaPosted) {
                 break;
             }
             std::this_thread::yield();
@@ -366,9 +388,19 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("<---- Got RdmaPosted");
+        // }
+
         // 2. Invoke user service to fill buffers before sending
-        const auto groupStart = GetGroupStartIndex(numBuffers, nextGroup);
-        const auto groupCount = GetGroupBufferCount(numBuffers, nextGroup);
+        const auto groupStart = GetGroupStartIndex(numBuffers, currGroup);
+        const auto groupCount = GetGroupBufferCount(numBuffers, currGroup);
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("Processing");
+        // }
+
+        group->state.flag = flags::Processing;
 
         if (this->service) {
             for (uint32_t i = 0; i < groupCount; ++i) {
@@ -379,7 +411,7 @@ void RdmaPipeline::clientLoop()
         }
 
         // 3. Reset completion counter and submit RDMA writes for all buffers in group
-        this->groupCompletedOps[nextGroup].store(0, std::memory_order_release);
+        this->groupCompletedOps[currGroup].store(0, std::memory_order_release);
 
         for (uint32_t i = 0; i < groupCount; ++i) {
             const auto bufIndex = groupStart + i;
@@ -401,10 +433,16 @@ void RdmaPipeline::clientLoop()
             }
         }
 
+        group->state.flag = flags::RdmaPosted;
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("RdmaPosted: waiting for RdmaComplete");
+        // }
+
         // 4. Wait for all writes in this group to complete (callbacks increment counter)
         // Note: only progressLoop thread calls Progress() — this thread just polls counter
         while (this->running.load(std::memory_order_relaxed)) {
-            if (this->groupCompletedOps[nextGroup].load(std::memory_order_acquire) >= groupCount) {
+            if (this->groupCompletedOps[currGroup].load(std::memory_order_acquire) >= groupCount) {
                 break;
             }
             std::this_thread::yield();
@@ -414,11 +452,15 @@ void RdmaPipeline::clientLoop()
             break;
         }
 
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("RdmaComplete");
+        // }
+
         // 5. Signal server that writes are complete
-        group->state = flags::RdmaComplete;
-        auto err = this->signalPeer(nextGroup);
+        group->state.flag = flags::RdmaComplete;
+        auto err = this->signalPeer(currGroup);
         if (err) {
-            DOCA_CPP_LOG_ERROR(std::format("Failed to signal server for group {}", nextGroup));
+            DOCA_CPP_LOG_ERROR(std::format("Failed to signal server for group {}", currGroup));
             break;
         }
 
@@ -426,19 +468,21 @@ void RdmaPipeline::clientLoop()
         this->stats.completedOps.fetch_add(groupCount, std::memory_order_relaxed);
         this->stats.totalBytes.fetch_add(groupCount * bufferSize, std::memory_order_relaxed);
 
-        // 6. Wait for server to release (server sets Released after processing)
-        // Note: only progressLoop thread calls Progress() — this thread just polls flags
-        while (this->running.load(std::memory_order_relaxed)) {
-            if (group->state == flags::Released) {
-                break;
-            }
-            std::this_thread::yield();
-        }
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("----> Signaled RdmaComplete");
+        // }
+
+        // 6. Release group and start next group processing
+        group->state.flag = flags::Released;
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG("Released");
+        // }
 
         group->roundIndex++;
 
         // Advance to next group
-        nextGroup = (nextGroup + 1) % NumBufferGroups;
+        currGroup = (currGroup + 1) % NumBufferGroups;
     }
 
     DOCA_CPP_LOG_DEBUG("Client pipeline loop ended");
@@ -475,8 +519,8 @@ error RdmaPipeline::signalPeer(uint32_t groupIndex)
     // Reuse the local control buffer (source) to pick up latest GroupControl state
     auto localControlBuf = this->localPool->GetLocalControlBuffer(groupIndex);
     auto * control = this->localPool->GetPipelineControl();
-    auto * localGroupAddr = reinterpret_cast<uint8_t *>(&control->groups[groupIndex]);
-    auto err = localControlBuf->ReuseByData(localGroupAddr, sizeof(GroupControl));
+    auto * localStateAddr = reinterpret_cast<uint8_t *>(&(control->groups[groupIndex].state));
+    auto err = localControlBuf->ReuseByData(localStateAddr, sizeof(RdmaGroupState));
     if (err) {
         return errors::Wrapf(err, "Failed to reuse local control buffer for group {}", groupIndex);
     }
@@ -487,7 +531,7 @@ error RdmaPipeline::signalPeer(uint32_t groupIndex)
     if (remErr || remoteData == nullptr) {
         return errors::Wrapf(remErr, "Failed to get data of remote control buffer for group {}", groupIndex);
     }
-    err = remoteControlBuf->ReuseByAddr(remoteData, sizeof(GroupControl));
+    err = remoteControlBuf->ReuseByAddr(remoteData, sizeof(RdmaGroupState));
     if (err) {
         return errors::Wrapf(err, "Failed to reuse remote control buffer for group {}", groupIndex);
     }
