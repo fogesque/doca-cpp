@@ -52,6 +52,19 @@ MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(MemoryRangePtr memoryRan
     return *this;
 }
 
+MemoryMap::Builder & MemoryMap::Builder::SetMemoryRange(MemoryRangeHandle memoryRange)
+{
+    if (this->mmap && !this->buildErr) {
+        auto dataPtr = static_cast<void *>(memoryRange.data());
+        auto dataLength = memoryRange.size();
+        auto err = FromDocaError(doca_mmap_set_memrange(this->mmap, dataPtr, dataLength));
+        if (err) {
+            this->buildErr = errors::Wrap(err, "Failed to set memory range");
+        }
+    }
+    return *this;
+}
+
 MemoryMap::Builder & MemoryMap::Builder::SetDmaBufMemoryRange(MemoryRangeHandle memoryRange,
                                                               DmaBufDescriptor dmaBufDescriptor)
 {

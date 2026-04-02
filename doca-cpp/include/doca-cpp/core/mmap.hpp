@@ -92,6 +92,8 @@ public:
         Builder & SetPermissions(AccessFlags permissions);
         /// @brief Sets memory region
         Builder & SetMemoryRange(MemoryRangePtr memoryRange);
+        /// @brief Sets memory region
+        Builder & SetMemoryRange(MemoryRangeHandle memoryRange);
         /// @brief Sets DMA buf memory region
         Builder & SetDmaBufMemoryRange(MemoryRangeHandle memoryRange, DmaBufDescriptor dmaBufDescriptor);
         /// @brief Sets devices count threshold
