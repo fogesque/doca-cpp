@@ -123,6 +123,9 @@ int main()
         // Wait until RDMA is actually flowing (service receives first buffer)
         std::println("[Server] Waiting for RDMA data to arrive...");
         while (counter->GetReceivedBuffers() == 0) {
+            if (global::shutdownSignalReceived.load()) {
+                return;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
