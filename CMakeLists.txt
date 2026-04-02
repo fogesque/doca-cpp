@@ -115,6 +115,7 @@ if(BUILD_GPUNETIO)
     # Add GPU sources to the main doca-cpp target
     target_sources(${TARGET_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_buffer_view.cpp
+        ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_buffer_pool.cpp
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_device.cpp
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_manager.cpp
         ${CMAKE_SOURCE_DIR}/doca-cpp/src/gpunetio/gpu_memory_region.cpp
