@@ -7,7 +7,7 @@ namespace
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
-    .moduleName = "rdma::stream_server",
+    .moduleName = "rdma::server",
 };
 }  // namespace
 DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
