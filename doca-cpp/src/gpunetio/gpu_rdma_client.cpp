@@ -1,11 +1,4 @@
-#include <doca-cpp/core/context.hpp>
-#include <doca-cpp/core/progress_engine.hpp>
-#include <doca-cpp/gpunetio/gpu_rdma_client.hpp>
-#include <doca-cpp/gpunetio/gpu_rdma_handler.hpp>
-#include <doca-cpp/rdma/internal/rdma_connection.hpp>
-#include <doca-cpp/rdma/internal/rdma_engine.hpp>
-#include <doca-cpp/rdma/internal/rdma_session_manager.hpp>
-#include <format>
+#include "doca-cpp/gpunetio/gpu_rdma_client.hpp"
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 #include <doca-cpp/logging/logging.hpp>
@@ -101,6 +94,15 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
     // Create GPU manager for CUDA stream management
     this->gpuManager = GpuManager::Create();
 
+    using rdma::RdmaSessionManager;
+    this->sessionManager = RdmaSessionManager::Create();
+
+    // Connect to server via TCP
+    auto err = this->sessionManager->Connect(serverAddress, port);
+    if (err) {
+        return errors::Wrap(err, "Failed to connect to server");
+    }
+
     // Create progress engine
     auto [progressEngine, peErr] = doca::ProgressEngine::Create();
     if (peErr) {
@@ -112,15 +114,18 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
 
     auto [engine, engineErr] = doca::rdma::RdmaEngine::Create(this->config.device)
                                    .SetPermissions(permissions)
+                                   .SetSendQueueSize(this->config.streamConfig.numBuffers)
+                                   .SetDataPathOnGpu(this->config.gpuDevice)
+                                   .SetReceiveQueueSize(this->config.streamConfig.numBuffers)
+                                   .SetGrhEnabled(true)
                                    .SetMaxNumConnections(1)
                                    .SetTransportType(doca::rdma::TransportType::rc)
-                                   .SetDataPathOnGpu(this->config.gpuDevice)
-                                   .SetSendQueueSize(this->config.streamConfig.numBuffers)
-                                   .SetReceiveQueueSize(this->config.streamConfig.numBuffers)
                                    .Build();
     if (engineErr) {
         return errors::Wrap(engineErr, "Failed to create GPU RDMA engine");
     }
+
+    DOCA_CPP_LOG_DEBUG("Created RDMA engine");
 
     // Get RDMA context and connect to progress engine
     auto [context, ctxErr] = engine->AsContext();
@@ -128,10 +133,24 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
         return errors::Wrap(ctxErr, "Failed to get RDMA context");
     }
 
-    auto err = progressEngine->ConnectContext(context);
+    err = progressEngine->ConnectContext(context);
     if (err) {
         return errors::Wrap(err, "Failed to connect context to progress engine");
     }
+
+    auto [pool, poolErr] =
+        GpuBufferPool::Create(this->config.device, this->config.gpuDevice, this->config.streamConfig);
+    if (poolErr) {
+        return errors::Wrap(poolErr, "Failed to create buffer pool");
+    }
+
+    this->gpuBufferPool = pool;
+
+    auto resourceScope = pool->GetResourceScope();
+    resourceScope->AddDestroyable(doca::internal::ResourceTier::progressEngine, progressEngine);
+    resourceScope->AddDestroyable(doca::internal::ResourceTier::rdmaEngine, engine);
+
+    DOCA_CPP_LOG_DEBUG("Created GPU buffer pool");
 
     // Connection state for callbacks
     struct ConnectionState {
@@ -145,6 +164,8 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
     if (err) {
         return errors::Wrap(err, "Failed to set context user data");
     }
+
+    DOCA_CPP_LOG_DEBUG("Created RDMA context");
 
     // Set connection callbacks
     auto requestCallback = [](doca_rdma_connection *, doca_data) {};
@@ -174,11 +195,76 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
         return errors::Wrap(err, "Failed to set connection callbacks");
     }
 
+    // Set RDMA Context state changed callback
+    auto ctxCallback = [](const union doca_data userData, struct doca_ctx * ctx, enum doca_ctx_states prevState,
+                          enum doca_ctx_states nextState) -> void {
+        DOCA_CPP_LOG_DEBUG("Callback: context state changed");
+        // Do nothing. Context State will be checked with Context::GetState()
+    };
+    err = context->SetContextStateChangedCallback(ctxCallback);
+    if (err) {
+        return errors::Wrap(err, "Failed to set RDMA context state changed callback");
+    }
+
     // Start RDMA context
     err = context->Start();
     if (err) {
         return errors::Wrap(err, "Failed to start RDMA context");
     }
+
+    DOCA_CPP_LOG_DEBUG("Started RDMA context");
+
+    resourceScope->AddStoppable(doca::internal::ResourceTier::rdmaContext, context);
+
+    // Receive server's data memory descriptor
+    auto [serverDescriptor, recvErr] = this->sessionManager->ReceiveDescriptor();
+    if (recvErr) {
+        return errors::Wrap(recvErr, "Failed to receive client memory descriptor");
+    }
+
+    // Import server's data memory into our RDMA space
+    err = pool->ImportRemoteDescriptor(serverDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to import remote descriptor");
+    }
+
+    // Receive server's control memory descriptor
+    auto [serverControlDescriptor, recvControlErr] = this->sessionManager->ReceiveDescriptor();
+    if (recvControlErr) {
+        return errors::Wrap(recvControlErr, "Failed to receive client control memory descriptor");
+    }
+
+    // Import server's control memory into our RDMA space
+    err = pool->ImportRemoteControlDescriptor(serverControlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to import remote control descriptor");
+    }
+
+    // Export local data memory descriptor and send to server
+    auto [descriptor, descErr] = pool->ExportDescriptor();
+    if (descErr) {
+        return errors::Wrap(descErr, "Failed to export memory descriptor");
+    }
+
+    err = this->sessionManager->SendDescriptor(descriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to send memory descriptor");
+    }
+
+    // Export local control memory descriptor and send to server
+    auto [controlDescriptor, controlDescErr] = pool->ExportControlDescriptor();
+    if (controlDescErr) {
+        return errors::Wrap(controlDescErr, "Failed to export control memory descriptor");
+    }
+
+    err = this->sessionManager->SendDescriptor(controlDescriptor);
+    if (err) {
+        return errors::Wrap(err, "Failed to send control memory descriptor");
+    }
+
+    DOCA_CPP_LOG_DEBUG("Exchanged descriptors with remote peer");
+
+    DOCA_CPP_LOG_DEBUG("Trying to connect...");
 
     // Connect to server RDMA address via CM
     auto [rdmaAddress, addrErr] =
@@ -206,10 +292,18 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
         return errors::New("Timed out waiting for RDMA connection to server");
     }
 
+    DOCA_CPP_LOG_DEBUG("Connected via RDMA");
+
     // Get GPU RDMA handler from engine
     auto [gpuRdmaHandler, handlerErr] = GpuRdmaHandler::CreateFromEngine(engine->GetNative());
     if (handlerErr) {
         return errors::Wrap(handlerErr, "Failed to get GPU RDMA handler");
+    }
+
+    // Get RDMA connection ID
+    auto [rdmaConnectionId, connErr] = connectionState->activeConnection->GetId();
+    if (connErr) {
+        return errors::Wrap(connErr, "Failed to get RDMA connection ID");
     }
 
     // Create GPU pipeline
@@ -220,7 +314,8 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
                                        .SetGpuRdmaHandler(gpuRdmaHandler)
                                        .SetProgressEngine(progressEngine)
                                        .SetStreamConfig(this->config.streamConfig)
-                                       .SetConnectionId(0)
+                                       .SetGpuBufferPool(pool)
+                                       .SetConnectionId(rdmaConnectionId)
                                        .SetService(this->config.service)
                                        .Build();
     if (pipelineErr) {
@@ -229,11 +324,15 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
 
     this->pipeline = pipeline;
 
+    DOCA_CPP_LOG_DEBUG("Created RDMA pipeline");
+
     // Initialize pipeline (allocates GPU memory, buffer arrays, GpuPipelineControl)
     err = this->pipeline->Initialize();
     if (err) {
         return errors::Wrap(err, "Failed to initialize GPU pipeline");
     }
+
+    DOCA_CPP_LOG_DEBUG("Initialized RDMA pipeline");
 
     // Store connection for disconnect on stop
     this->activeConnection = connectionState->activeConnection;
@@ -257,6 +356,8 @@ error GpuRdmaClient::Start()
     if (err) {
         return errors::Wrap(err, "Failed to start GPU pipeline");
     }
+
+    DOCA_CPP_LOG_DEBUG("Started RDMA pipeline");
 
     this->streaming.store(true);
     DOCA_CPP_LOG_INFO("GPU client streaming started");
@@ -288,12 +389,12 @@ error GpuRdmaClient::Stop()
     return nullptr;
 }
 
-GpuBufferView GpuRdmaClient::GetBuffer(uint32_t index) const
-{
-    if (!this->pipeline) {
-        return GpuBufferView();
-    }
-    return this->pipeline->GetBufferView(index);
-}
+// GpuBufferView GpuRdmaClient::GetBuffer(uint32_t index) const
+// {
+//     if (!this->pipeline) {
+//         return GpuBufferView();
+//     }
+//     return this->pipeline->GetBufferView(index);
+// }
 
 }  // namespace doca::gpunetio

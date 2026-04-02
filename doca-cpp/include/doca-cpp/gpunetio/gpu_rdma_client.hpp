@@ -5,16 +5,23 @@
 #include <atomic>
 #include <cstdint>
 #include <errors/errors.hpp>
+#include <format>
 #include <memory>
 #include <string>
 #include <tuple>
 
+#include "doca-cpp/core/context.hpp"
 #include "doca-cpp/core/device.hpp"
+#include "doca-cpp/core/progress_engine.hpp"
 #include "doca-cpp/gpunetio/gpu_buffer_view.hpp"
 #include "doca-cpp/gpunetio/gpu_device.hpp"
 #include "doca-cpp/gpunetio/gpu_manager.hpp"
+#include "doca-cpp/gpunetio/gpu_rdma_handler.hpp"
 #include "doca-cpp/gpunetio/gpu_rdma_pipeline.hpp"
 #include "doca-cpp/gpunetio/gpu_stream_service.hpp"
+#include "doca-cpp/rdma/internal/rdma_connection.hpp"
+#include "doca-cpp/rdma/internal/rdma_engine.hpp"
+#include "doca-cpp/rdma/internal/rdma_session_manager.hpp"
 #include "doca-cpp/rdma/rdma_stream_config.hpp"
 
 namespace doca::rdma
@@ -59,10 +66,10 @@ public:
     /// @brief Stops streaming
     error Stop();
 
-    /// [Buffer Access]
+    // /// [Buffer Access]
 
-    /// @brief Returns GpuBufferView for buffer at given index
-    GpuBufferView GetBuffer(uint32_t index) const;
+    // /// @brief Returns GpuBufferView for buffer at given index
+    // GpuBufferView GetBuffer(uint32_t index) const;
 
     /// [Construction & Destruction]
 
@@ -126,6 +133,10 @@ private:
     std::shared_ptr<doca::rdma::RdmaConnection> activeConnection = nullptr;
     std::atomic_bool connected = false;
     std::atomic_bool streaming = false;
+
+    rdma::RdmaSessionManagerPtr sessionManager = nullptr;
+
+    GpuBufferPoolPtr gpuBufferPool = nullptr;
 };
 
 }  // namespace doca::gpunetio
