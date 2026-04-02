@@ -152,23 +152,40 @@ error GpuRdmaPipeline::Start()
 
     this->running.store(true);
 
-    auto * control = static_cast<rdma::PipelineControl *>(this->gpuBufferPool->GetPipelineControlGpuPointer());
+    auto * deviceControl = this->config.gpuBufferPool->GetPipelineControlGpuPointer();
 
-    auto localArray = this->gpuBufferPool->GetLocalGpuArray();
-    auto remoteArray = this->gpuBufferPool->GetRemoteGpuArray();
+    auto deviceLocalArray = this->config.gpuBufferPool->GetLocalGpuArray();
+    auto deviceRemoteArray = this->config.gpuBufferPool->GetRemoteGpuArray();
+    auto deviceRemoteControlArray = this->config.gpuBufferPool->GetRemoteControlGpuArray();
 
-    // Launch persistent server kernel on rdmaStream
-    if (this->config.gpuRdmaHandler && localArray && remoteArray) {
-        LaunchPersistentServerKernel(this->rdmaStream, this->config.connectionId,
-                                     this->config.gpuRdmaHandler->GetNative(), localArray->GetNative(),
-                                     remoteArray->GetNative(), control, this->config.streamConfig.numBuffers);
+    if (this->config.role == rdma::PipelineRole::server) {
+        // Launch persistent server kernel on rdmaStream
+        if (this->config.gpuRdmaHandler && deviceRemoteControlArray) {
+            LaunchPersistentServerKernel(
+                this->rdmaStream, this->config.connectionId, this->config.gpuRdmaHandler->GetNative(),
+                deviceRemoteControlArray->GetNative(), deviceControl, this->config.streamConfig.numBuffers);
+        }
+    }
+
+    if (this->config.role == rdma::PipelineRole::client) {
+        // Launch persistent client kernel on rdmaStream
+        if (this->config.gpuRdmaHandler && deviceLocalArray && deviceRemoteArray && deviceRemoteControlArray) {
+            LaunchPersistentClientKernel(this->rdmaStream, this->config.connectionId,
+                                         this->config.gpuRdmaHandler->GetNative(), deviceLocalArray->GetNative(),
+                                         deviceRemoteArray->GetNative(), deviceRemoteControlArray->GetNative(),
+                                         deviceControl, this->config.streamConfig.numBuffers);
+        }
     }
 
     // Start CPU progress thread
     this->progressThread = std::thread(&GpuRdmaPipeline::progressLoop, this);
 
-    // Start CPU processing thread
-    this->processingThread = std::thread(&GpuRdmaPipeline::processingLoop, this);
+    // Launch main loop thread based on role
+    if (this->config.role == rdma::PipelineRole::server) {
+        this->processingThread = std::thread(&GpuRdmaPipeline::serverLoop, this);
+    } else {
+        this->processingThread = std::thread(&GpuRdmaPipeline::clientLoop, this);
+    }
 
     DOCA_CPP_LOG_INFO("GPU pipeline started");
     return nullptr;
@@ -183,12 +200,12 @@ error GpuRdmaPipeline::Stop()
     this->running.store(false);
 
     // Signal kernel to stop
-    auto * cpuControl = this->gpuBufferPool->GetPipelineControlCpuPointer();
-    cpuControl->stopFlag = rdma::flags::StopRequest;
+    auto * hostControl = this->config.gpuBufferPool->GetPipelineControlCpuPointer();
+    hostControl->stopFlag = rdma::flags::StopRequest;
 
     // Release any group the kernel might be waiting on
     for (uint32_t g = 0; g < doca::rdma::NumBufferGroups; ++g) {
-        cpuControl->groups[g].state = rdma::flags::Released;
+        hostControl->groups[g].state.flag = rdma::flags::Released;
     }
 
     // Wait for kernel to finish
@@ -222,26 +239,41 @@ error GpuRdmaPipeline::Stop()
 
 rdma::PipelineControl * GpuRdmaPipeline::GetCpuControl() const
 {
-    return this->gpuBufferPool->GetPipelineControlCpuPointer();
+    return this->config.gpuBufferPool->GetPipelineControlCpuPointer();
 }
 
-void GpuRdmaPipeline::processingLoop()
+GpuBufferView GpuRdmaPipeline::GetBufferView(uint32_t index) const
+{
+    return this->config.gpuBufferPool->GetGpuBufferView(index);
+}
+
+// ─────────────────────────────────────────────────────────
+// Server Loop
+// ─────────────────────────────────────────────────────────
+
+void GpuRdmaPipeline::serverLoop()
 {
     DOCA_CPP_LOG_DEBUG("GPU pipeline processing loop started");
 
-    auto * control = this->gpuBufferPool->GetPipelineControlCpuPointer();
+    auto * hostControl = this->config.gpuBufferPool->GetPipelineControlCpuPointer();
     uint32_t nextGroup = 0;
 
     while (this->running.load(std::memory_order_relaxed)) {
-        auto * group = &control->groups[nextGroup];
+        auto * group = &hostControl->groups[nextGroup];
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG(std::format("PROCESSING GROUP {}", nextGroup));
+        // }
 
         // Poll for RdmaComplete
-        if (group->state != rdma::flags::RdmaComplete) {
+        while (group->state.flag != rdma::flags::RdmaComplete) {
+            if (!this->running.load(std::memory_order_relaxed)) {
+                break;
+            }
             std::this_thread::yield();
-            continue;
         }
 
-        group->state = rdma::flags::Processing;
+        group->state.flag = rdma::flags::Processing;
 
         // Invoke per-buffer service on processing stream
         if (this->config.service) {
@@ -259,7 +291,60 @@ void GpuRdmaPipeline::processingLoop()
         }
 
         // Mark group as Released (kernel will pick it up)
-        group->state = rdma::flags::Released;
+        group->state.flag = rdma::flags::Released;
+
+        // Advance to next group
+        nextGroup = (nextGroup + 1) % doca::rdma::NumBufferGroups;
+    }
+
+    DOCA_CPP_LOG_DEBUG("GPU pipeline processing loop ended");
+}
+
+// ─────────────────────────────────────────────────────────
+// Client Loop
+// ─────────────────────────────────────────────────────────
+
+void GpuRdmaPipeline::clientLoop()
+{
+    DOCA_CPP_LOG_DEBUG("GPU pipeline processing loop started");
+
+    auto * hostControl = this->config.gpuBufferPool->GetPipelineControlCpuPointer();
+    uint32_t nextGroup = 0;
+
+    while (this->running.load(std::memory_order_relaxed)) {
+        auto * group = &hostControl->groups[nextGroup];
+
+        // if (group->roundIndex < rdma::MaxPipelineGroups) {
+        DOCA_CPP_LOG_DEBUG(std::format("PROCESSING GROUP {}", nextGroup));
+        // }
+
+        // Poll for RdmaComplete
+        while (group->state.flag != rdma::flags::RdmaComplete) {
+            if (!this->running.load(std::memory_order_relaxed)) {
+                break;
+            }
+            std::this_thread::yield();
+        }
+
+        group->state.flag = rdma::flags::Processing;
+
+        // Invoke per-buffer service on processing stream
+        if (this->config.service) {
+            const auto groupStart = doca::rdma::GetGroupStartIndex(this->config.streamConfig.numBuffers, nextGroup);
+            const auto groupCount = doca::rdma::GetGroupBufferCount(this->config.streamConfig.numBuffers, nextGroup);
+
+            for (uint32_t i = 0; i < groupCount; ++i) {
+                const auto bufIndex = groupStart + i;
+                auto view = this->GetBufferView(bufIndex);
+                this->config.service->OnBuffer(view, this->processingStream);
+            }
+
+            // Wait for all processing to finish
+            cudaStreamSynchronize(this->processingStream);
+        }
+
+        // Mark group as Released (kernel will pick it up)
+        group->state.flag = rdma::flags::Released;
 
         // Advance to next group
         nextGroup = (nextGroup + 1) % doca::rdma::NumBufferGroups;

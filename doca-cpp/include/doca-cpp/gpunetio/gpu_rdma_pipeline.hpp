@@ -158,8 +158,11 @@ private:
 
     /// [Threading]
 
-    /// @brief CPU processing thread: polls GpuPipelineControl, invokes service
-    void processingLoop();
+    /// @brief Server main loop: signals readiness, waits for client writes, processes data
+    void serverLoop();
+
+    /// @brief Client main loop: waits for server readiness, writes data, signals completion
+    void clientLoop();
 
     /// @brief CPU progress thread: runs pe_progress() loop
     void progressLoop();
@@ -172,11 +175,6 @@ private:
 
     /// @brief Pipeline configuration
     Config config;
-
-    /// [GPU Memory]
-
-    /// @brief GPU buffer pool
-    GpuBufferPoolPtr gpuBufferPool = nullptr;
 
     /// [CUDA Streams]
 
