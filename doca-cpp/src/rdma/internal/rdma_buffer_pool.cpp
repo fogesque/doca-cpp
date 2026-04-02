@@ -151,7 +151,7 @@ error RdmaBufferPool::initialize()
     control->bufferSize = static_cast<uint32_t>(this->streamConfig.bufferSize);
 
     for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-        control->groups[g].state = flags::Idle;
+        control->groups[g].state = rdma::RdmaGroupState{ .flag = flags::Idle };
         control->groups[g].roundIndex = 0;
         control->groups[g].completedOps = 0;
         control->groups[g].errorFlag = 0;
@@ -185,11 +185,11 @@ error RdmaBufferPool::initialize()
     // Pre-allocate per-group local control buffers pointing to each GroupControl
     this->localControlBuffers.resize(NumBufferGroups);
     for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-        auto * groupAddr =
+        auto * groupStateAddr =
             this->controlMemoryRange->data() + offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
 
-        auto [buf, bufErr] =
-            this->controlInventory->RetrieveBufferByData(this->controlMemoryMap, groupAddr, sizeof(GroupControl));
+        auto [buf, bufErr] = this->controlInventory->RetrieveBufferByData(this->controlMemoryMap, groupStateAddr,
+                                                                          sizeof(RdmaGroupState));
         if (bufErr) {
             return errors::Wrap(bufErr, "Failed to allocate local control buffer");
         }
@@ -325,10 +325,10 @@ error RdmaBufferPool::ImportRemoteControlDescriptor(const std::vector<uint8_t> &
     // Pre-allocate per-group remote control buffers pointing to each remote GroupControl
     this->remoteControlBuffers.resize(NumBufferGroups);
     for (uint32_t g = 0; g < NumBufferGroups; ++g) {
-        auto * remoteGroupAddr = remoteRange.data() + offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
+        auto * remoteStateAddr = remoteRange.data() + offsetof(PipelineControl, groups) + g * sizeof(GroupControl);
 
         auto [buf, bufErr] = this->remoteControlInventory->RetrieveBufferByAddress(
-            this->remoteControlMemoryMap, remoteGroupAddr, sizeof(GroupControl));
+            this->remoteControlMemoryMap, remoteStateAddr, sizeof(RdmaGroupState));
         if (bufErr) {
             return errors::Wrap(bufErr, "Failed to allocate remote control buffer");
         }
