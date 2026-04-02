@@ -1,9 +1,8 @@
-#include <doca-cpp/gpunetio/gpu_device.hpp>
-
 #include <cuda.h>
 #include <cuda_runtime.h>
 
 #include <doca-cpp/core/error.hpp>
+#include <doca-cpp/gpunetio/gpu_device.hpp>
 
 namespace doca::gpunetio
 {
@@ -37,7 +36,26 @@ std::tuple<GpuDevicePtr, error> GpuDevice::Create(const std::string & gpuPcieBdf
     }
 
     auto device = std::make_shared<GpuDevice>(gpuDevice);
+    device->gpuDeviceBdfAddress = gpuPcieBdfAddress;
     return { device, nullptr };
+}
+
+error GpuDevice::ResetForThisThread()
+{
+    // Find CUDA device by PCIe BDF address
+    int cudaDeviceId = 0;
+    auto cudaErr = cudaDeviceGetByPCIBusId(&cudaDeviceId, this->gpuDeviceBdfAddress.c_str());
+    if (cudaErr != cudaSuccess) {
+        return errors::Errorf("Invalid GPU PCIe bus address: {}", this->gpuDeviceBdfAddress);
+    }
+
+    // Set active CUDA device
+    cudaErr = cudaSetDevice(cudaDeviceId);
+    if (cudaErr != cudaSuccess) {
+        return errors::New("Failed to set GPU device for CUDA executions");
+    }
+
+    return nullptr;
 }
 
 doca_gpu * GpuDevice::GetNative()

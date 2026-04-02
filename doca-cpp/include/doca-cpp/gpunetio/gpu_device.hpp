@@ -32,6 +32,11 @@ public:
     /// @brief Creates GPU device from PCIe BDF address string
     static std::tuple<GpuDevicePtr, error> Create(const std::string & gpuPcieBdfAddress);
 
+    /// [Driver]
+
+    /// @brief Updates GPU device context to use CUDA API in current thread
+    error ResetForThisThread();
+
     /// [Native Access]
 
     /// @brief Gets native DOCA GPU device pointer
@@ -68,6 +73,9 @@ private:
 
     /// @brief Native DOCA GPU device
     doca_gpu * gpuDevice = nullptr;
+
+    /// @brief GPU device PCIe BDF address
+    std::string gpuDeviceBdfAddress;
 };
 
 }  // namespace doca::gpunetio
