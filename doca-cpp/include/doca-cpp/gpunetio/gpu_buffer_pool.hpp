@@ -60,13 +60,17 @@ public:
     /// @warning Returns GPU pointer, do not dereferrence on CPU
     GpuBufferArrayPtr GetLocalGpuArray() const;
 
-    /// @brief Returns raw remote buffer address for given index
-    /// @warning Returns GPU pointer, do not dereferrence on CPU
-    void * GetRemoteBufferAddress(uint32_t index) const;
+    // /// @brief Returns raw remote buffer address for given index
+    // /// @warning Returns GPU pointer, do not dereferrence on CPU
+    // void * GetRemoteBufferAddress(uint32_t index) const;
 
     /// @brief Returns remote GPU buffer array
     /// @warning Returns GPU pointer, do not dereferrence on CPU
     GpuBufferArrayPtr GetRemoteGpuArray() const;
+
+    /// @brief Returns remote GPU control buffer array
+    /// @warning Returns GPU pointer, do not dereferrence on CPU
+    GpuBufferArrayPtr GetRemoteControlGpuArray() const;
 
     /// [Pipeline Control]
 
@@ -112,8 +116,8 @@ public:
     /// @brief Returns buffer size in bytes
     std::size_t BufferSize() const;
 
-    /// @brief Returns local memory map
-    doca::MemoryMapPtr GetMemoryMap() const;
+    // /// @brief Returns local memory map
+    // doca::MemoryMapPtr GetMemoryMap() const;
 
     /// @brief Returns the resource scope managing this pool's resources
     doca::internal::ResourceScopePtr GetResourceScope() const;
@@ -182,6 +186,8 @@ private:
     BufferArrayPtr localArray = nullptr;
     /// @brief Remote memory map from peer
     doca::RemoteMemoryMapPtr remoteMemoryMap = nullptr;
+    /// @brief Remote GPU buffer array
+    GpuBufferArrayPtr remoteGpuArray = nullptr;
     /// @brief Remote buffer array
     BufferArrayPtr remoteArray = nullptr;
     /// @brief Remote memory base address (from peer's exported descriptor)
@@ -210,6 +216,8 @@ private:
     doca::RemoteMemoryMapPtr remoteControlMemoryMap = nullptr;
     /// @brief Remote control buffer array
     BufferArrayPtr remoteControlArray = nullptr;
+    /// @brief Remote control GPU buffer array
+    GpuBufferArrayPtr remoteControlGpuArray = nullptr;
     // /// @brief Per-group remote control DOCA buffers (for RDMA write destination)
     // std::vector<doca::BufferPtr> remoteControlBuffers;
     /// @brief Remote control base address

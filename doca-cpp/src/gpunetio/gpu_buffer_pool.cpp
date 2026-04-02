@@ -55,7 +55,7 @@ std::tuple<GpuBufferPoolPtr, error> GpuBufferPool::Create(doca::DevicePtr device
 }
 
 GpuBufferPool::GpuBufferPool(const Config & config)
-    : device(config.device), streamConfig(config.streamConfig), totalMemorySize(0)
+    : device(config.device), streamConfig(config.streamConfig), totalMemorySize(0), gpuDevice(config.gpuDevice)
 {
 }
 
@@ -65,6 +65,12 @@ GpuBufferPool::~GpuBufferPool()
     if (this->resourceScope) {
         this->resourceScope->TearDown();
     }
+}
+
+GpuBufferView GpuBufferPool::GetGpuBufferView(uint32_t index) const
+{
+    auto * bufferPtr = static_cast<uint8_t *>(this->localMemory->GpuPointer()) + index * this->streamConfig.bufferSize;
+    return GpuBufferView::Create(bufferPtr, this->streamConfig.bufferSize, index);
 }
 
 error GpuBufferPool::initialize()
@@ -142,7 +148,7 @@ error GpuBufferPool::initialize()
     // ─────────────────────────────────────────────────────────
 
     // Allocate control region for PipelineControl
-    const auto controlAlignment = 4096;
+    const auto controlAlignment = sizeof(rdma::PipelineControl);
     auto controlConfig = GpuMemoryRegion::Config{
         .memoryRegionSize = sizeof(rdma::PipelineControl),
         .memoryAlignment = controlAlignment,
@@ -150,9 +156,9 @@ error GpuBufferPool::initialize()
         .accessFlags = permissions,
     };
 
-    auto [controlMemory, err] = GpuMemoryRegion::Create(this->gpuDevice, controlConfig);
-    if (err) {
-        return errors::Wrap(err, "Failed to create GPU control memory region");
+    auto [controlMemory, mrErr] = GpuMemoryRegion::Create(this->gpuDevice, controlConfig);
+    if (mrErr) {
+        return errors::Wrap(mrErr, "Failed to create GPU control memory region");
     }
     this->controlMemory = controlMemory;
     this->resourceScope->AddDestroyable(doca::internal::ResourceTier::gpuMemory, controlMemory);
@@ -160,17 +166,17 @@ error GpuBufferPool::initialize()
     auto controlCpuPtr = this->controlMemory->CpuPointer();
 
     // Initialize PipelineControl fields
-    auto * control = reinterpret_cast<rdma::PipelineControl *>(controlCpuPtr);
-    control->stopFlag = rdma::flags::Idle;
-    control->numGroups = rdma::NumBufferGroups;
-    control->buffersPerGroup = this->streamConfig.numBuffers / rdma::NumBufferGroups;
-    control->bufferSize = static_cast<uint32_t>(this->streamConfig.bufferSize);
+    auto * hostControl = reinterpret_cast<rdma::PipelineControl *>(controlCpuPtr);
+    hostControl->stopFlag = rdma::flags::Idle;
+    hostControl->numGroups = rdma::NumBufferGroups;
+    hostControl->buffersPerGroup = this->streamConfig.numBuffers / rdma::NumBufferGroups;
+    hostControl->bufferSize = static_cast<uint32_t>(this->streamConfig.bufferSize);
 
     for (uint32_t g = 0; g < rdma::NumBufferGroups; ++g) {
-        control->groups[g].state = rdma::flags::Idle;
-        control->groups[g].roundIndex = 0;
-        control->groups[g].completedOps = 0;
-        control->groups[g].errorFlag = 0;
+        hostControl->groups[g].state.flag = rdma::flags::Idle;
+        hostControl->groups[g].roundIndex = 0;
+        hostControl->groups[g].completedOps = 0;
+        hostControl->groups[g].errorFlag = 0;
     }
 
     // Create control memory map with RDMA write permissions
@@ -188,7 +194,8 @@ error GpuBufferPool::initialize()
     this->resourceScope->AddDestroyable(doca::internal::ResourceTier::memoryMap, controlMemoryMap);
 
     // Create local buffer array
-    auto [controlBufferArray, cbufArrErr] = BufferArray::Create(rdma::NumBufferGroups)
+    const auto elementSize = 1;
+    auto [controlBufferArray, cbufArrErr] = BufferArray::Create(elementSize)
                                                 .SetMemory(controlMemoryMap, sizeof(rdma::PipelineControl))
                                                 .SetGpuDevice(this->gpuDevice)
                                                 .Start();
@@ -246,6 +253,13 @@ error GpuBufferPool::ImportRemoteDescriptor(const std::vector<uint8_t> & descrip
 
     this->remoteArray = bufferArray;
 
+    // Retrieve GPU buffer array
+    auto [gpuBufferArray, cgpuBufErr] = this->remoteArray->RetrieveGpuBufferArray();
+    if (cgpuBufErr) {
+        return errors::Wrap(cgpuBufErr, "Failed to retrive GPU control buffer array");
+    }
+    this->remoteGpuArray = gpuBufferArray;
+
     DOCA_CPP_LOG_INFO(std::format("Imported remote descriptor: {} buffers", this->streamConfig.numBuffers));
     return nullptr;
 }
@@ -271,7 +285,8 @@ error GpuBufferPool::ImportRemoteControlDescriptor(const std::vector<uint8_t> & 
     this->remoteControlMemoryMap = remoteMmap;
 
     // Create buffer array for remote memory region
-    auto [bufferArray, bufArrErr] = BufferArray::Create(rdma::NumBufferGroups)
+    const auto elementSize = 1;
+    auto [bufferArray, bufArrErr] = BufferArray::Create(elementSize)
                                         .SetRemoteMemory(remoteMmap, sizeof(rdma::PipelineControl))
                                         .SetGpuDevice(this->gpuDevice)
                                         .Start();
@@ -280,6 +295,13 @@ error GpuBufferPool::ImportRemoteControlDescriptor(const std::vector<uint8_t> & 
     }
 
     this->remoteControlArray = bufferArray;
+
+    // Retrieve GPU buffer array
+    auto [gpuControlBufferArray, cgpuBufErr] = this->remoteControlArray->RetrieveGpuBufferArray();
+    if (cgpuBufErr) {
+        return errors::Wrap(cgpuBufErr, "Failed to retrive GPU control buffer array");
+    }
+    this->remoteControlGpuArray = gpuControlBufferArray;
 
     DOCA_CPP_LOG_INFO(std::format("Imported remote descriptor: {} buffers", this->streamConfig.numBuffers));
     return nullptr;
@@ -327,7 +349,12 @@ GpuBufferArrayPtr GpuBufferPool::GetLocalGpuArray() const
 
 GpuBufferArrayPtr GpuBufferPool::GetRemoteGpuArray() const
 {
-    return this->controlGpuArray;
+    return this->remoteGpuArray;
+}
+
+GpuBufferArrayPtr GpuBufferPool::GetRemoteControlGpuArray() const
+{
+    return this->remoteControlGpuArray;
 }
 
 }  // namespace doca::gpunetio
