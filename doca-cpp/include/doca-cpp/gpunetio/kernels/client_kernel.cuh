@@ -17,7 +17,8 @@ extern "C" {
 /// @param bufferSize Size of each buffer in bytes
 void LaunchPersistentClientKernel(cudaStream_t stream, uint32_t connectionId, struct doca_gpu_dev_rdma * rdmaGpu,
                                   struct doca_gpu_buf_arr * localBufArr, struct doca_gpu_buf_arr * remoteBufArr,
-                                  doca::rdma::PipelineControl * control, uint32_t numBuffers, uint32_t bufferSize);
+                                  struct doca_gpu_buf_arr * remoteControlBufArr, doca::rdma::PipelineControl * control,
+                                  uint32_t numBuffers);
 
 } /* extern C */
 
