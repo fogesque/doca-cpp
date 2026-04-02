@@ -1,6 +1,18 @@
+#include <doca-cpp/core/error.hpp>
 #include <doca-cpp/gpunetio/gpu_memory_region.hpp>
 
-#include <doca-cpp/core/error.hpp>
+#ifdef DOCA_CPP_ENABLE_LOGGING
+#include "doca-cpp/logging/logging.hpp"
+namespace
+{
+inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
+inline const auto loggerContext = kvalog::Logger::Context{
+    .appName = "doca-cpp",
+    .moduleName = "gpu::memory",
+};
+}  // namespace
+DOCA_CPP_DEFINE_LOGGER(loggerConfig, loggerContext)
+#endif
 
 namespace doca::gpunetio
 {
@@ -21,17 +33,16 @@ std::tuple<GpuMemoryRegionPtr, error> GpuMemoryRegion::Create(GpuDevicePtr gpuDe
         return { nullptr, errors::New("Memory region size must be greater than 0") };
     }
 
-    if (config.memoryAlignment < 4096) {
-        return { nullptr, errors::New("Memory alignment must be at least 4096 bytes") };
+    if (config.memoryAlignment < 256) {
+        return { nullptr, errors::New("Memory alignment must be at least 256 bytes") };
     }
 
     void * gpuPtr = nullptr;
     void * cpuPtr = nullptr;
     const auto memoryType = static_cast<doca_gpu_mem_type>(config.memoryType);
 
-    auto err = doca::FromDocaError(
-        doca_gpu_mem_alloc(gpuDevice->GetNative(), config.memoryRegionSize, config.memoryAlignment, memoryType, &gpuPtr,
-                           &cpuPtr));
+    auto err = doca::FromDocaError(doca_gpu_mem_alloc(gpuDevice->GetNative(), config.memoryRegionSize,
+                                                      config.memoryAlignment, memoryType, &gpuPtr, &cpuPtr));
     if (err) {
         return { nullptr, errors::Wrap(err, "Failed to allocate GPU memory") };
     }
@@ -70,20 +81,38 @@ error GpuMemoryRegion::MapMemory(doca::DevicePtr docaDevice)
     // Retrieve DMA buf descriptor for GPU memory
     auto [dmaBufDesc, dmaBufErr] = RetrieveDmaBufDescriptor(this->gpuDevice, memoryHandle);
     if (dmaBufErr) {
-        return errors::Wrap(dmaBufErr, "Failed to retrieve DMA buf descriptor for GPU memory");
+        DOCA_CPP_LOG_WARN(
+            "Failed to retrieve DMA buf descriptor for GPU memory: it may be not supported on your system or size of "
+            "memory is not aligned with page size (4096). Will try legacy peermem method to map memory");
     }
 
-    // Create memory map with DMA buf
-    auto [mmap, mapErr] = doca::MemoryMap::Create()
-                              .AddDevice(docaDevice)
-                              .SetPermissions(this->config.accessFlags)
-                              .SetDmaBufMemoryRange(memoryHandle, dmaBufDesc)
-                              .Start();
-    if (mapErr) {
-        return errors::Wrap(mapErr, "Failed to create memory map for GPU memory region");
+    doca::MemoryMapPtr memoryMap = nullptr;
+
+    if (!dmaBufErr) {
+        // Create memory map with DMA buf
+        auto [mmap, mapErr] = doca::MemoryMap::Create()
+                                  .AddDevice(docaDevice)
+                                  .SetPermissions(this->config.accessFlags)
+                                  .SetDmaBufMemoryRange(memoryHandle, dmaBufDesc)
+                                  .Start();
+        if (mapErr) {
+            return errors::Wrap(mapErr, "Failed to create memory map for GPU memory region");
+        }
+        memoryMap = mmap;
+    } else {
+        // Create memory map with legacy mode
+        auto [mmap, mapErr] = doca::MemoryMap::Create()
+                                  .AddDevice(docaDevice)
+                                  .SetPermissions(this->config.accessFlags)
+                                  .SetMemoryRange(memoryHandle)
+                                  .Start();
+        if (mapErr) {
+            return errors::Wrap(mapErr, "Failed to create memory map for GPU memory region");
+        }
+        memoryMap = mmap;
     }
 
-    this->memoryMap = mmap;
+    this->memoryMap = memoryMap;
     return nullptr;
 }
 
@@ -132,12 +161,12 @@ error GpuMemoryRegion::Destroy()
 }
 
 std::tuple<doca::DmaBufDescriptor, error> RetrieveDmaBufDescriptor(GpuDevicePtr gpuDevice,
-                                                                    doca::MemoryRangeHandle memoryHandle)
+                                                                   doca::MemoryRangeHandle memoryHandle)
 {
     int dmaBufDescriptor = 0;
     auto * ptr = static_cast<void *>(memoryHandle.data());
-    auto err = doca::FromDocaError(
-        doca_gpu_dmabuf_fd(gpuDevice->GetNative(), ptr, memoryHandle.size(), &dmaBufDescriptor));
+    auto err =
+        doca::FromDocaError(doca_gpu_dmabuf_fd(gpuDevice->GetNative(), ptr, memoryHandle.size(), &dmaBufDescriptor));
     if (err) {
         return { 0, errors::Wrap(err, "Failed to retrieve DMA buf descriptor") };
     }
