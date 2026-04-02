@@ -23,20 +23,31 @@ inline constexpr uint32_t StopRequest = 5;
 
 ///
 /// @brief
+/// Per-group control block which data is shared between two RDMA peers.
+/// Used for polling RDMA flags for low-latency synchronizing.
+///
+struct alignas(16) RdmaGroupState {
+    /// @brief Group state (see flags namespace)
+    volatile uint32_t flag = flags::Idle;
+    /// @brief Padding to fill cache line
+    uint8_t padding[12];
+};
+
+///
+/// @brief
 /// Per-group control block. 64-byte aligned to prevent false sharing between groups.
-/// Shared between server and client via RDMA writes.
 ///
 struct alignas(64) GroupControl {
     /// @brief Group state (see flags namespace)
-    volatile uint32_t state = flags::Idle;
+    RdmaGroupState state;
     /// @brief Round counter (incremented each cycle)
-    volatile uint32_t roundIndex = 0;
+    uint32_t roundIndex = 0;
     /// @brief Number of completed RDMA operations in current round
     volatile uint32_t completedOps = 0;
     /// @brief Error flag (non-zero indicates error)
     volatile uint32_t errorFlag = 0;
     /// @brief Padding to fill cache line
-    uint8_t padding[48];
+    uint8_t padding[36];
 };
 
 ///
