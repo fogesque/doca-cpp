@@ -327,6 +327,7 @@ error GpuRdmaClient::Connect(const std::string & serverAddress, uint16_t port)
 
     // Create GPU pipeline
     auto [pipeline, pipelineErr] = GpuRdmaPipeline::Create()
+                                       .SetRole(rdma::PipelineRole::client)
                                        .SetDocaDevice(this->config.device)
                                        .SetGpuDevice(this->config.gpuDevice)
                                        .SetGpuManager(this->gpuManager)

@@ -120,7 +120,7 @@ error RdmaStreamServer::Serve()
     auto mainSession = RdmaSessionManager::Create();
 
     // Start TCP listener
-    auto err = mainSession->Listen(this->config.listenPort);
+    auto err = mainSession->Listen(this->config.listenPort, this->config.maxConnections);
     if (err) {
         return errors::Wrap(err, "Failed to start TCP listener");
     }
