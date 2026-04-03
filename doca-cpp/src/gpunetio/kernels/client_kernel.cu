@@ -14,8 +14,12 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
     uint32_t completedOps = 0;
     uint32_t currentGroup = 0;
 
+    printf("    KERNEL: Client kernel launched\n");
+
     // Get remote buffer for doorbell writes
     doca_gpu_dev_buf_get_buf(remoteControlBufArr, 0, &remoteControlBuf);
+
+    printf("    KERNEL: Retrieved remote control buffer\n");
 
     // Persistent loop: cycle through groups until stop
     while (control->stopFlag != doca::rdma::flags::StopRequest) {
@@ -25,6 +29,10 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
         const auto groupCount =
             (currentGroup == control->numGroups - 1) ? (numBuffers - groupStart) : control->buffersPerGroup;
 
+        printf("    KERNEL: Processing group %d\n", currentGroup);
+
+        printf("    KERNEL: Waiting for group to become Released or Idle\n");
+
         // Wait for group to be Released or Idle (data filled, ready to send)
         while (group->state.flag != doca::rdma::flags::Released && group->state.flag != doca::rdma::flags::Idle) {
             if (control->stopFlag == doca::rdma::flags::StopRequest) {
@@ -32,12 +40,18 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
             }
         }
 
+        printf("    KERNEL: Group is ready for RDMA\n");
+
+        printf("    KERNEL: Waiting for group to become RdmaPosted\n");
+
         // Wait for group to be RdmaPosted (server ready to receive)
         while (group->state.flag != doca::rdma::flags::RdmaPosted) {
             if (control->stopFlag == doca::rdma::flags::StopRequest) {
                 return;
             }
         }
+
+        printf("    KERNEL: Remote group is ready for RDMA\n");
 
         if (threadIdx.x == 0) {
             // Write all buffers in group to server
@@ -55,12 +69,18 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
                 }
             }
 
+            printf("    KERNEL: Posted %d write operations\n", groupCount);
+
             // Commit all writes
             docaErr = doca_gpu_dev_rdma_commit_strong(rdmaGpu, connectionId);
             if (docaErr != DOCA_SUCCESS) {
                 group->errorFlag = 1;
                 return;
             }
+
+            printf("    KERNEL: Committed %d write operations\n", groupCount);
+
+            printf("    KERNEL: Waiting for all operations are done...\n");
 
             // Wait for all writes to complete
             docaErr = doca_gpu_dev_rdma_wait_all(rdmaGpu, &completedOps);
@@ -69,9 +89,13 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
                 return;
             }
 
+            printf("    KERNEL: All RDMA operations completed\n");
+
             __threadfence_system();
             group->completedOps = completedOps;
             group->roundIndex++;
+
+            printf("    KERNEL: Writing acknowledge to remote\n");
 
             // Write doorbell to server signaling writes are completed
 
@@ -91,11 +115,17 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
                 return;
             }
 
+            printf("    KERNEL: Posted inline write to remote\n");
+
             docaErr = doca_gpu_dev_rdma_commit_strong(rdmaGpu, connectionId);
             if (docaErr != DOCA_SUCCESS) {
                 group->errorFlag = 1;
                 return;
             }
+
+            printf("    KERNEL: Committed inline write to remote\n");
+
+            printf("    KERNEL: Waiting for all operations are done...\n");
 
             // Wait for all writes to complete
             docaErr = doca_gpu_dev_rdma_wait_all(rdmaGpu, &completedOps);
@@ -104,9 +134,13 @@ __global__ void PersistentClientKernel(uint32_t connectionId, struct doca_gpu_de
                 return;
             }
 
+            printf("    KERNEL: All RDMA operations completed\n");
+
             // Signal completion
             __threadfence_system();
             group->state.flag = doca::rdma::flags::RdmaComplete;
+
+            printf("    KERNEL: Flag is RdmaComplete\n");
         }
 
         __syncthreads();
