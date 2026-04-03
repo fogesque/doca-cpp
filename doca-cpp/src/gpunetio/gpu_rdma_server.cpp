@@ -320,6 +320,25 @@ error GpuRdmaServer::handleClient(uint32_t connectionIndex)
 
     DOCA_CPP_LOG_DEBUG("Started RDMA context");
 
+    // Wait for RDMA context to run
+    auto [contextState, stErr] = context->GetState();
+    if (stErr) {
+        return errors::Wrap(stErr, "Failed to get RDMA context state");
+    }
+    constexpr auto contextWaitTimeout = std::chrono::seconds(3);
+    constexpr auto ctxPollInterval = std::chrono::microseconds(100);
+    const auto ctxDeadline = std::chrono::steady_clock::now() + contextWaitTimeout;
+    while (contextState != doca::Context::State::running && std::chrono::steady_clock::now() < ctxDeadline) {
+        progressEngine->Progress();
+        std::this_thread::sleep_for(ctxPollInterval);
+        auto [contextState, ctxErr] = context->GetState();
+        if (ctxErr) {
+            return errors::Wrap(ctxErr, "Failed to get RDMA context state");
+        }
+    }
+
+    DOCA_CPP_LOG_DEBUG("RDMA context is running");
+
     // Export local data memory descriptor and send to client
     auto [descriptor, descErr] = pool->ExportDescriptor();
     if (descErr) {
