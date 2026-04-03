@@ -265,6 +265,8 @@ void GpuRdmaPipeline::serverLoop()
         DOCA_CPP_LOG_DEBUG(std::format("PROCESSING GROUP {}", nextGroup));
         // }
 
+        DOCA_CPP_LOG_DEBUG("Waiting for RdmaComplete flag...");
+
         // Poll for RdmaComplete
         while (group->state.flag != rdma::flags::RdmaComplete) {
             if (!this->running.load(std::memory_order_relaxed)) {
@@ -273,7 +275,11 @@ void GpuRdmaPipeline::serverLoop()
             std::this_thread::yield();
         }
 
+        DOCA_CPP_LOG_DEBUG("Got RdmaComplete, start processing");
+
         group->state.flag = rdma::flags::Processing;
+
+        DOCA_CPP_LOG_DEBUG("Flag is Processing");
 
         // Invoke per-buffer service on processing stream
         if (this->config.service) {
@@ -292,6 +298,8 @@ void GpuRdmaPipeline::serverLoop()
 
         // Mark group as Released (kernel will pick it up)
         group->state.flag = rdma::flags::Released;
+
+        DOCA_CPP_LOG_DEBUG("Flag is Released");
 
         // Advance to next group
         nextGroup = (nextGroup + 1) % doca::rdma::NumBufferGroups;
@@ -318,6 +326,8 @@ void GpuRdmaPipeline::clientLoop()
         DOCA_CPP_LOG_DEBUG(std::format("PROCESSING GROUP {}", nextGroup));
         // }
 
+        DOCA_CPP_LOG_DEBUG("Waiting for RdmaComplete flag...");
+
         // Poll for RdmaComplete
         while (group->state.flag != rdma::flags::RdmaComplete) {
             if (!this->running.load(std::memory_order_relaxed)) {
@@ -326,7 +336,11 @@ void GpuRdmaPipeline::clientLoop()
             std::this_thread::yield();
         }
 
+        DOCA_CPP_LOG_DEBUG("Got RdmaComplete, start processing");
+
         group->state.flag = rdma::flags::Processing;
+
+        DOCA_CPP_LOG_DEBUG("Flag is Processing");
 
         // Invoke per-buffer service on processing stream
         if (this->config.service) {
@@ -345,6 +359,8 @@ void GpuRdmaPipeline::clientLoop()
 
         // Mark group as Released (kernel will pick it up)
         group->state.flag = rdma::flags::Released;
+
+        DOCA_CPP_LOG_DEBUG("Flag is Released");
 
         // Advance to next group
         nextGroup = (nextGroup + 1) % doca::rdma::NumBufferGroups;
