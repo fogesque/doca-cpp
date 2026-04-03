@@ -1,10 +1,10 @@
 #include <doca-cpp/rdma/internal/rdma_session_manager.hpp>
-
 #include <format>
 
 #ifdef DOCA_CPP_ENABLE_LOGGING
 #include <doca-cpp/logging/logging.hpp>
-namespace {
+namespace
+{
 inline const auto loggerConfig = doca::logging::GetDefaultLoggerConfig();
 inline const auto loggerContext = kvalog::Logger::Context{
     .appName = "doca-cpp",
@@ -29,11 +29,37 @@ RdmaSessionManager::~RdmaSessionManager()
     this->Close();
 }
 
-error RdmaSessionManager::Listen(uint16_t port)
+error RdmaSessionManager::Listen(uint16_t port, uint64_t maxConnections)
 {
     // Create TCP acceptor on specified port
     auto endpoint = asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port);
-    this->acceptor = std::make_unique<asio::ip::tcp::acceptor>(this->ioContext, endpoint);
+    this->acceptor = std::make_unique<asio::ip::tcp::acceptor>(this->ioContext);
+
+    asio::error_code errorCode;
+
+    // Open acceptor
+    this->acceptor->open(endpoint.protocol(), errorCode);
+    if (errorCode) {
+        return errors::Errorf("Failed to open acceptor: {}", errorCode.message());
+    }
+
+    // Allow TCP port reusing
+    this->acceptor->set_option(asio::ip::tcp::acceptor::reuse_address(true), errorCode);
+    if (errorCode) {
+        return errors::Errorf("Failed to set address reuse option: {}", errorCode.message());
+    }
+
+    // Bind to endpoint
+    this->acceptor->bind(endpoint, errorCode);
+    if (errorCode) {
+        return errors::Errorf("Failed to bind acceptor to endpoint: {}", errorCode.message());
+    }
+
+    // Listen to incoming connections
+    this->acceptor->listen(maxConnections, errorCode);
+    if (errorCode) {
+        return errors::Errorf("Failed to bind acceptor to endpoint: {}", errorCode.message());
+    }
 
     DOCA_CPP_LOG_INFO(std::format("Session manager listening on port {}", port));
     return nullptr;
@@ -55,9 +81,14 @@ std::tuple<RdmaSessionManagerPtr, error> RdmaSessionManager::AcceptOne()
         return { nullptr, errors::Errorf("Failed to accept connection: {}", errorCode.message()) };
     }
 
+    clientSession->socket->set_option(asio::socket_base::keep_alive(true), errorCode);
+    if (errorCode) {
+        return { nullptr, errors::Errorf("Failed to set TCP keep alive option: {}", errorCode.message()) };
+    }
+
     clientSession->connected = true;
-    DOCA_CPP_LOG_INFO(std::format("Accepted connection from {}",
-                                  clientSession->socket->remote_endpoint().address().to_string()));
+    DOCA_CPP_LOG_INFO(
+        std::format("Accepted connection from {}", clientSession->socket->remote_endpoint().address().to_string()));
 
     return { clientSession, nullptr };
 }

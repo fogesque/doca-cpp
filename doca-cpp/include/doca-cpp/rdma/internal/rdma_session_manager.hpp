@@ -42,7 +42,7 @@ public:
     /// [Server Operations]
 
     /// @brief Starts listening for incoming TCP connections on given port
-    error Listen(uint16_t port);
+    error Listen(uint16_t port, uint64_t maxConnections);
 
     /// @brief Accepts a single incoming TCP connection (blocks until client connects)
     /// @return New RdmaSessionManager instance with accepted socket, ready for Send/Receive
